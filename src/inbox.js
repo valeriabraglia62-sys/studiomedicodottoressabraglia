@@ -1,5 +1,3 @@
-import { ImapFlow } from 'imapflow';
-import { simpleParser } from 'mailparser';
 import { db } from './db.js';
 import { config } from './config.js';
 import { accoda, registraGestore } from './outbox.js';
@@ -147,6 +145,24 @@ let ultimoEsito = { mai_eseguito: true };
 // questo il controllo resterebbe appeso e la lettura si fermerebbe per sempre.
 const TEMPO_MASSIMO_MS = 90_000;
 
+/**
+ * Le librerie per leggere la posta si caricano al primo controllo, non all'avvio.
+ *
+ * Sono grosse: pesavano minuti sull'accensione del server, e li pesavano sempre,
+ * anche con la lettura della casella spenta. Ora il sito e' online in pochi
+ * secondi e il costo si paga una volta sola, in sottofondo, solo se serve.
+ */
+let libreriePosta = null;
+
+function caricaLibreriePosta() {
+  if (!libreriePosta) {
+    libreriePosta = Promise.all([import('imapflow'), import('mailparser')])
+      .then(([imap, parser]) => ({ ImapFlow: imap.ImapFlow, simpleParser: parser.simpleParser }))
+      .catch((err) => { libreriePosta = null; throw err; });
+  }
+  return libreriePosta;
+}
+
 export async function controllaCasella() {
   if (inCorso) return { saltato: true };
 
@@ -174,6 +190,7 @@ async function leggiCasella() {
   }
 
   inCorso = true;
+  const { ImapFlow, simpleParser } = await caricaLibreriePosta();
   const client = new ImapFlow({
     host: 'imap.gmail.com',
     port: 993,
