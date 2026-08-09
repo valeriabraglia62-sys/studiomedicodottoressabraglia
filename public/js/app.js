@@ -355,6 +355,20 @@ function collegaFormPrenotazione() {
   });
 }
 
+/**
+ * Pulsante "salva in calendario": apre Google Calendar con l'evento gia'
+ * compilato, poi decide il paziente. Se il collegamento non c'e' (prenotazione
+ * annullata, dati incompleti) non restituisce nulla da mostrare.
+ */
+function bottoneCalendario(p, classe = 'bottone secondario piccolo') {
+  if (!p?.calendario) return document.createDocumentFragment();
+  const link = nodo('a', classe, 'Aggiungi al calendario');
+  link.href = p.calendario;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  return link;
+}
+
 function mostraConferma(p) {
   const box = nodo('div', 'avviso ok');
   box.append(nodo('strong', null, `Prenotazione confermata — codice ${p.codice}`));
@@ -374,7 +388,9 @@ function mostraConferma(p) {
       avvisa(`Il tuo codice è ${p.codice}`, 'ok');
     }
   });
-  box.append(copia);
+  const azioni = nodo('div', 'azioni');
+  azioni.append(copia, bottoneCalendario(p));
+  box.append(azioni);
 
   // Contenitore separato dagli orari: ricaricando le fasce la conferma resta.
   $('#esito-prenotazione').replaceChildren(box);
@@ -453,9 +469,13 @@ function schedaPrenotazione(p, annullabile) {
 
   if (p.stato !== 'confermata') return box;
 
+  const azioni = nodo('div', 'azioni');
+  azioni.append(bottoneCalendario(p, 'bottone secondario'));
+
   if (!annullabile) {
     box.append(nodo('div', 'avviso attenzione',
       `Manca meno di un'ora all'appuntamento: per annullare chiama lo ${p.ambulatorio.telefono}.`));
+    box.append(azioni);
     return box;
   }
 
@@ -474,7 +494,8 @@ function schedaPrenotazione(p, annullabile) {
       pulsante.disabled = false;
     }
   });
-  box.append(pulsante);
+  azioni.append(pulsante);
+  box.append(azioni);
   return box;
 }
 

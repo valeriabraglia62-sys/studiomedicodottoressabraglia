@@ -94,6 +94,12 @@ let codicePrenotazione = null;
   codicePrenotazione = dati.prenotazione?.codice;
   verifica('codice non indovinabile', /^PRE-[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(codicePrenotazione || ''), codicePrenotazione);
 
+  const calendario = dati.prenotazione?.calendario || '';
+  const attesi = `${giorno.replace(/-/g, '')}T${slotLiberi[0].ora_inizio.replace(':', '')}00`;
+  verifica('il paziente riceve il link per Google Calendar',
+    calendario.startsWith('https://calendar.google.com/') && calendario.includes(attesi),
+    calendario.slice(0, 120));
+
   const dopo = await chiama('GET', `/api/disponibilita?data=${giorno}&ambulatorio_id=1`);
   const ancoraLibero = dopo.dati.slot.find((s) => s.ora_inizio === slotLiberi[0].ora_inizio)?.disponibile;
   verifica('lo slot risulta occupato subito dopo', ancoraLibero === false);
@@ -137,6 +143,10 @@ console.log('\nRicerca e annullamento');
 
   const annullata = await chiama('POST', `/api/prenotazioni/${codicePrenotazione}/annulla`);
   verifica('annullamento riuscito', annullata.stato === 200, JSON.stringify(annullata.dati).slice(0, 120));
+
+  verifica('la prenotazione annullata non propone piu\' il calendario',
+    annullata.dati.prenotazione?.calendario === null,
+    String(annullata.dati.prenotazione?.calendario).slice(0, 80));
 
   const dueVolte = await chiama('POST', `/api/prenotazioni/${codicePrenotazione}/annulla`);
   verifica('non si annulla due volte', dueVolte.stato === 400);

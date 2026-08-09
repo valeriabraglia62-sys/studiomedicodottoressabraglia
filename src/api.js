@@ -21,6 +21,7 @@ import { eseguiBackup, statoBackup } from './backup.js';
 import { statoCoda, riprovaTutto } from './outbox.js';
 import { verificaConnessioneEmail } from './mailer.js';
 import { verificaFoglio } from './sheets.js';
+import { linkGoogleCalendar } from './evento.js';
 
 /** Cattura anche gli errori asincroni: senza questo un await fallito sfugge a Express. */
 const via = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -138,7 +139,10 @@ function pubblica(p) {
       cognome: p.paziente_cognome,
       telefono: p.paziente_telefono,
       email: p.paziente_email
-    }
+    },
+    // Solo per le visite ancora valide: proporre di salvare in calendario
+    // un appuntamento annullato confonderebbe e basta.
+    calendario: p.stato === 'confermata' ? linkGoogleCalendar(p) : null
   };
 }
 

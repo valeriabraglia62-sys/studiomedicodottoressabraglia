@@ -146,6 +146,9 @@ a { color: var(--verde); }
 .bottone.piccolo { padding: .4rem .75rem; font-size: .8rem; }
 .bottone.largo { width: 100%; }
 
+/* Piu' pulsanti in fila: a schermo stretto vanno a capo invece di stringersi. */
+.azioni { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .9rem; }
+
 /* ---- Schede ------------------------------------------------------------ */
 
 .carta {
