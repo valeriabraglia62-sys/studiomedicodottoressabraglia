@@ -50,10 +50,18 @@ export const config = {
 
   sheets: {
     enabled: bool(process.env.GOOGLE_SHEETS_ENABLED),
-    sheetId: (process.env.GOOGLE_SHEET_ID || '').trim(),
+    // Due fogli distinti: le visite e le richieste di medicinali stanno su
+    // documenti separati. GOOGLE_SHEET_ID resta accettato come ripiego per
+    // entrambi, cosi' una vecchia configurazione a foglio unico non si rompe.
+    fogli: {
+      prenotazione: (process.env.GOOGLE_SHEET_ID_PRENOTAZIONI || process.env.GOOGLE_SHEET_ID || '').trim(),
+      medicina: (process.env.GOOGLE_SHEET_ID_MEDICINE || process.env.GOOGLE_SHEET_ID || '').trim()
+    },
     credentialsFile: path.resolve(ROOT, process.env.GOOGLE_SERVICE_ACCOUNT_FILE || './google-credentials.json'),
     get ready() {
-      return this.enabled && Boolean(this.sheetId) && fs.existsSync(this.credentialsFile);
+      return this.enabled
+        && Boolean(this.fogli.prenotazione && this.fogli.medicina)
+        && fs.existsSync(this.credentialsFile);
     }
   },
 
