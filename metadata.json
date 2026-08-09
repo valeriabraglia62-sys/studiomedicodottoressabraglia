@@ -1,0 +1,6 @@
+{
+  "name": "Medical Booking System",
+  "description": "Sistema di prenotazioni mediche per gli ambulatori di Arceto e Casalgrande",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

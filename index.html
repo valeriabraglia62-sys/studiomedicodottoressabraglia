@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema di Prenotazioni Mediche</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header>
+        <div class="container header-content">
+            <div class="logo">
+                <a href="index.html">MedPrenotazioni</a>
+            </div>
+            <nav>
+                <div class="menu-toggle" id="menu-toggle">
+                    <i class="fas fa-bars"></i>
+                </div>
+                <ul class="nav-menu" id="main-nav">
+                    <li><a href="index.html">Home</a></li>
+                    <li><a href="#ambulatori">Ambulatori</a></li>
+                    <li class="dropdown">
+                        <a href="#" class="dropdown-toggle">Servizi <i class="fas fa-chevron-down"></i></a>
+                        <ul class="dropdown-menu">
+                            <li><a href="#prenota">Prenota Visita</a></li>
+                            <li><a href="#" id="my-appointments-btn">Le Mie Prenotazioni</a></li>
+                        </ul>
+                    </li>
+                    <li><a href="#contatti">Contatti</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <section class="hero">
+        <div class="container">
+            <h1>Prenota la tua visita medica</h1>
+            <p>Prenotarsi solo nell'ambulatorio di residenza</p>
+            <a href="#prenota" class="btn">Prenota ora</a>
+        </div>
+    </section>
+
+    <main class="container">
+        <section id="ambulatori">
+            <h2 class="section-title">I nostri ambulatori</h2>
+            <div class="ambulatori">
+                <div class="ambulatorio-card">
+                    <h3>Ambulatorio di Arceto</h3>
+                    <p>Via Piazza Castello, 10 - Arceto</p>
+                    <p>Telefono: 0522980035</p>
+                    <h4>Orari di apertura:</h4>
+                    <ul class="orari-list">
+                        <li>Lunedì: 10:30 - 13:00</li>
+                        <li>Martedì: 10:30 - 13:00</li>
+                        <li>Mercoledì: 17:00 - 19:00</li>
+                        <li>Giovedì: 10:30 - 13:00</li>
+                        <li>Venerdì: 10:30 - 13:00</li>
+                    </ul>
+                </div>
+                <div class="ambulatorio-card">
+                    <h3>Ambulatorio di Casalgrande</h3>
+                    <p>Via Canale, 29 - Casalgrande</p>
+                    <p>Telefono: 3472450118</p>
+                    <h4>Orari di apertura:</h4>
+                    <ul class="orari-list">
+                        <li>Lunedì: 17:00 - 19:00</li>
+                        <li>Martedì: CHIUSO</li>
+                        <li>Mercoledì: 08:30 - 10:00</li>
+                        <li>Giovedì: 17:00 - 19:00</li>
+                        <li>Venerdì: 08:30 - 10:00</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <section id="prenota" class="form-section">
+            <h2 class="form-title">Prenota una visita</h2>
+            <div id="alert-container"></div>
+            
+            <div class="calendar-container">
+                <h3>Seleziona una data</h3>
+                <div id="date-picker"></div>
+            </div>
+            
+            <div id="time-slots" style="display: none;">
+                <h3>Seleziona un orario</h3>
+                <div id="slots-container" class="form-group"></div>
+            </div>
+            
+            <form id="booking-form" style="display: none;">
+                <div class="form-row">
+                    <div class="form-col">
+                        <div class="form-group">
+                            <label for="nome">Nome *</label>
+                            <input type="text" id="nome" name="nome" class="form-control" required>
+                        </div>
+                    </div>
+                    <div class="form-col">
+                        <div class="form-group">
+                            <label for="cognome">Cognome *</label>
+                            <input type="text" id="cognome" name="cognome" class="form-control" required>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-col">
+                        <div class="form-group">
+                            <label for="email">Email</label>
+                            <input type="email" id="email" name="email" class="form-control">
+                        </div>
+                    </div>
+                    <div class="form-col">
+                        <div class="form-group">
+                            <label for="telefono">Telefono *</label>
+                            <input type="tel" id="telefono" name="telefono" class="form-control" required>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="problema">Descrizione del problema *</label>
+                    <textarea id="problema" name="problema" class="form-control" required></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <p><strong>Ambulatorio:</strong> <span id="ambulatorio-display"></span></p>
+                    <p><strong>Data e ora:</strong> <span id="datetime-display"></span></p>
+                </div>
+                
+                <div class="form-group" style="display: none;">
+                    <div class="checkbox-container">
+                        <input type="checkbox" id="add-to-calendar" name="add-to-calendar" checked>
+                        <label for="add-to-calendar">Aggiungi appuntamento al mio Google Calendar</label>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <button type="button" id="verifica-btn" class="btn btn-primary">Verifica dati</button>
+                </div>
+            </form>
+        </section>
+
+        <section id="contatti" class="section">
+            <h2 class="section-title">Contatti</h2>
+            <div class="contatti-container">
+                <div class="contatto-card telefono-card">
+                    <div class="contatto-icon">
+                        <i class="fas fa-phone"></i>
+                    </div>
+                    <h3>Telefono</h3>
+                    <p>Ambulatorio di Arceto: 0522980035</p>
+                    <p>Ambulatorio di Casalgrande: 3472450118</p>
+                </div>
+                <div class="contatto-card orari-card">
+                    <div class="contatto-icon">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <h3>Orari segreteria</h3>
+                    <p>Lunedì - Venerdì: 8:30 - 12:30</p>
+                    <p>Lunedì - Giovedì: 15:00 - 18:00</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <div id="confirmation-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2 class="modal-title">Conferma prenotazione</h2>
+            <div class="confirmation-details">
+                <p><strong>Nome:</strong> <span id="confirm-nome"></span></p>
+                <p><strong>Cognome:</strong> <span id="confirm-cognome"></span></p>
+                <p><strong>Telefono:</strong> <span id="confirm-telefono"></span></p>
+                <p><strong>Email:</strong> <span id="confirm-email"></span></p>
+                <p><strong>Problema:</strong> <span id="confirm-problema"></span></p>
+                <p><strong>Ambulatorio:</strong> <span id="confirm-ambulatorio"></span></p>
+                <p><strong>Data e ora:</strong> <span id="confirm-datetime"></span></p>
+                <p><strong>Google Calendar:</strong> <span id="confirm-calendar"></span></p>
+            </div>
+            <div class="btn-group">
+                <button id="modifica-btn" class="btn btn-secondary">Modifica</button>
+                <button id="conferma-btn" class="btn btn-primary" style="display: none;">Conferma</button>
+                <button id="google-signin-btn" class="gsi-material-button" style="display: none; padding: 0; background: #fff; border: 1px solid #dadce0; border-radius: 4px; cursor: pointer;">
+                  <div class="gsi-material-button-state"></div>
+                  <div class="gsi-material-button-content-wrapper" style="display: flex; align-items: center; padding: 8px 16px;">
+                    <div class="gsi-material-button-icon" style="width: 18px; height: 18px; margin-right: 10px;">
+                      <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" xmlns:xlink="http://www.w3.org/1999/xlink" style="display: block;">
+                        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                        <path fill="none" d="M0 0h48v48H0z"></path>
+                      </svg>
+                    </div>
+                    <span class="gsi-material-button-contents" style="font-family: Roboto, arial, sans-serif; font-size: 14px; font-weight: 500; letter-spacing: .25px; color: #3c4043;">Accedi con Google per confermare</span>
+                    <span style="display: none;">Sign in with Google</span>
+                  </div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="success-modal" class="modal">
+        <div class="modal-content">
+            <h2 class="modal-title">Prenotazione confermata</h2>
+            <p>La tua prenotazione è stata confermata con successo!</p>
+            <p>Riceverai una conferma via email (se fornita) con tutti i dettagli.</p>
+            <p>L'evento è stato aggiunto al tuo Google Calendar.</p>
+            <p>Ti aspettiamo presso l'ambulatorio di <span id="success-ambulatorio"></span> il giorno <span id="success-data"></span> alle ore <span id="success-ora"></span>.</p>
+            <div class="btn-group">
+                <button id="chiudi-success-btn" class="btn btn-primary">Chiudi</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- My Appointments Modal -->
+    <div id="my-appointments-modal" class="modal">
+        <div class="modal-content modal-large">
+            <span class="close-modal">&times;</span>
+            <h2 class="modal-title">Le Mie Prenotazioni</h2>
+            <div id="appointments-alert-container"></div>
+            
+            <div class="appointments-container">
+                <div class="loading-spinner" id="appointments-loading">
+                    <i class="fas fa-spinner fa-spin"></i> Caricamento prenotazioni...
+                </div>
+                <div id="appointments-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <div class="container footer-content">
+            <div class="footer-logo">MedPrenotazioni</div>
+            <ul class="footer-links">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="#ambulatori">Ambulatori</a></li>
+                <li><a href="#prenota">Prenota</a></li>
+                <li><a href="#contatti">Contatti</a></li>
+            </ul>
+            <p class="copyright">&copy; 2025 MedPrenotazioni. Tutti i diritti riservati.</p>
+        </div>
+    </footer>
+
+    <!-- Script personalizzati -->
+    <script type="module" src="js/script.js"></script>
+    <script src="js/menu.js"></script>
+</body>
+</html>

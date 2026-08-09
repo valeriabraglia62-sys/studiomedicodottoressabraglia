@@ -1,0 +1,27 @@
+# Segreti — non deve MAI finire nel repository
+.env
+.env.local
+*.key.json
+service-account*.json
+google-credentials.json
+
+# Database e backup
+data/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Dipendenze
+node_modules/
+
+# Log
+*.log
+logs/
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Impostazioni locali dell'editor
+.claude/settings.local.json
