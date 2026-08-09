@@ -7,7 +7,11 @@
   "scripts": {
     "dev": "node --watch-path=./src --watch-path=./server.js server.js",
     "start": "node server.js",
-    "prova": "node prova/backend.mjs"
+    "prova": "node prova/backend.mjs",
+    "avvio": "bash strumenti/avvio-automatico.sh installa",
+    "avvio:stato": "bash strumenti/avvio-automatico.sh stato",
+    "avvio:riavvia": "bash strumenti/avvio-automatico.sh riavvia",
+    "avvio:rimuovi": "bash strumenti/avvio-automatico.sh rimuovi"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
