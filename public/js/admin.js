@@ -271,6 +271,7 @@ function collegaCambioPassword() {
 
 const CARICATORI = {
   riepilogo: caricaRiepilogo,
+  moduli: caricaModuli,
   prenotazioni: caricaPrenotazioni,
   medicine: caricaMedicine,
   email: caricaEmail,
@@ -295,8 +296,13 @@ function apriScheda(nome) {
 async function caricaRiepilogo() {
   const { riepilogo, agenda_oggi } = await api('/admin/riepilogo');
 
+  // Il numerino sulla linguetta si aggiorna a ogni passaggio da "Oggi": chi
+  // apre lo studio vede subito se c'e' arretrato da confermare.
+  aggiornaContatoreModuli(riepilogo.moduli_da_confermare);
+
   const voci = [
     ['Visite oggi', riepilogo.prenotazioni_oggi],
+    ['Da confermare', riepilogo.moduli_da_confermare],
     ['Visite future', riepilogo.prenotazioni_future],
     ['Medicinali da evadere', riepilogo.medicine_da_evadere],
     ['Email da leggere', riepilogo.email_da_leggere],
@@ -505,6 +511,261 @@ function schedaEmail(m) {
   }
   carta.append(azioni);
   return carta;
+}
+
+// ---- Richieste dai Moduli Google -------------------------------------------
+//
+// Sono arrivate mentre il sito era spento e nessuno le ha ancora viste. Il
+// pannello le mostra con i campi gia' compilati ma modificabili: il paziente
+// scrive di fretta e da un telefono, e chi apre lo studio deve poter
+// raddrizzare un orario o un cognome senza rifare tutto a mano.
+
+let ambulatoriNoti = [];
+
+async function caricaModuli() {
+  const parametri = new URLSearchParams();
+  const stato = $('#mod-stato').value;
+  if (stato) parametri.set('stato', stato);
+
+  const { richieste, totale } = await api(`/admin/moduli?${parametri}`);
+  const contenitore = $('#elenco-moduli');
+
+  aggiornaContatoreModuli(stato === 'nuova' ? totale : null);
+
+  if (!richieste.length) {
+    contenitore.replaceChildren(vuoto(stato === 'nuova'
+      ? 'Nessuna richiesta in attesa: è tutto confermato.'
+      : 'Nessuna richiesta in questa vista.'));
+    return;
+  }
+
+  contenitore.replaceChildren(
+    nodo('p', 'piccolo tenue', `${totale} richieste.`),
+    ...richieste.map(schedaModulo)
+  );
+}
+
+/** Il numerino sulla linguetta: si vede da qualsiasi scheda che c'e' lavoro. */
+function aggiornaContatoreModuli(quante) {
+  const pallino = $('#conta-moduli');
+  if (quante === null || quante === undefined) return;
+  pallino.textContent = quante ? ` (${quante})` : '';
+  pallino.hidden = !quante;
+}
+
+const campoModulo = (etichettaTesto, elemento) => {
+  const campo = nodo('div', 'campo');
+  campo.style.cssText = 'flex:1;min-width:150px';
+  const lab = nodo('label', null, etichettaTesto);
+  campo.append(lab, elemento);
+  return campo;
+};
+
+function inputTesto(valore, segnaposto) {
+  const el = nodo('input');
+  el.value = valore ?? '';
+  if (segnaposto) el.placeholder = segnaposto;
+  return el;
+}
+
+function schedaModulo(m) {
+  const carta = nodo('div', 'carta');
+  const prenotazione = m.tipo === 'prenotazione';
+
+  const testata = nodo('div');
+  testata.style.cssText = 'display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;justify-content:space-between';
+  const sinistra = nodo('div');
+  sinistra.append(
+    nodo('strong', null, prenotazione ? '📅 Richiesta di visita' : '💊 Richiesta di medicinali'),
+    nodo('div', 'piccolo tenue', `Arrivata il ${quando(m.ricevuta_il)} · ${m.codice}`)
+  );
+  testata.append(sinistra, etichetta(m.stato, {
+    nuova: 'da confermare', confermata: 'confermata', rifiutata: 'scartata'
+  }[m.stato]));
+  carta.append(testata);
+
+  // Gia' gestita: si guarda soltanto, non si tocca piu'.
+  if (m.stato !== 'nuova') {
+    carta.append(nodo('p', 'piccolo tenue',
+      `${m.nome || ''} ${m.cognome || ''} · ${m.telefono || 'senza telefono'}` +
+      (m.collegata_a ? ` · diventata ${m.collegata_a}` : '') +
+      (m.motivo_rifiuto ? ` · motivo: ${m.motivo_rifiuto}` : '')));
+    return carta;
+  }
+
+  const campi = {
+    nome: inputTesto(m.nome, 'Nome'),
+    cognome: inputTesto(m.cognome, 'Cognome'),
+    telefono: inputTesto(m.telefono, 'Telefono'),
+    email: inputTesto(m.email, 'Email (facoltativa)')
+  };
+
+  const riga1 = nodo('div', 'filtri');
+  riga1.style.marginTop = '.85rem';
+  riga1.append(
+    campoModulo('Nome', campi.nome),
+    campoModulo('Cognome', campi.cognome),
+    campoModulo('Telefono', campi.telefono),
+    campoModulo('Email', campi.email)
+  );
+  carta.append(riga1);
+
+  const riga2 = nodo('div', 'filtri');
+
+  if (prenotazione) {
+    campi.ambulatorio_id = nodo('select');
+    for (const a of ambulatoriNoti) {
+      const opzione = nodo('option', null, a.nome);
+      opzione.value = a.id;
+      if (a.id === m.ambulatorio_id) opzione.selected = true;
+      campi.ambulatorio_id.append(opzione);
+    }
+
+    campi.data = nodo('input');
+    campi.data.type = 'date';
+    campi.data.value = m.data_chiesta || '';
+    campi.data.min = oggiISO();
+
+    // Elenco degli orari davvero liberi: evita di confermare alla cieca un
+    // orario che nel frattempo qualcun altro ha preso.
+    campi.ora_inizio = nodo('select');
+    const avviso = nodo('div', 'piccolo tenue');
+
+    const aggiornaOrari = async () => {
+      campi.ora_inizio.replaceChildren();
+      avviso.textContent = '';
+      if (!campi.data.value) {
+        avviso.textContent = 'Scegli prima il giorno.';
+        return;
+      }
+      try {
+        const { slot } = await api(`/disponibilita?data=${campi.data.value}` +
+          `&ambulatorio_id=${campi.ambulatorio_id.value}`);
+        const liberi = slot.filter((s) => s.disponibile);
+        if (!liberi.length) {
+          avviso.textContent = 'Nessun orario libero in questa giornata: prova un altro giorno.';
+          return;
+        }
+        for (const s of liberi) {
+          const opzione = nodo('option', null, `${s.ora_inizio}–${s.ora_fine}`);
+          opzione.value = s.ora_inizio;
+          if (s.ora_inizio === m.ora_chiesta) opzione.selected = true;
+          campi.ora_inizio.append(opzione);
+        }
+        avviso.textContent = m.ora_chiesta && !liberi.some((s) => s.ora_inizio === m.ora_chiesta)
+          ? `Il paziente aveva chiesto le ${m.ora_chiesta}, che non è libero: scegline un altro.`
+          : `${liberi.length} orari liberi.`;
+      } catch (err) {
+        avviso.textContent = err.message;
+      }
+    };
+
+    campi.data.addEventListener('change', aggiornaOrari);
+    campi.ambulatorio_id.addEventListener('change', aggiornaOrari);
+    aggiornaOrari();
+
+    campi.problema = inputTesto(m.testo, 'Motivo della visita');
+
+    riga2.append(
+      campoModulo('Ambulatorio', campi.ambulatorio_id),
+      campoModulo('Giorno', campi.data),
+      campoModulo('Orario', campi.ora_inizio),
+      campoModulo('Motivo', campi.problema)
+    );
+    carta.append(riga2, avviso);
+  } else {
+    campi.farmaci = inputTesto(m.testo, 'Medicinali richiesti');
+    campi.note = inputTesto(m.note, 'Note');
+    riga2.append(campoModulo('Medicinali', campi.farmaci), campoModulo('Note', campi.note));
+    carta.append(riga2);
+  }
+
+  // Cosa aveva scritto davvero il paziente, parola per parola: serve quando la
+  // lettura automatica delle colonne ha capito male.
+  const originale = nodo('details');
+  originale.append(nodo('summary', 'piccolo tenue', 'Vedi la risposta originale'));
+  const grezzo = nodo('div', 'piccolo', testoOriginale(m));
+  grezzo.style.cssText = 'white-space:pre-line;margin-top:.5rem;background:var(--sfondo);' +
+    'padding:.75rem;border-radius:8px';
+  originale.append(grezzo);
+  originale.style.marginTop = '.85rem';
+  carta.append(originale);
+
+  const azioni = nodo('div', 'azioni');
+
+  const conferma = nodo('button', 'bottone', 'Conferma');
+  conferma.type = 'button';
+  conferma.addEventListener('click', () => {
+    const corpo = {};
+    for (const [chiave, elemento] of Object.entries(campi)) {
+      const valore = String(elemento.value || '').trim();
+      if (valore) corpo[chiave] = chiave === 'ambulatorio_id' ? Number(valore) : valore;
+    }
+    conferma.disabled = true;
+    protetto(async () => {
+      try {
+        const esito = await api(`/admin/moduli/${m.codice}/conferma`, { method: 'POST', body: corpo });
+        avvisa(`Confermata: ${esito.generata.codice}. Al paziente parte l'email.`, 'ok');
+        await caricaModuli();
+      } finally {
+        conferma.disabled = false;
+      }
+    });
+  });
+
+  const scarta = nodo('button', 'bottone secondario', 'Scarta');
+  scarta.type = 'button';
+  scarta.addEventListener('click', () => {
+    const motivo = prompt('Perché scarti questa richiesta? (resterà scritto)');
+    if (motivo === null) return;
+    scarta.disabled = true;
+    protetto(async () => {
+      try {
+        await api(`/admin/moduli/${m.codice}/rifiuta`, { method: 'POST', body: { motivo } });
+        avvisa('Richiesta scartata.', 'ok');
+        await caricaModuli();
+      } finally {
+        scarta.disabled = false;
+      }
+    });
+  });
+
+  azioni.append(conferma, scarta);
+  carta.append(azioni);
+  return carta;
+}
+
+function testoOriginale(m) {
+  try {
+    const { intestazioni, riga } = JSON.parse(m.riga_json);
+    return intestazioni
+      .map((testata, i) => (riga[i] ? `${testata}: ${riga[i]}` : null))
+      .filter(Boolean).join('\n');
+  } catch {
+    return m.riga_json;
+  }
+}
+
+function collegaModuli() {
+  $('#mod-stato').addEventListener('change', () => protetto(caricaModuli));
+
+  $('#mod-controlla').addEventListener('click', (evento) => {
+    const pulsante = evento.currentTarget;
+    pulsante.disabled = true;
+    pulsante.textContent = 'Controllo…';
+    protetto(async () => {
+      try {
+        const { esito } = await api('/admin/moduli/controlla', { method: 'POST' });
+        avvisa(esito.ok
+          ? `Controllo fatto: ${esito.nuove} richieste nuove.`
+          : `Non ho potuto leggere i moduli: ${esito.motivo}`, esito.ok ? 'ok' : 'errore');
+        await caricaModuli();
+      } finally {
+        pulsante.disabled = false;
+        pulsante.textContent = 'Controlla i moduli ora';
+      }
+    });
+  });
 }
 
 // ---- Pazienti --------------------------------------------------------------
@@ -747,6 +1008,8 @@ async function caricaSistema() {
 
 async function riempiAmbulatori() {
   const { ambulatori } = await api('/ambulatori');
+  // Tenuti da parte anche per le schede delle richieste da confermare.
+  ambulatoriNoti = ambulatori;
   const select = $('#pren-ambulatorio');
   const tutti = nodo('option', null, 'Tutti');
   tutti.value = '';
@@ -791,6 +1054,7 @@ async function avvia() {
   collegaAccesso();
   collegaCambioPassword();
   collegaCollaboratori();
+  collegaModuli();
   collegaFiltri();
 
   $('#schede').addEventListener('click', (evento) => {

@@ -174,6 +174,40 @@ CREATE TABLE IF NOT EXISTS richieste_email (
 );
 CREATE INDEX IF NOT EXISTS idx_richieste_email_stato ON richieste_email(stato);
 
+-- Richieste arrivate dai Moduli Google mentre il sito era spento.
+--
+-- I computer di Google sono sempre accesi: il paziente compila il modulo a
+-- qualsiasi ora e Google scrive la riga nel foglio. Quando il sito si riaccende
+-- legge le righe nuove e le parcheggia qui, cosi' come sono arrivate, senza
+-- validarle: una richiesta parcheggiata male si aggiusta a mano, una richiesta
+-- rifiutata all'ingresso sarebbe persa per sempre.
+--
+-- Diventano prenotazioni vere solo quando qualcuno dello studio le conferma.
+CREATE TABLE IF NOT EXISTS richieste_modulo (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  codice         TEXT NOT NULL UNIQUE,
+  -- Impronta della riga originale: rileggere il foglio non duplica nulla.
+  chiave         TEXT NOT NULL UNIQUE,
+  tipo           TEXT NOT NULL,                  -- prenotazione | medicina
+  nome           TEXT,
+  cognome        TEXT,
+  telefono       TEXT,
+  email          TEXT,
+  data_chiesta   TEXT,                           -- YYYY-MM-DD, se riconosciuta
+  ora_chiesta    TEXT,                           -- HH:MM, se riconosciuta
+  ambulatorio_id INTEGER REFERENCES ambulatori(id),
+  testo          TEXT,                           -- motivo della visita o medicinali
+  note           TEXT,
+  riga_json      TEXT NOT NULL,                  -- la riga integrale, come l'ha scritta Google
+  stato          TEXT NOT NULL DEFAULT 'nuova',  -- nuova | confermata | rifiutata
+  collegata_a    TEXT,                           -- codice della prenotazione generata
+  motivo_rifiuto TEXT,
+  ricevuta_il    TEXT NOT NULL,
+  gestita_il     TEXT,
+  gestita_da     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_modulo_stato ON richieste_modulo(stato, ricevuta_il);
+
 CREATE TABLE IF NOT EXISTS chat_sessioni (
   id              TEXT PRIMARY KEY,
   stato_json      TEXT,

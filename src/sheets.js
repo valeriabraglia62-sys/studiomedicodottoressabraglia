@@ -56,6 +56,13 @@ function client() {
   return clientPromise;
 }
 
+/**
+ * Lo stesso collegamento a Google, riusato da chi deve solo leggere
+ * (i Moduli). Una connessione sola invece di due, e la libreria pesante
+ * continua a caricarsi una volta soltanto.
+ */
+export const clientFogli = () => client();
+
 const schedeVerificate = new Set();
 
 /** Crea la scheda e la riga di intestazione se mancano. */
