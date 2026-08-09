@@ -17,6 +17,7 @@ import * as inbox from './inbox.js';
 import * as attesa from './attesa.js';
 import * as chiusure from './chiusure.js';
 import * as statistiche from './statistiche.js';
+import * as utenti from './utenti.js';
 import { eseguiBackup, statoBackup } from './backup.js';
 import { statoCoda, riprovaTutto } from './outbox.js';
 import { verificaConnessioneEmail } from './mailer.js';
@@ -189,8 +190,31 @@ router.post('/auth/login', limiteLogin, (req, res) => {
     throw new ErroreDominio('Email o password non corretti.', 401);
   }
 
+  // Account sospeso: la password puo' anche essere giusta, ma non si entra.
+  if (utente.attivo === 0) {
+    throw new ErroreDominio('Questo accesso e\' stato sospeso. Rivolgiti al medico.', 403);
+  }
+
+  utenti.segnaAccesso(utente.id);
   const { token, scadenza } = creaSessione(utente.id);
-  ok(res, { token, scadenza, utente: { email: utente.email, ruolo: utente.ruolo } });
+  ok(res, {
+    token,
+    scadenza,
+    utente: {
+      email: utente.email,
+      ruolo: utente.ruolo,
+      nome: utente.nome || '',
+      // Con la password provvisoria si entra, ma il pannello resta chiuso
+      // finche' non se ne sceglie una personale.
+      deve_cambiare_password: Boolean(utente.cambio_password)
+    }
+  });
+});
+
+/** Cambio della propria password: lo fa l'interessato, serve quella attuale. */
+router.post('/auth/password', limiteLogin, (req, res) => {
+  if (!req.utente) throw new ErroreDominio('Sessione scaduta.', 401);
+  ok(res, utenti.cambiaPasswordProprio(req.utente.id, req.body?.attuale, req.body?.nuova));
 });
 
 router.post('/auth/logout', (req, res) => {
@@ -357,6 +381,27 @@ admin.get('/sistema', via(async (_req, res) => {
 }));
 
 admin.post('/sistema/riprova-consegne', (_req, res) => ok(res, { rimesse_in_coda: riprovaTutto() }));
+
+// ---- Collaboratori --------------------------------------------------------
+// Chi entra nello studio e chi non entra piu' lo decide solo il medico.
+
+admin.get('/utenti', richiedeAdmin, (_req, res) => ok(res, utenti.elenco()));
+
+admin.post('/utenti', richiedeAdmin, (req, res) =>
+  res.status(201).json({ success: true, ...utenti.crea(req.body || {}, req.utente.id) }));
+
+admin.patch('/utenti/:id', richiedeAdmin, (req, res) => {
+  const { ruolo, attivo } = req.body || {};
+  if (ruolo !== undefined) return ok(res, utenti.cambiaRuolo(req.params.id, ruolo, req.utente.id));
+  if (attivo !== undefined) return ok(res, utenti.cambiaAttivazione(req.params.id, attivo, req.utente.id));
+  throw new ErroreDominio('Niente da modificare.', 400);
+});
+
+admin.post('/utenti/:id/password', richiedeAdmin, (req, res) =>
+  ok(res, utenti.rinnovaPassword(req.params.id)));
+
+admin.delete('/utenti/:id', richiedeAdmin, (req, res) =>
+  ok(res, utenti.rimuovi(req.params.id, req.utente.id)));
 
 // ---- Gestione errori ------------------------------------------------------
 

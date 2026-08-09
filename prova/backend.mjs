@@ -219,6 +219,97 @@ let token = null;
   verifica('un token inventato non apre nulla', finto.stato === 401);
 }
 
+console.log('\nAccessi personali dei collaboratori');
+{
+  const EMAIL_COLLAB = 'collaboratore.prova@example.com';
+
+  const creato = await chiama('POST', '/api/admin/utenti',
+    { nome: 'Anna', email: EMAIL_COLLAB, ruolo: 'segretaria' }, token);
+  const provvisoria = creato.dati.password_provvisoria;
+  verifica('il medico crea un accesso personale',
+    creato.stato === 201 && typeof provvisoria === 'string' && provvisoria.length >= 10,
+    JSON.stringify(creato.dati).slice(0, 140));
+  verifica('la password provvisoria va cambiata al primo ingresso',
+    creato.dati.utente?.deve_cambiare_password === true);
+
+  const doppione = await chiama('POST', '/api/admin/utenti',
+    { nome: 'Altra', email: EMAIL_COLLAB, ruolo: 'segretaria' }, token);
+  verifica('non si creano due accessi con la stessa email', doppione.stato === 400);
+
+  const primo = await chiama('POST', '/api/auth/login', { email: EMAIL_COLLAB, password: provvisoria });
+  let tokenCollab = primo.dati.token;
+  verifica('il collaboratore entra con la password provvisoria',
+    primo.stato === 200 && Boolean(tokenCollab));
+  verifica('il sistema gli chiede di cambiarla',
+    primo.dati.utente?.deve_cambiare_password === true);
+
+  // Il blocco deve stare nel server, non solo nella pagina.
+  const bloccato = await chiama('GET', '/api/admin/prenotazioni', null, tokenCollab);
+  verifica('con la password provvisoria non si combina nulla',
+    bloccato.stato === 403 && bloccato.dati.cambio_password === true,
+    `stato ${bloccato.stato}`);
+
+  const corta = await chiama('POST', '/api/auth/password',
+    { attuale: provvisoria, nuova: 'breve' }, tokenCollab);
+  verifica('rifiuta una password troppo corta', corta.stato === 400);
+
+  const sbagliata = await chiama('POST', '/api/auth/password',
+    { attuale: 'non-e-questa', nuova: 'PasswordPersonale1' }, tokenCollab);
+  verifica('per cambiarla serve quella attuale', sbagliata.stato === 400);
+
+  const cambio = await chiama('POST', '/api/auth/password',
+    { attuale: provvisoria, nuova: 'PasswordPersonale1' }, tokenCollab);
+  verifica('il collaboratore sceglie la sua password', cambio.stato === 200);
+
+  const ora = await chiama('GET', '/api/admin/prenotazioni', null, tokenCollab);
+  verifica('adesso lavora normalmente', ora.stato === 200);
+
+  const clinico = await chiama('GET', '/api/admin/statistiche', null, tokenCollab);
+  verifica('la segretaria non vede i dati riservati al medico', clinico.stato === 403);
+
+  const idCollab = creato.dati.utente.id;
+  const sospeso = await chiama('PATCH', `/api/admin/utenti/${idCollab}`, { attivo: false }, token);
+  verifica('il medico sospende l\'accesso', sospeso.stato === 200 && sospeso.dati.utente.attivo === false);
+
+  const scacciato = await chiama('GET', '/api/admin/prenotazioni', null, tokenCollab);
+  verifica('chi e\' sospeso viene buttato fuori subito', scacciato.stato === 401);
+
+  const rientro = await chiama('POST', '/api/auth/login',
+    { email: EMAIL_COLLAB, password: 'PasswordPersonale1' });
+  verifica('e non rientra nemmeno con la password giusta', rientro.stato === 403);
+
+  await chiama('PATCH', `/api/admin/utenti/${idCollab}`, { attivo: true }, token);
+  const riammesso = await chiama('POST', '/api/auth/login',
+    { email: EMAIL_COLLAB, password: 'PasswordPersonale1' });
+  verifica('riattivato, torna a entrare', riammesso.stato === 200);
+  tokenCollab = riammesso.dati.token;
+
+  const rinnovo = await chiama('POST', `/api/admin/utenti/${idCollab}/password`, null, token);
+  verifica('il medico puo\' dargli una nuova password provvisoria',
+    rinnovo.stato === 200 && typeof rinnovo.dati.password_provvisoria === 'string');
+
+  const vecchiaSessione = await chiama('GET', '/api/admin/prenotazioni', null, tokenCollab);
+  verifica('rigenerare la password chiude le sessioni aperte', vecchiaSessione.stato === 401);
+
+  const nonStaff = await chiama('GET', '/api/admin/utenti', null, rinnovo.dati.utente ? token : token);
+  verifica('l\'elenco dei collaboratori si legge', nonStaff.stato === 200
+    && nonStaff.dati.utenti.some((u) => u.email === EMAIL_COLLAB));
+
+  // Le due mosse che chiuderebbero fuori lo studio per sempre.
+  const me = nonStaff.dati.utenti.find((u) => u.ruolo === 'admin' && u.attivo);
+  const autogol = await chiama('DELETE', `/api/admin/utenti/${me.id}`, null, token);
+  verifica('nessuno puo\' cancellare se stesso', autogol.stato === 400, autogol.dati.message);
+
+  const declassamento = await chiama('PATCH', `/api/admin/utenti/${me.id}`, { ruolo: 'segretaria' }, token);
+  verifica('nessuno puo\' togliersi i poteri da solo', declassamento.stato === 400);
+
+  const rimosso = await chiama('DELETE', `/api/admin/utenti/${idCollab}`, null, token);
+  verifica('un collaboratore si puo\' rimuovere', rimosso.stato === 200);
+
+  const dopo = await chiama('GET', '/api/admin/utenti', null, token);
+  verifica('e sparisce dall\'elenco', !dopo.dati.utenti.some((u) => u.email === EMAIL_COLLAB));
+}
+
 console.log('\nEmail in arrivo (rete di sicurezza)');
 {
   const { registraEmail } = await import('../src/inbox.js');

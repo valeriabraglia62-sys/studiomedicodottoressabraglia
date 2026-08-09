@@ -55,9 +55,17 @@ async function api(percorso, opzioni = {}) {
   let dati = {};
   try { dati = await risposta.json(); } catch { /* gestito sotto */ }
 
-  if (risposta.status === 401 || risposta.status === 403) {
+  // Sessione finita: si torna all'accesso.
+  if (risposta.status === 401) {
     throw new NonAutorizzato(dati.message || 'Sessione scaduta.');
   }
+  // Password provvisoria ancora addosso: non e' un errore, e' un passaggio.
+  if (risposta.status === 403 && dati.cambio_password) {
+    chiediNuovaPassword();
+    throw new Error(dati.message || 'Scegli prima una password personale.');
+  }
+  // Vietato ma sessione valida (es. la segreteria sui dati clinici): si dice
+  // e basta, senza buttare fuori chi sta lavorando.
   if (!risposta.ok || dati.success === false) {
     throw new Error(dati.message || 'Problema di collegamento. Riprova.');
   }
@@ -143,17 +151,40 @@ const etichetta = (stato, testo) => nodo('span', `etichetta ${stato}`, testo || 
 
 // ---- Accesso ---------------------------------------------------------------
 
+let utenteAttivo = null;
+
+/** Una sola delle tre schermate per volta: accesso, cambio password, pannello. */
+function mostraSchermata(quale) {
+  for (const [id, nome] of [['#accesso', 'accesso'], ['#primo-ingresso', 'password'], ['#pannello', 'pannello']]) {
+    $(id).classList.toggle('nascosto', nome !== quale);
+  }
+}
+
 function mostraPannello(utente) {
-  $('#accesso').classList.add('nascosto');
-  $('#pannello').classList.remove('nascosto');
-  $('#utente-attivo').textContent = utente?.email || '';
+  utenteAttivo = utente || null;
+
+  // Con la password provvisoria il pannello non si apre nemmeno.
+  if (utente?.deve_cambiare_password) return chiediNuovaPassword();
+
+  mostraSchermata('pannello');
+  $('#utente-attivo').textContent = utente?.nome || utente?.email || '';
+
+  // La gestione degli accessi la vede solo il medico: alla segreteria la
+  // scheda non compare proprio, cosi' non ci sono bottoni che danno errore.
+  const medico = utente?.ruolo === 'admin';
+  $$('[data-solo-medico]').forEach((el) => { el.hidden = !medico; });
+}
+
+function chiediNuovaPassword() {
+  mostraSchermata('password');
+  $('#pwd-attuale').focus();
 }
 
 function esci(messaggio) {
   token = '';
+  utenteAttivo = null;
   localStorage.removeItem(CHIAVE_TOKEN);
-  $('#pannello').classList.add('nascosto');
-  $('#accesso').classList.remove('nascosto');
+  mostraSchermata('accesso');
   if (messaggio) avvisa(messaggio, 'errore');
 }
 
@@ -177,8 +208,10 @@ function collegaAccesso() {
       localStorage.setItem(CHIAVE_TOKEN, token);
       $('#acc-password').value = '';
       mostraPannello(dati.utente);
-      await riempiAmbulatori();
-      apriScheda('riepilogo');
+      if (!dati.utente?.deve_cambiare_password) {
+        await riempiAmbulatori();
+        apriScheda('riepilogo');
+      }
     } catch (err) {
       errore.classList.add('errore');
       $('.messaggio-errore', errore).textContent = err.message;
@@ -194,6 +227,46 @@ function collegaAccesso() {
   });
 }
 
+function collegaCambioPassword() {
+  const form = $('#form-password');
+  const errore = $('#pwd-ripeti').closest('.campo');
+
+  form.addEventListener('submit', async (evento) => {
+    evento.preventDefault();
+    const pulsante = $('button[type="submit"]', form);
+    const nuova = $('#pwd-nuova').value;
+    errore.classList.remove('errore');
+
+    // Il controllo che il server non puo' fare: vede una password sola.
+    if (nuova !== $('#pwd-ripeti').value) {
+      errore.classList.add('errore');
+      $('.messaggio-errore', errore).textContent = 'Le due password non coincidono.';
+      return;
+    }
+
+    pulsante.disabled = true;
+    pulsante.textContent = 'Attendi…';
+    try {
+      await api('/auth/password', {
+        method: 'POST',
+        body: { attuale: $('#pwd-attuale').value, nuova }
+      });
+      form.reset();
+      utenteAttivo = { ...utenteAttivo, deve_cambiare_password: false };
+      avvisa('Password aggiornata. Da adesso la conosci solo tu.', 'ok');
+      mostraPannello(utenteAttivo);
+      await riempiAmbulatori();
+      apriScheda('riepilogo');
+    } catch (err) {
+      errore.classList.add('errore');
+      $('.messaggio-errore', errore).textContent = err.message;
+    } finally {
+      pulsante.disabled = false;
+      pulsante.textContent = 'Salva e continua';
+    }
+  });
+}
+
 // ---- Schede ----------------------------------------------------------------
 
 const CARICATORI = {
@@ -202,10 +275,15 @@ const CARICATORI = {
   medicine: caricaMedicine,
   email: caricaEmail,
   pazienti: caricaPazienti,
+  collaboratori: caricaCollaboratori,
   sistema: caricaSistema
 };
 
 function apriScheda(nome) {
+  // Un indirizzo con #collaboratori non deve aprire nulla alla segreteria.
+  const bottone = $(`#schede button[data-scheda="${nome}"]`);
+  if (!CARICATORI[nome] || bottone?.hidden) nome = 'riepilogo';
+
   $$('#schede button').forEach((b) => b.classList.toggle('attiva', b.dataset.scheda === nome));
   $$('[data-pannello]').forEach((s) => s.classList.toggle('nascosto', s.dataset.pannello !== nome));
   location.hash = nome;
@@ -452,6 +530,153 @@ async function caricaPazienti() {
   ));
 }
 
+// ---- Collaboratori ---------------------------------------------------------
+
+const NOMI_RUOLO = { admin: 'Medico', segretaria: 'Segreteria' };
+
+/**
+ * La password provvisoria si vede una volta sola: nel database ne resta solo
+ * l'impronta. Quindi va mostrata bene, con il pulsante per copiarla, e detto
+ * chiaramente che ricaricando la pagina sparisce.
+ */
+function mostraPasswordProvvisoria(utente, password) {
+  const box = nodo('div', 'avviso ok');
+  box.append(nodo('strong', null, `Accesso pronto per ${utente.nome || utente.email}`));
+  box.append(nodo('p', 'piccolo', 'Consegnagli queste due righe. La password compare adesso e mai più: '
+    + 'se la perdi puoi generarne un\'altra, non recuperarla.'));
+
+  const credenziali = nodo('p');
+  credenziali.style.cssText = 'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;'
+    + 'background:#fff;border:1px solid var(--bordo);border-radius:8px;padding:.7rem .9rem;'
+    + 'word-break:break-all;margin:.6rem 0';
+  credenziali.append(nodo('span', null, utente.email), nodo('br'), nodo('strong', null, password));
+  box.append(credenziali);
+
+  const copia = nodo('button', 'bottone secondario piccolo', 'Copia password');
+  copia.type = 'button';
+  copia.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(password);
+      copia.textContent = 'Copiata';
+    } catch {
+      avvisa(`La password è ${password}`, 'ok');
+    }
+  });
+
+  const azioni = nodo('div', 'azioni');
+  azioni.append(copia);
+  box.append(azioni);
+
+  $('#esito-collaboratore').replaceChildren(box);
+  box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function azioniCollaboratore(u) {
+  const gruppo = nodo('div', 'azioni');
+  const io = u.email === (utenteAttivo?.email || '');
+
+  // Su se stessi il server rifiuta comunque: qui i pulsanti non compaiono
+  // proprio, cosi' nessuno prova a chiudersi fuori da solo.
+  if (io) {
+    gruppo.append(nodo('span', 'piccolo tenue', 'sei tu'));
+    return gruppo;
+  }
+
+  const bottone = (testo, classe, azione, conferma) => {
+    const b = nodo('button', `bottone ${classe} piccolo`, testo);
+    b.type = 'button';
+    b.addEventListener('click', async () => {
+      if (conferma && !confirm(conferma)) return;
+      b.disabled = true;
+      await protetto(async () => {
+        const esito = await azione();
+        if (esito?.password_provvisoria) {
+          mostraPasswordProvvisoria(esito.utente, esito.password_provvisoria);
+        }
+        await caricaCollaboratori();
+      });
+      b.disabled = false;
+    });
+    return b;
+  };
+
+  gruppo.append(bottone(
+    u.attivo ? 'Sospendi' : 'Riattiva',
+    'secondario',
+    () => api(`/admin/utenti/${u.id}`, { method: 'PATCH', body: { attivo: !u.attivo } }),
+    u.attivo ? `Sospendere l'accesso di ${u.nome || u.email}? Non potrà più entrare.` : null
+  ));
+
+  gruppo.append(bottone(
+    'Nuova password',
+    'secondario',
+    () => api(`/admin/utenti/${u.id}/password`, { method: 'POST' }),
+    `Generare una nuova password provvisoria per ${u.nome || u.email}? Quella attuale smetterà di funzionare.`
+  ));
+
+  gruppo.append(bottone(
+    'Elimina',
+    'pericolo',
+    () => api(`/admin/utenti/${u.id}`, { method: 'DELETE' }),
+    `Eliminare definitivamente l'accesso di ${u.nome || u.email}?`
+  ));
+
+  return gruppo;
+}
+
+async function caricaCollaboratori() {
+  const { utenti } = await api('/admin/utenti');
+  const contenitore = $('#elenco-collaboratori');
+
+  if (!utenti.length) {
+    contenitore.replaceChildren(vuoto('Nessun collaboratore.'));
+    return;
+  }
+
+  contenitore.replaceChildren(tabella(
+    ['Nome', 'Email', 'Cosa può fare', 'Stato', 'Ultimo ingresso', 'Azioni'],
+    utenti.map((u) => [
+      u.nome || '—',
+      u.email,
+      NOMI_RUOLO[u.ruolo] || u.ruolo,
+      {
+        nodo: u.attivo
+          ? etichetta(u.deve_cambiare_password ? 'nuova' : 'confermata',
+            u.deve_cambiare_password ? 'da attivare' : 'attivo')
+          : etichetta('annullata', 'sospeso')
+      },
+      u.ultimo_accesso ? quando(u.ultimo_accesso) : 'mai',
+      { nodo: azioniCollaboratore(u) }
+    ])
+  ));
+}
+
+function collegaCollaboratori() {
+  const form = $('#form-collaboratore');
+
+  form.addEventListener('submit', async (evento) => {
+    evento.preventDefault();
+    const pulsante = $('button[type="submit"]', form);
+    pulsante.disabled = true;
+
+    await protetto(async () => {
+      const esito = await api('/admin/utenti', {
+        method: 'POST',
+        body: {
+          nome: $('#col-nome').value.trim(),
+          email: $('#col-email').value.trim(),
+          ruolo: $('#col-ruolo').value
+        }
+      });
+      form.reset();
+      mostraPasswordProvvisoria(esito.utente, esito.password_provvisoria);
+      await caricaCollaboratori();
+    });
+
+    pulsante.disabled = false;
+  });
+}
+
 // ---- Stato del sistema -----------------------------------------------------
 
 async function caricaSistema() {
@@ -564,6 +789,8 @@ function collegaFiltri() {
 
 async function avvia() {
   collegaAccesso();
+  collegaCambioPassword();
+  collegaCollaboratori();
   collegaFiltri();
 
   $('#schede').addEventListener('click', (evento) => {
@@ -576,8 +803,9 @@ async function avvia() {
   try {
     const { utente } = await api('/auth/me');
     mostraPannello(utente);
+    if (utente?.deve_cambiare_password) return;
     await riempiAmbulatori();
-    apriScheda(CARICATORI[location.hash.slice(1)] ? location.hash.slice(1) : 'riepilogo');
+    apriScheda(location.hash.slice(1) || 'riepilogo');
   } catch {
     esci();
   }

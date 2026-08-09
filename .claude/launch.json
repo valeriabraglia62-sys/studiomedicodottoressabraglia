@@ -7,6 +7,13 @@
       "runtimeArgs": ["start"],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "banco-prova",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["strumenti/prova-a-mano.sh"],
+      "port": 3000,
+      "autoPort": true
     }
   ]
 }
