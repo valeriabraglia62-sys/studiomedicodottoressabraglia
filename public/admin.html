@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Gestione — Studio Medico</title>
+<link rel="stylesheet" href="/css/stile.css">
+</head>
+<body>
+
+<!-- ---- Accesso --------------------------------------------------------- -->
+
+<div class="accesso" id="accesso">
+  <div class="carta">
+    <h2>Area riservata</h2>
+    <p class="tenue piccolo">Accesso allo studio medico.</p>
+    <form id="form-accesso" novalidate>
+      <div class="campo">
+        <label for="acc-email">Email</label>
+        <input id="acc-email" type="email" autocomplete="username" required>
+      </div>
+      <div class="campo">
+        <label for="acc-password">Password</label>
+        <input id="acc-password" type="password" autocomplete="current-password" required>
+        <span class="messaggio-errore"></span>
+      </div>
+      <button type="submit" class="bottone largo">Entra</button>
+    </form>
+    <p class="piccolo tenue" style="margin:1rem 0 0"><a href="/">← Torna al sito</a></p>
+  </div>
+</div>
+
+<!-- ---- Pannello -------------------------------------------------------- -->
+
+<div id="pannello" class="nascosto">
+
+<header class="testata">
+  <div class="contenitore">
+    <a class="marchio" href="/admin.html">
+      <span class="simbolo" aria-hidden="true">✚</span>
+      <span>Gestione<small id="utente-attivo"></small></span>
+    </a>
+    <nav class="menu">
+      <a href="/">Vedi il sito</a>
+      <button type="button" class="bottone secondario piccolo" id="esci">Esci</button>
+    </nav>
+  </div>
+</header>
+
+<main class="sezione">
+  <div class="contenitore">
+
+    <div class="schede" id="schede">
+      <button type="button" data-scheda="riepilogo" class="attiva">Oggi</button>
+      <button type="button" data-scheda="prenotazioni">Prenotazioni</button>
+      <button type="button" data-scheda="medicine">Medicinali</button>
+      <button type="button" data-scheda="email">Email ricevute</button>
+      <button type="button" data-scheda="pazienti">Pazienti</button>
+      <button type="button" data-scheda="sistema">Stato del sistema</button>
+    </div>
+
+    <!-- Riepilogo -->
+    <section data-pannello="riepilogo">
+      <div class="griglia quattro" id="numeri"></div>
+      <div class="carta" style="margin-top:1.5rem">
+        <h3>Agenda di oggi</h3>
+        <div id="agenda-oggi"></div>
+      </div>
+    </section>
+
+    <!-- Prenotazioni -->
+    <section data-pannello="prenotazioni" class="nascosto">
+      <div class="filtri">
+        <div class="campo">
+          <label for="pren-dal">Dal</label>
+          <input id="pren-dal" type="date">
+        </div>
+        <div class="campo">
+          <label for="pren-al">Al</label>
+          <input id="pren-al" type="date">
+        </div>
+        <div class="campo">
+          <label for="pren-stato">Stato</label>
+          <select id="pren-stato">
+            <option value="">Tutti</option>
+            <option value="confermata">Confermate</option>
+            <option value="annullata">Annullate</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label for="pren-ambulatorio">Ambulatorio</label>
+          <select id="pren-ambulatorio"><option value="">Tutti</option></select>
+        </div>
+        <div class="campo" style="flex:1;min-width:200px">
+          <label for="pren-cerca">Cerca</label>
+          <input id="pren-cerca" placeholder="Nome, telefono, codice…">
+        </div>
+        <button type="button" class="bottone secondario" id="pren-azzera">Azzera</button>
+      </div>
+      <div id="elenco-prenotazioni"></div>
+    </section>
+
+    <!-- Medicinali -->
+    <section data-pannello="medicine" class="nascosto">
+      <div class="filtri">
+        <div class="campo">
+          <label for="med-stato">Stato</label>
+          <select id="med-stato">
+            <option value="">Tutti</option>
+            <option value="nuova">Nuove</option>
+            <option value="in_lavorazione">In lavorazione</option>
+            <option value="pronta">Pronte per il ritiro</option>
+            <option value="consegnata">Consegnate</option>
+            <option value="annullata">Annullate</option>
+          </select>
+        </div>
+        <div class="campo" style="flex:1;min-width:200px">
+          <label for="med-cerca">Cerca</label>
+          <input id="med-cerca" placeholder="Nome, telefono, medicinale, codice…">
+        </div>
+      </div>
+      <div id="elenco-medicine"></div>
+    </section>
+
+    <!-- Email -->
+    <section data-pannello="email" class="nascosto">
+      <div class="filtri">
+        <div class="campo">
+          <label for="mail-stato">Stato</label>
+          <select id="mail-stato">
+            <option value="nuova">Da leggere</option>
+            <option value="gestita">Gestite</option>
+            <option value="archiviata">Archiviate</option>
+            <option value="">Tutte</option>
+          </select>
+        </div>
+        <button type="button" class="bottone" id="mail-controlla">Controlla la casella ora</button>
+      </div>
+      <div id="elenco-email"></div>
+    </section>
+
+    <!-- Pazienti -->
+    <section data-pannello="pazienti" class="nascosto">
+      <div class="filtri">
+        <div class="campo" style="flex:1;min-width:220px">
+          <label for="paz-cerca">Cerca</label>
+          <input id="paz-cerca" placeholder="Nome, cognome, telefono, email…">
+        </div>
+      </div>
+      <div id="elenco-pazienti"></div>
+    </section>
+
+    <!-- Sistema -->
+    <section data-pannello="sistema" class="nascosto">
+      <div id="stato-sistema"></div>
+    </section>
+
+  </div>
+</main>
+
+</div>
+
+<div class="notifiche" id="notifiche"></div>
+
+<script type="module" src="/js/admin.js"></script>
+</body>
+</html>
