@@ -59,37 +59,38 @@ function client() {
 const schedeVerificate = new Set();
 
 /** Crea la scheda e la riga di intestazione se mancano. */
-async function assicuraScheda(sheets, scheda) {
-  if (schedeVerificate.has(scheda.titolo)) return;
+async function assicuraScheda(sheets, scheda, foglio) {
+  const marcatore = `${foglio}/${scheda.titolo}`;
+  if (schedeVerificate.has(marcatore)) return;
 
-  const meta = await sheets.spreadsheets.get({ spreadsheetId: config.sheets.sheetId });
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: foglio });
   const esiste = meta.data.sheets.some((s) => s.properties.title === scheda.titolo);
 
   if (!esiste) {
     await sheets.spreadsheets.batchUpdate({
-      spreadsheetId: config.sheets.sheetId,
+      spreadsheetId: foglio,
       requestBody: { requests: [{ addSheet: { properties: { title: scheda.titolo } } }] }
     });
   }
 
   const prima = await sheets.spreadsheets.values.get({
-    spreadsheetId: config.sheets.sheetId,
+    spreadsheetId: foglio,
     range: `${scheda.titolo}!A1:Z1`
   });
 
   if (!prima.data.values?.length) {
     await sheets.spreadsheets.values.update({
-      spreadsheetId: config.sheets.sheetId,
+      spreadsheetId: foglio,
       range: `${scheda.titolo}!A1`,
       valueInputOption: 'RAW',
       requestBody: { values: [scheda.intestazioni] }
     });
     await sheets.spreadsheets.batchUpdate({
-      spreadsheetId: config.sheets.sheetId,
+      spreadsheetId: foglio,
       requestBody: {
         requests: [{
           repeatCell: {
-            range: { sheetId: await idScheda(sheets, scheda.titolo), startRowIndex: 0, endRowIndex: 1 },
+            range: { sheetId: await idScheda(sheets, scheda.titolo, foglio), startRowIndex: 0, endRowIndex: 1 },
             cell: {
               userEnteredFormat: {
                 textFormat: { bold: true },
@@ -103,18 +104,18 @@ async function assicuraScheda(sheets, scheda) {
     });
   }
 
-  schedeVerificate.add(scheda.titolo);
+  schedeVerificate.add(marcatore);
 }
 
-async function idScheda(sheets, titolo) {
-  const meta = await sheets.spreadsheets.get({ spreadsheetId: config.sheets.sheetId });
+async function idScheda(sheets, titolo, foglio) {
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: foglio });
   return meta.data.sheets.find((s) => s.properties.title === titolo)?.properties.sheetId;
 }
 
 /** Numero di riga (1-based) del record con questo codice, oppure null. */
-async function trovaRiga(sheets, titolo, codice) {
+async function trovaRiga(sheets, titolo, codice, foglio) {
   const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: config.sheets.sheetId,
+    spreadsheetId: foglio,
     range: `${titolo}!A:A`
   });
   const colonna = res.data.values || [];
@@ -133,22 +134,23 @@ async function sincronizza(tipoScheda, dati) {
   }
 
   const scheda = SCHEDE[tipoScheda];
+  const foglio = config.sheets.fogli[tipoScheda];
   const sheets = await client();
-  await assicuraScheda(sheets, scheda);
+  await assicuraScheda(sheets, scheda, foglio);
 
   const valori = scheda.riga(dati);
-  const rigaEsistente = await trovaRiga(sheets, scheda.titolo, dati.codice);
+  const rigaEsistente = await trovaRiga(sheets, scheda.titolo, dati.codice, foglio);
 
   if (rigaEsistente) {
     await sheets.spreadsheets.values.update({
-      spreadsheetId: config.sheets.sheetId,
+      spreadsheetId: foglio,
       range: `${scheda.titolo}!A${rigaEsistente}`,
       valueInputOption: 'RAW',
       requestBody: { values: [valori] }
     });
   } else {
     await sheets.spreadsheets.values.append({
-      spreadsheetId: config.sheets.sheetId,
+      spreadsheetId: foglio,
       range: `${scheda.titolo}!A1`,
       valueInputOption: 'RAW',
       insertDataOption: 'INSERT_ROWS',
@@ -160,14 +162,31 @@ async function sincronizza(tipoScheda, dati) {
 registraGestore('sheet_prenotazione', (payload) => sincronizza('prenotazione', payload));
 registraGestore('sheet_medicina', (payload) => sincronizza('medicina', payload));
 
+/**
+ * Controlla che entrambi i fogli siano raggiungibili.
+ *
+ * Se ne manca uno solo, dirlo subito all'avvio evita di scoprirlo giorni dopo
+ * trovando meta' dei dati sincronizzati e l'altra meta' ferma in coda.
+ */
 export async function verificaFoglio() {
   if (!config.sheets.enabled) return { ok: false, motivo: 'disattivata in .env (GOOGLE_SHEETS_ENABLED=false)' };
-  if (!config.sheets.sheetId) return { ok: false, motivo: 'manca GOOGLE_SHEET_ID in .env' };
+  if (!config.sheets.fogli.prenotazione) return { ok: false, motivo: 'manca GOOGLE_SHEET_ID_PRENOTAZIONI in .env' };
+  if (!config.sheets.fogli.medicina) return { ok: false, motivo: 'manca GOOGLE_SHEET_ID_MEDICINE in .env' };
   if (!config.sheets.ready) return { ok: false, motivo: `file credenziali non trovato: ${config.sheets.credentialsFile}` };
+
+  const etichette = { prenotazione: 'visite', medicina: 'medicinali' };
   try {
     const sheets = await client();
-    const meta = await sheets.spreadsheets.get({ spreadsheetId: config.sheets.sheetId });
-    return { ok: true, titolo: meta.data.properties.title };
+    const titoli = [];
+    for (const [tipo, foglio] of Object.entries(config.sheets.fogli)) {
+      try {
+        const meta = await sheets.spreadsheets.get({ spreadsheetId: foglio });
+        titoli.push(`${etichette[tipo]}: ${meta.data.properties.title}`);
+      } catch (err) {
+        return { ok: false, motivo: `foglio ${etichette[tipo]} non raggiungibile — ${err.message}` };
+      }
+    }
+    return { ok: true, titolo: titoli.join(' | ') };
   } catch (err) {
     return { ok: false, motivo: err.message };
   }
