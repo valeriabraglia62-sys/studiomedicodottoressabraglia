@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Studio Medico — Prenotazioni e richieste medicinali</title>
+<meta name="description" content="Prenota una visita o richiedi i tuoi medicinali negli ambulatori di Arceto e Casalgrande.">
+<link rel="stylesheet" href="/css/stile.css">
+</head>
+<body>
+
+<header class="testata">
+  <div class="contenitore">
+    <a class="marchio" href="/">
+      <span class="simbolo" aria-hidden="true">✚</span>
+      <span>Studio Medico<small>Arceto · Casalgrande</small></span>
+    </a>
+    <nav class="menu">
+      <a href="#prenota" data-sezione="prenota">Prenota</a>
+      <a href="#medicinali" data-sezione="medicinali">Medicinali</a>
+      <a href="#gestisci" data-sezione="gestisci">La mia richiesta</a>
+      <a href="#ambulatori" data-sezione="ambulatori">Ambulatori</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<section class="copertina">
+  <div class="contenitore">
+    <h1>Prenota la tua visita in meno di un minuto</h1>
+    <p>Scegli l'ambulatorio, il giorno e l'orario che preferisci. Ricevi subito
+       la conferma via email con il codice della prenotazione.</p>
+    <div class="azioni">
+      <a class="bottone" href="#prenota">Prenota una visita</a>
+      <a class="bottone secondario" href="#medicinali">Richiedi medicinali</a>
+    </div>
+  </div>
+</section>
+
+<!-- ---- Prenotazione ---------------------------------------------------- -->
+
+<section class="sezione" id="prenota">
+  <div class="contenitore">
+    <header>
+      <h2>Prenota una visita</h2>
+      <p class="tenue">Le disponibilità che vedi sono aggiornate in tempo reale: se un
+         orario compare, è libero in questo momento.</p>
+    </header>
+
+    <div class="griglia due">
+      <div class="carta">
+        <h3>1. Ambulatorio e giorno</h3>
+
+        <div class="campo">
+          <label for="scelta-ambulatorio">Ambulatorio</label>
+          <select id="scelta-ambulatorio"></select>
+        </div>
+
+        <div class="calendario-testata">
+          <button type="button" class="bottone secondario piccolo" id="mese-precedente" aria-label="Mese precedente">‹</button>
+          <strong id="etichetta-mese"></strong>
+          <button type="button" class="bottone secondario piccolo" id="mese-successivo" aria-label="Mese successivo">›</button>
+        </div>
+
+        <div class="calendario" id="calendario" role="grid" aria-label="Calendario disponibilità"></div>
+
+        <p class="piccolo tenue" style="margin-top:1rem">
+          Il pallino verde indica i giorni con posti liberi.
+        </p>
+      </div>
+
+      <div class="carta">
+        <h3>2. Orario</h3>
+        <div id="esito-prenotazione"></div>
+        <div id="contenitore-fasce">
+          <p class="tenue piccolo">Scegli prima un giorno dal calendario.</p>
+        </div>
+
+        <div id="modulo-prenotazione" class="nascosto" style="margin-top:1.5rem">
+          <h3>3. I tuoi dati</h3>
+          <div class="avviso ok" id="riepilogo-scelta"></div>
+
+          <form id="form-prenotazione" novalidate>
+            <div class="coppia">
+              <div class="campo">
+                <label for="pre-nome">Nome</label>
+                <input id="pre-nome" name="nome" autocomplete="given-name" required>
+                <span class="messaggio-errore"></span>
+              </div>
+              <div class="campo">
+                <label for="pre-cognome">Cognome</label>
+                <input id="pre-cognome" name="cognome" autocomplete="family-name" required>
+                <span class="messaggio-errore"></span>
+              </div>
+            </div>
+
+            <div class="campo">
+              <label for="pre-telefono">Telefono</label>
+              <input id="pre-telefono" name="telefono" type="tel" autocomplete="tel" required>
+              <span class="messaggio-errore"></span>
+            </div>
+
+            <div class="campo">
+              <label for="pre-email">Email <span class="tenue">(per ricevere la conferma)</span></label>
+              <input id="pre-email" name="email" type="email" autocomplete="email">
+              <span class="messaggio-errore"></span>
+            </div>
+
+            <div class="campo">
+              <label for="pre-problema">Motivo della visita</label>
+              <textarea id="pre-problema" name="problema" required
+                        placeholder="Es. controllo pressione, mal di gola da tre giorni…"></textarea>
+              <span class="messaggio-errore"></span>
+            </div>
+
+            <button type="submit" class="bottone largo">Conferma la prenotazione</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ---- Medicinali ------------------------------------------------------ -->
+
+<section class="sezione" id="medicinali" style="background:var(--carta);border-block:1px solid var(--bordo)">
+  <div class="contenitore">
+    <header>
+      <h2>Richiedi i tuoi medicinali</h2>
+      <p class="tenue">Compila il modulo: riceverai un avviso quando la ricetta è pronta per il ritiro.</p>
+    </header>
+
+    <div class="carta" style="max-width:640px">
+      <form id="form-medicine" novalidate>
+        <div class="coppia">
+          <div class="campo">
+            <label for="med-nome">Nome</label>
+            <input id="med-nome" name="nome" autocomplete="given-name" required>
+            <span class="messaggio-errore"></span>
+          </div>
+          <div class="campo">
+            <label for="med-cognome">Cognome</label>
+            <input id="med-cognome" name="cognome" autocomplete="family-name" required>
+            <span class="messaggio-errore"></span>
+          </div>
+        </div>
+
+        <div class="coppia">
+          <div class="campo">
+            <label for="med-telefono">Telefono</label>
+            <input id="med-telefono" name="telefono" type="tel" autocomplete="tel" required>
+            <span class="messaggio-errore"></span>
+          </div>
+          <div class="campo">
+            <label for="med-email">Email</label>
+            <input id="med-email" name="email" type="email" autocomplete="email">
+            <span class="messaggio-errore"></span>
+          </div>
+        </div>
+
+        <div class="campo">
+          <label for="med-farmaci">Medicinali richiesti</label>
+          <textarea id="med-farmaci" name="farmaci" required
+                    placeholder="Un medicinale per riga, indicando dosaggio e quantità se le conosci."></textarea>
+          <span class="messaggio-errore"></span>
+        </div>
+
+        <div class="campo">
+          <label for="med-ambulatorio">Ambulatorio per il ritiro</label>
+          <select id="med-ambulatorio" name="ambulatorio_id"></select>
+        </div>
+
+        <div class="campo">
+          <label for="med-note">Note <span class="tenue">(facoltative)</span></label>
+          <textarea id="med-note" name="note" style="min-height:70px"></textarea>
+        </div>
+
+        <button type="submit" class="bottone largo">Invia la richiesta</button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- ---- Gestione richiesta ---------------------------------------------- -->
+
+<section class="sezione" id="gestisci">
+  <div class="contenitore">
+    <header>
+      <h2>Controlla o annulla</h2>
+      <p class="tenue">Inserisci il codice che hai ricevuto (inizia con PRE per le visite, MED per i medicinali).</p>
+    </header>
+
+    <div class="carta" style="max-width:560px">
+      <form id="form-ricerca" novalidate>
+        <div class="campo">
+          <label for="codice-ricerca">Codice</label>
+          <input id="codice-ricerca" placeholder="PRE-XXXX-XXXX" autocapitalize="characters" required>
+          <span class="messaggio-errore"></span>
+        </div>
+        <button type="submit" class="bottone largo">Cerca</button>
+      </form>
+      <div id="esito-ricerca" style="margin-top:1.25rem"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ---- Ambulatori ------------------------------------------------------ -->
+
+<section class="sezione" id="ambulatori" style="background:var(--carta);border-top:1px solid var(--bordo)">
+  <div class="contenitore">
+    <header>
+      <h2>I nostri ambulatori</h2>
+    </header>
+    <div class="griglia due" id="elenco-ambulatori"></div>
+  </div>
+</section>
+
+</main>
+
+<footer class="piede">
+  <div class="contenitore">
+    <p><strong>Studio Medico</strong> — Ambulatori di Arceto e Casalgrande</p>
+    <p class="piccolo">In caso di emergenza chiama il <a href="tel:112">112</a>.
+       Per urgenze non differibili contatta la Guardia Medica.</p>
+  </div>
+</footer>
+
+<button class="chat-apri" id="chat-apri" type="button">
+  <span aria-hidden="true">💬</span> Assistente
+</button>
+
+<div class="chat nascosto" id="chat" role="dialog" aria-label="Assistente dello studio">
+  <div class="chat-testata">
+    <span aria-hidden="true">💬</span>
+    <div>
+      <strong>Assistente</strong>
+      <div class="stato">Ti guido passo passo</div>
+    </div>
+    <button type="button" id="chat-chiudi" aria-label="Chiudi">×</button>
+  </div>
+  <div class="chat-corpo" id="chat-corpo"></div>
+  <div class="chat-azioni" id="chat-azioni"></div>
+  <form class="chat-piede" id="chat-form">
+    <input id="chat-testo" placeholder="Scrivi qui…" autocomplete="off">
+    <button type="submit" aria-label="Invia">↑</button>
+  </form>
+</div>
+
+<div class="notifiche" id="notifiche"></div>
+
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>
