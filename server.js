@@ -5,6 +5,7 @@ import { db, chiudiDb } from './src/db.js';
 import { inizializzaAdmin, pulisciSessioniScadute } from './src/auth.js';
 import { avviaWorker, fermaWorker } from './src/outbox.js';
 import { avviaPolling, fermaPolling } from './src/inbox.js';
+import { avviaLetturaModuli, fermaLetturaModuli, daConfermare } from './src/moduli.js';
 import { avviaPromemoria, fermaPromemoria } from './src/promemoria.js';
 import { avviaBackup, fermaBackup } from './src/backup.js';
 import { pulisciChatVecchie } from './src/chatbot.js';
@@ -110,6 +111,9 @@ const server = app.listen(config.port, async () => {
   avviaPromemoria();
   avviaBackup();
   if (config.inbox.enabled) avviaPolling();
+  // Prima cosa all'accensione: raccogliere le richieste arrivate mentre il
+  // sito era spento. E' il motivo per cui i Moduli esistono.
+  if (config.moduli.enabled) avviaLetturaModuli();
 
   const email = await verificaConnessioneEmail();
   const foglio = await verificaFoglio();
@@ -121,7 +125,15 @@ const server = app.listen(config.port, async () => {
   console.log(`  Apertura       ${config.pubblico.https
     ? `su internet con lucchetto${config.pubblico.url ? ` — ${config.pubblico.url}` : ''}`
     : 'solo rete locale (SITO_HTTPS=false)'}`);
+  console.log(`  Moduli Google  ${config.moduli.enabled
+    ? 'in lettura (richieste raccolte anche a sito spento)'
+    : 'non attivi (GOOGLE_MODULI_ENABLED=false)'}`);
   console.log(`  Database       ${config.dbFile}\n`);
+
+  const inAttesa = daConfermare();
+  if (inAttesa) {
+    console.log(`  ${inAttesa} richieste dai Moduli aspettano una conferma nel pannello.\n`);
+  }
 
   if (!email.ok || !foglio.ok) {
     console.log('  Le consegne verso i servizi spenti restano in coda e partono da sole');
@@ -142,6 +154,7 @@ function spegni(segnale) {
 
   fermaWorker();
   fermaPolling();
+  fermaLetturaModuli();
   fermaPromemoria();
   fermaBackup();
 

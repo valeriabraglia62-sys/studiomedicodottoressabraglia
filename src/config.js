@@ -75,6 +75,31 @@ export const config = {
     }
   },
 
+  // Moduli Google: la porta d'ingresso che resta aperta anche a sito spento.
+  // I fogli delle risposte sono documenti a parte rispetto a quelli dello
+  // specchio: qui si legge soltanto, non si scrive mai, cosi' non c'e' modo di
+  // rovinare le risposte dei pazienti.
+  moduli: {
+    enabled: bool(process.env.GOOGLE_MODULI_ENABLED),
+    intervalSeconds: Math.max(60, Number(process.env.GOOGLE_MODULI_INTERVAL_SECONDS) || 300),
+    fogli: {
+      prenotazione: {
+        id: (process.env.GOOGLE_MODULO_PRENOTAZIONI_ID || '').trim(),
+        // Nome della scheda delle risposte. Google la chiama cosi' da sola.
+        scheda: (process.env.GOOGLE_MODULO_PRENOTAZIONI_SCHEDA || 'Risposte del modulo 1').trim()
+      },
+      medicina: {
+        id: (process.env.GOOGLE_MODULO_MEDICINE_ID || '').trim(),
+        scheda: (process.env.GOOGLE_MODULO_MEDICINE_SCHEDA || 'Risposte del modulo 1').trim()
+      }
+    },
+    get ready() {
+      return this.enabled
+        && Boolean(this.fogli.prenotazione.id || this.fogli.medicina.id)
+        && fs.existsSync(path.resolve(ROOT, process.env.GOOGLE_SERVICE_ACCOUNT_FILE || './google-credentials.json'));
+    }
+  },
+
   dbFile: path.resolve(ROOT, process.env.DB_FILE || 'data/medstudent.sqlite'),
 
   // Finestra entro cui il paziente non puo' piu' annullare da solo.

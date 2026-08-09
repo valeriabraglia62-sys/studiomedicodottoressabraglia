@@ -338,6 +338,123 @@ console.log('\nEmail in arrivo (rete di sicurezza)');
   verifica('le email compaiono nell\'area admin', inCoda.dati.totale === 2, `totale ${inCoda.dati.totale}`);
 }
 
+console.log('\nModuli Google (richieste arrivate a sito spento)');
+{
+  const moduli = await import('../src/moduli.js');
+
+  // Uno slot davvero libero: la conferma deve arrivare fino in fondo.
+  const giorno = aggiungiGiorni(oggiISO(), 9);
+  const slot = (await chiama('GET', `/api/disponibilita?data=${giorno}`))
+    .dati.slot.filter((s) => s.disponibile);
+  verifica('c\'e\' uno slot libero per la prova', slot.length >= 2, `liberi: ${slot.length}`);
+
+  const primo = slot[0];
+  const [gg, mm, aaaa] = [giorno.slice(8), giorno.slice(5, 7), giorno.slice(0, 4)];
+
+  const INTESTAZIONI = ['Informazioni cronologiche', 'Nome', 'Cognome', 'Telefono',
+    'Email', 'Giorno desiderato', 'Ora desiderata', 'Ambulatorio', 'Motivo della visita'];
+
+  const righe = [
+    INTESTAZIONI,
+    // Data all'italiana, come la scrive Google in italiano.
+    ['09/08/2026 21:14:02', 'Marta', 'Bianchi', '333 111 2233', 'marta@example.com',
+      `${gg}/${mm}/${aaaa}`, primo.ora_inizio, primo.ambulatorio_nome, 'Controllo pressione'],
+    // Riga sgangherata: manca quasi tutto e la data non si capisce.
+    ['09/08/2026 22:01:00', 'Gino', '', '', '', 'quando potete', '', '', 'mi fa male la schiena'],
+    // Righe vuote in fondo al foglio: non sono richieste.
+    ['', '', '', '', '', '', '', '', '']
+  ];
+
+  const primoGiro = moduli.importaRighe('prenotazione', righe);
+  verifica('le righe del foglio diventano richieste in attesa', primoGiro.nuove === 2,
+    JSON.stringify(primoGiro));
+
+  const secondoGiro = moduli.importaRighe('prenotazione', righe);
+  verifica('rileggere il foglio non duplica niente', secondoGiro.nuove === 0 && secondoGiro.gia_viste === 2,
+    JSON.stringify(secondoGiro));
+
+  const inAttesa = await chiama('GET', '/api/admin/moduli', null, token);
+  verifica('le richieste compaiono nel pannello', inAttesa.dati.totale === 2, `totale ${inAttesa.dati.totale}`);
+
+  const marta = inAttesa.dati.richieste.find((r) => r.nome === 'Marta');
+  verifica('nome, cognome e telefono vengono letti bene',
+    marta?.cognome === 'Bianchi' && marta?.telefono === '3331112233', JSON.stringify(marta));
+  verifica('la data all\'italiana viene capita', marta?.data_chiesta === giorno, marta?.data_chiesta);
+  verifica('l\'ora viene capita', marta?.ora_chiesta === primo.ora_inizio, marta?.ora_chiesta);
+  verifica('l\'ambulatorio viene riconosciuto dal nome',
+    marta?.ambulatorio_id === primo.ambulatorio_id, `letto ${marta?.ambulatorio_id}`);
+
+  const gino = inAttesa.dati.richieste.find((r) => r.nome === 'Gino');
+  verifica('anche la richiesta incompleta viene conservata', Boolean(gino), 'Gino non e\' stato salvato');
+  verifica('di quella incompleta si conserva la riga originale',
+    JSON.parse(gino.riga_json).riga.includes('mi fa male la schiena'));
+
+  // Conferma: da qui in poi e' una prenotazione come tutte le altre.
+  const confermata = await chiama('POST', `/api/admin/moduli/${marta.codice}/conferma`, {}, token);
+  verifica('la conferma crea una prenotazione vera',
+    confermata.dati.generata?.codice?.startsWith('PRE-'), JSON.stringify(confermata.dati));
+
+  const collegata = await chiama('GET', `/api/prenotazioni/${confermata.dati.generata.codice}`);
+  verifica('la prenotazione generata e\' consultabile dal paziente',
+    collegata.dati.prenotazione?.stato === 'confermata');
+
+  const ribattuta = await chiama('POST', `/api/admin/moduli/${marta.codice}/conferma`, {}, token);
+  verifica('la stessa richiesta non si conferma due volte', ribattuta.stato === 400, ribattuta.dati.message);
+
+  // Due pazienti che chiedono lo stesso orario: il secondo non deve passare,
+  // ma nemmeno sparire.
+  const doppione = moduli.importaRighe('prenotazione', [INTESTAZIONI,
+    ['09/08/2026 22:30:00', 'Ugo', 'Neri', '3334445566', '',
+      `${gg}/${mm}/${aaaa}`, primo.ora_inizio, primo.ambulatorio_nome, 'Stesso orario di Marta']]);
+  verifica('il doppio orario entra comunque in attesa', doppione.nuove === 1);
+
+  const ugo = (await chiama('GET', '/api/admin/moduli', null, token))
+    .dati.richieste.find((r) => r.nome === 'Ugo');
+  const scontro = await chiama('POST', `/api/admin/moduli/${ugo.codice}/conferma`, {}, token);
+  verifica('confermare un orario gia\' occupato viene rifiutato', scontro.stato === 409, scontro.dati.message);
+
+  const ancoraLi = (await chiama('GET', '/api/admin/moduli', null, token))
+    .dati.richieste.find((r) => r.codice === ugo.codice);
+  verifica('e la richiesta resta in attesa invece di perdersi', ancoraLi?.stato === 'nuova');
+
+  // Spostandola su un altro orario deve passare.
+  const spostata = await chiama('POST', `/api/admin/moduli/${ugo.codice}/conferma`,
+    { ora_inizio: slot[1].ora_inizio, ambulatorio_id: slot[1].ambulatorio_id }, token);
+  verifica('spostandola su un orario libero la conferma riesce',
+    spostata.dati.generata?.codice?.startsWith('PRE-'), JSON.stringify(spostata.dati));
+
+  // Rifiuto: sparisce dalla scrivania ma resta scritto cosa era arrivato.
+  const rifiutata = await chiama('POST', `/api/admin/moduli/${gino.codice}/rifiuta`,
+    { motivo: 'Richiesta troppo vaga, il paziente e\' stato richiamato.' }, token);
+  verifica('una richiesta si puo\' scartare', rifiutata.dati.richiesta?.stato === 'rifiutata');
+  verifica('e resta scritto il perche\'',
+    rifiutata.dati.richiesta?.motivo_rifiuto?.includes('vaga'));
+
+  const scrivania = await chiama('GET', '/api/admin/moduli', null, token);
+  verifica('la scrivania resta pulita', scrivania.dati.totale === 0, `restano ${scrivania.dati.totale}`);
+
+  // Modulo dei medicinali: stessa strada, arrivo diverso.
+  const med = moduli.importaRighe('medicina', [
+    ['Informazioni cronologiche', 'Nome e cognome', 'Telefono', 'Email', 'Medicinali richiesti', 'Note'],
+    ['09/08/2026 23:00:00', 'Carla Rossi', '3339998877', 'carla@example.com',
+      'Cardioaspirin 100mg', 'Ritiro ad Arceto']
+  ]);
+  verifica('anche il modulo dei medicinali viene raccolto', med.nuove === 1);
+
+  const carla = (await chiama('GET', '/api/admin/moduli', null, token)).dati.richieste[0];
+  verifica('nome e cognome scritti insieme vengono divisi',
+    carla.nome === 'Carla' && carla.cognome === 'Rossi', `${carla.nome}/${carla.cognome}`);
+
+  const ricetta = await chiama('POST', `/api/admin/moduli/${carla.codice}/conferma`, {}, token);
+  verifica('la conferma crea la richiesta di medicinali',
+    ricetta.dati.generata?.codice?.startsWith('MED-'), JSON.stringify(ricetta.dati));
+
+  const riepilogo = await chiama('GET', '/api/admin/riepilogo', null, token);
+  verifica('il riepilogo conta le richieste ancora da confermare',
+    riepilogo.dati.riepilogo.moduli_da_confermare === 0,
+    `contate ${riepilogo.dati.riepilogo.moduli_da_confermare}`);
+}
+
 console.log('\nNulla va perso quando i servizi esterni sono spenti');
 {
   const inAttesa = db.prepare(`SELECT COUNT(*) n FROM outbox WHERE stato = 'in_attesa'`).get().n;

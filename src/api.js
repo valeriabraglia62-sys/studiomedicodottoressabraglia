@@ -14,6 +14,7 @@ import { ErroreDominio } from './prenotazioni.js';
 import * as medicine from './medicine.js';
 import * as chatbot from './chatbot.js';
 import * as inbox from './inbox.js';
+import * as moduli from './moduli.js';
 import * as attesa from './attesa.js';
 import * as chiusure from './chiusure.js';
 import * as statistiche from './statistiche.js';
@@ -260,6 +261,7 @@ admin.get('/riepilogo', (_req, res) => {
       medicine_da_evadere: conta(
         `SELECT COUNT(*) n FROM richieste_medicine WHERE stato IN ('nuova','in_lavorazione')`),
       email_da_leggere: conta(`SELECT COUNT(*) n FROM richieste_email WHERE stato = 'nuova'`),
+      moduli_da_confermare: moduli.daConfermare(),
       pazienti: conta('SELECT COUNT(*) n FROM pazienti'),
       consegne_in_attesa: statoCoda().in_attesa
     },
@@ -376,11 +378,29 @@ admin.get('/sistema', via(async (_req, res) => {
     email: await verificaConnessioneEmail(),
     foglio: await verificaFoglio(),
     casella: inbox.statoCasella(),
+    moduli: moduli.statoModuli(),
     backup: statoBackup()
   });
 }));
 
 admin.post('/sistema/riprova-consegne', (_req, res) => ok(res, { rimesse_in_coda: riprovaTutto() }));
+
+// ---- Richieste arrivate dai Moduli Google ---------------------------------
+// Sono arrivate a sito spento e aspettano che una persona le confermi.
+
+admin.get('/moduli', (req, res) => ok(res, moduli.elenco(req.query)));
+
+admin.post('/moduli/controlla', via(async (_req, res) => {
+  ok(res, { esito: await moduli.controllaModuli() });
+}));
+
+admin.post('/moduli/:codice/conferma', (req, res) => {
+  const esito = moduli.conferma(req.params.codice, req.body || {}, req.utente.email);
+  ok(res, { richiesta: esito.richiesta, generata: { codice: esito.generata.codice } });
+});
+
+admin.post('/moduli/:codice/rifiuta', (req, res) =>
+  ok(res, { richiesta: moduli.rifiuta(req.params.codice, req.body?.motivo, req.utente.email) }));
 
 // ---- Collaboratori --------------------------------------------------------
 // Chi entra nello studio e chi non entra piu' lo decide solo il medico.
