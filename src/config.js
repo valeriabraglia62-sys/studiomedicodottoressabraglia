@@ -22,6 +22,16 @@ export const config = {
   port: Number(process.env.PORT) || 3000,
   sessionSecret: requireSecret(),
 
+  // Il sito e' raggiungibile da internet, dietro un proxy o un tunnel che
+  // fornisce il lucchetto HTTPS. Da attivare SOLO quando quel lucchetto c'e'
+  // davvero: acceso troppo presto rimanderebbe i pazienti a un indirizzo
+  // sicuro che ancora non esiste, e nessuno aprirebbe piu' il sito.
+  pubblico: {
+    https: bool(process.env.SITO_HTTPS),
+    // Indirizzo pubblico, es. https://studio-arceto.it — finisce nelle email.
+    url: (process.env.SITO_URL || '').trim().replace(/\/+$/, '')
+  },
+
   admin: {
     email: (process.env.ADMIN_EMAIL || '').trim().toLowerCase(),
     // Usata solo al primo avvio per creare l'account; poi resta solo l'hash nel database.

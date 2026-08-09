@@ -33,10 +33,46 @@ app.set('trust proxy', 1);
 app.disable('x-powered-by');
 app.use(express.json({ limit: '256kb' }));
 
-app.use((_req, res, next) => {
+/**
+ * Fuori dallo studio il sito viaggia su reti di altri: Wi-Fi degli hotel,
+ * rete del bar, telefono in 4G. Queste intestazioni dicono al browser del
+ * paziente cosa accettare e cosa rifiutare.
+ */
+app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'same-origin');
+
+  // Il sito non carica NIENTE da fuori: nessuna libreria, nessun font, nessun
+  // tracciamento. Quindi il browser puo' rifiutare qualunque codice esterno,
+  // anche se qualcuno riuscisse a infilarlo in una pagina.
+  // Gli stili in riga restano ammessi: sono scritti nelle nostre pagine.
+  res.setHeader('Content-Security-Policy', [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "connect-src 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "object-src 'none'"
+  ].join('; '));
+
+  // Nessuna di queste cose serve a un sito di prenotazioni.
+  res.setHeader('Permissions-Policy', 'geolocation=(), camera=(), microphone=(), payment=()');
+
+  if (config.pubblico.https) {
+    // Dietro il proxy la richiesta arriva in chiaro: e' l'intestazione a dire
+    // com'e' arrivata dal paziente. Se e' partita in chiaro la rimandiamo al
+    // lucchetto, altrimenti password e dati sanitari attraverserebbero reti
+    // altrui leggibili da chiunque.
+    if (req.get('x-forwarded-proto') === 'http') {
+      return res.redirect(308, `https://${req.get('host')}${req.originalUrl}`);
+    }
+    res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
+  }
+
   next();
 });
 
@@ -82,6 +118,9 @@ const server = app.listen(config.port, async () => {
   console.log(`  Email          ${stato(email)}`);
   console.log(`  Foglio Google  ${stato(foglio)}`);
   console.log(`  Casella Gmail  ${config.inbox.enabled ? 'in ascolto' : 'non attiva (INBOX_POLLING_ENABLED=false)'}`);
+  console.log(`  Apertura       ${config.pubblico.https
+    ? `su internet con lucchetto${config.pubblico.url ? ` — ${config.pubblico.url}` : ''}`
+    : 'solo rete locale (SITO_HTTPS=false)'}`);
   console.log(`  Database       ${config.dbFile}\n`);
 
   if (!email.ok || !foglio.ok) {
