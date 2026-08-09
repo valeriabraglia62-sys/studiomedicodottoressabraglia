@@ -1,4 +1,3 @@
-import { google } from 'googleapis';
 import { config } from './config.js';
 import { registraGestore } from './outbox.js';
 import { formattaDataEstesa } from './orari.js';
@@ -37,13 +36,22 @@ const SCHEDE = {
 
 let clientPromise = null;
 
+/**
+ * googleapis si carica al primo uso, non all'avvio.
+ *
+ * E' la libreria piu' pesante del progetto (oltre 1800 file) e teneva fermo
+ * l'avvio del server per minuti, anche con il foglio Google disattivato.
+ * Caricandola qui, il sito parte subito e il costo si paga una volta sola.
+ */
 function client() {
   if (!clientPromise) {
-    const auth = new google.auth.GoogleAuth({
-      keyFile: config.sheets.credentialsFile,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets']
-    });
-    clientPromise = google.sheets({ version: 'v4', auth });
+    clientPromise = import('googleapis').then(({ google }) => {
+      const auth = new google.auth.GoogleAuth({
+        keyFile: config.sheets.credentialsFile,
+        scopes: ['https://www.googleapis.com/auth/spreadsheets']
+      });
+      return google.sheets({ version: 'v4', auth });
+    }).catch((err) => { clientPromise = null; throw err; });
   }
   return clientPromise;
 }
@@ -125,7 +133,7 @@ async function sincronizza(tipoScheda, dati) {
   }
 
   const scheda = SCHEDE[tipoScheda];
-  const sheets = client();
+  const sheets = await client();
   await assicuraScheda(sheets, scheda);
 
   const valori = scheda.riga(dati);
@@ -157,7 +165,8 @@ export async function verificaFoglio() {
   if (!config.sheets.sheetId) return { ok: false, motivo: 'manca GOOGLE_SHEET_ID in .env' };
   if (!config.sheets.ready) return { ok: false, motivo: `file credenziali non trovato: ${config.sheets.credentialsFile}` };
   try {
-    const meta = await client().spreadsheets.get({ spreadsheetId: config.sheets.sheetId });
+    const sheets = await client();
+    const meta = await sheets.spreadsheets.get({ spreadsheetId: config.sheets.sheetId });
     return { ok: true, titolo: meta.data.properties.title };
   } catch (err) {
     return { ok: false, motivo: err.message };
