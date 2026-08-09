@@ -31,6 +31,35 @@
   </div>
 </div>
 
+<!-- ---- Cambio password obbligatorio al primo ingresso ------------------- -->
+
+<div class="accesso nascosto" id="primo-ingresso">
+  <div class="carta">
+    <h2>Scegli la tua password</h2>
+    <p class="tenue piccolo">
+      Quella che ti hanno consegnato è provvisoria. Scegline una personale:
+      da adesso la conoscerai solo tu.
+    </p>
+    <form id="form-password" novalidate>
+      <div class="campo">
+        <label for="pwd-attuale">Password provvisoria</label>
+        <input id="pwd-attuale" type="password" autocomplete="current-password" required>
+      </div>
+      <div class="campo">
+        <label for="pwd-nuova">Nuova password</label>
+        <input id="pwd-nuova" type="password" autocomplete="new-password" minlength="10" required>
+        <span class="aiuto piccolo tenue">Almeno 10 caratteri.</span>
+      </div>
+      <div class="campo">
+        <label for="pwd-ripeti">Ripeti la nuova password</label>
+        <input id="pwd-ripeti" type="password" autocomplete="new-password" required>
+        <span class="messaggio-errore"></span>
+      </div>
+      <button type="submit" class="bottone largo">Salva e continua</button>
+    </form>
+  </div>
+</div>
+
 <!-- ---- Pannello -------------------------------------------------------- -->
 
 <div id="pannello" class="nascosto">
@@ -57,6 +86,7 @@
       <button type="button" data-scheda="medicine">Medicinali</button>
       <button type="button" data-scheda="email">Email ricevute</button>
       <button type="button" data-scheda="pazienti">Pazienti</button>
+      <button type="button" data-scheda="collaboratori" data-solo-medico hidden>Collaboratori</button>
       <button type="button" data-scheda="sistema">Stato del sistema</button>
     </div>
 
@@ -149,6 +179,40 @@
         </div>
       </div>
       <div id="elenco-pazienti"></div>
+    </section>
+
+    <!-- Collaboratori -->
+    <section data-pannello="collaboratori" class="nascosto">
+      <div class="carta">
+        <h3 style="margin-top:0">Aggiungi un collaboratore</h3>
+        <p class="piccolo tenue">
+          Riceverà una password provvisoria da consegnargli: al primo ingresso
+          dovrà sceglierne una personale, che non conoscerà nessun altro.
+        </p>
+        <form id="form-collaboratore" novalidate>
+          <div class="filtri">
+            <div class="campo" style="flex:1;min-width:160px">
+              <label for="col-nome">Nome</label>
+              <input id="col-nome" placeholder="Anna" required>
+            </div>
+            <div class="campo" style="flex:1;min-width:220px">
+              <label for="col-email">Email</label>
+              <input id="col-email" type="email" placeholder="anna@esempio.it" required>
+            </div>
+            <div class="campo" style="min-width:170px">
+              <label for="col-ruolo">Cosa può fare</label>
+              <select id="col-ruolo">
+                <option value="segretaria">Segreteria</option>
+                <option value="admin">Medico</option>
+              </select>
+            </div>
+          </div>
+          <button type="submit" class="bottone">Crea l'accesso</button>
+        </form>
+        <div id="esito-collaboratore"></div>
+      </div>
+
+      <div id="elenco-collaboratori" style="margin-top:1.5rem"></div>
     </section>
 
     <!-- Sistema -->

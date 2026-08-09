@@ -36,7 +36,7 @@ export function creaSessione(utenteId) {
 export function utenteDaToken(token) {
   if (!token) return null;
   const riga = db.prepare(`
-    SELECT u.id, u.email, u.ruolo, u.paziente_id, s.scade_il
+    SELECT u.id, u.email, u.nome, u.ruolo, u.paziente_id, u.attivo, u.cambio_password, s.scade_il
       FROM sessioni s
       JOIN utenti u ON u.id = s.utente_id
      WHERE s.token_hash = ?
@@ -47,7 +47,17 @@ export function utenteDaToken(token) {
     db.prepare('DELETE FROM sessioni WHERE token_hash = ?').run(hashToken(token));
     return null;
   }
-  return { id: riga.id, email: riga.email, ruolo: riga.ruolo, paziente_id: riga.paziente_id };
+  // Un account sospeso non vale piu' niente, nemmeno con un token ancora buono.
+  if (riga.attivo === 0) return null;
+
+  return {
+    id: riga.id,
+    email: riga.email,
+    nome: riga.nome || '',
+    ruolo: riga.ruolo,
+    paziente_id: riga.paziente_id,
+    deve_cambiare_password: Boolean(riga.cambio_password)
+  };
 }
 
 export function eliminaSessione(token) {
@@ -72,12 +82,28 @@ export function autenticazioneOpzionale(req, _res, next) {
 
 export const RUOLI_STAFF = ['admin', 'segretaria'];
 
+/**
+ * Con la password provvisoria ancora addosso non si combina nulla.
+ * Il blocco sta qui e non solo nelle pagine: altrimenti basterebbe conoscere
+ * l'indirizzo di una chiamata per saltare il cambio password.
+ */
+function passwordDaCambiare(utente, res) {
+  if (!utente.deve_cambiare_password) return false;
+  res.status(403).json({
+    success: false,
+    cambio_password: true,
+    message: 'Prima di continuare devi scegliere una password personale.'
+  });
+  return true;
+}
+
 /** Chi lavora nello studio: medico e segreteria. */
 export function richiedeStaff(req, res, next) {
   const utente = req.utente || utenteDaToken(estraiToken(req));
   if (!utente || !RUOLI_STAFF.includes(utente.ruolo)) {
     return res.status(401).json({ success: false, message: 'Accesso riservato al personale dello studio.' });
   }
+  if (passwordDaCambiare(utente, res)) return;
   req.utente = utente;
   next();
 }

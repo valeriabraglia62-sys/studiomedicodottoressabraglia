@@ -193,7 +193,18 @@ CREATE INDEX IF NOT EXISTS idx_chat_messaggi ON chat_messaggi(sessione_id, id);
 
 // Colonne aggiunte dopo il primo rilascio: su un database gia' esistente
 // CREATE TABLE non viene rieseguito, quindi vanno aggiunte a mano.
-for (const [tabella, colonna, tipo] of [['prenotazioni', 'promemoria_il', 'TEXT']]) {
+for (const [tabella, colonna, tipo] of [
+  ['prenotazioni', 'promemoria_il', 'TEXT'],
+  // Accessi personali dei collaboratori.
+  ['utenti', 'nome', 'TEXT'],
+  // Sospeso invece che cancellato: chi si licenzia perde l'accesso subito,
+  // ma resta scritto che quell'account e' esistito.
+  ['utenti', 'attivo', 'INTEGER NOT NULL DEFAULT 1'],
+  // Password provvisoria da cambiare al primo ingresso: cosi' la password
+  // vera la conosce solo il collaboratore, nemmeno il medico.
+  ['utenti', 'cambio_password', 'INTEGER NOT NULL DEFAULT 0'],
+  ['utenti', 'ultimo_accesso', 'TEXT']
+]) {
   const presente = db.prepare(`PRAGMA table_info(${tabella})`).all().some((c) => c.name === colonna);
   if (!presente) db.exec(`ALTER TABLE ${tabella} ADD COLUMN ${colonna} ${tipo}`);
 }
