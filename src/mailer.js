@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer';
 import { config, NOTIFY_EMAIL } from './config.js';
 import { registraGestore } from './outbox.js';
 import { formattaDataEstesa } from './orari.js';
+import { linkGoogleCalendar } from './evento.js';
 
 let transporter = null;
 if (config.email.enabled) {
@@ -40,15 +41,26 @@ function tabella(righe) {
     .join('')}</table>`;
 }
 
+/** Pulsante ben visibile; nel testo semplice diventa l'indirizzo per esteso. */
+function bottone({ testo, url }) {
+  return `<p style="margin:18px 0 4px">
+    <a href="${esc(url)}" style="display:inline-block;background:#0d6e6e;color:#fff;
+      text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:600;font-size:15px">
+      ${esc(testo)}</a></p>`;
+}
+
 /** Registra l'email nella coda; l'invio effettivo avviene nel worker. */
-export function componiEmail({ to, subject, titolo, intro, righe, chiusura }) {
+export function componiEmail({ to, subject, titolo, intro, righe, azione, chiusura }) {
   const corpo = `${intro ? `<p style="margin:0 0 12px">${intro}</p>` : ''}
     ${righe ? tabella(righe) : ''}
+    ${azione?.url ? bottone(azione) : ''}
     ${chiusura ? `<p style="margin:14px 0 0">${chiusura}</p>` : ''}`;
 
   const testo = [
     intro?.replace(/<[^>]+>/g, ''),
     ...(righe || []).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`),
+    // Senza formattazione il pulsante sparirebbe: qui l'indirizzo resta leggibile.
+    azione?.url ? `\n${azione.testo}:\n${azione.url}` : '',
     chiusura?.replace(/<[^>]+>/g, '')
   ].filter(Boolean).join('\n');
 
@@ -84,6 +96,7 @@ export const emailConfermaPaziente = (p) => componiEmail({
     ['Motivo', p.problema],
     ['Codice prenotazione', p.codice]
   ],
+  azione: { testo: 'Aggiungi al mio Google Calendar', url: linkGoogleCalendar(p) },
   chiusura: `Conservi il codice <strong>${esc(p.codice)}</strong>: le serve per consultare o annullare la prenotazione. ` +
     `L'annullamento è possibile fino a ${config.cancellazioneMinutiMinimi} minuti prima dell'appuntamento.`
 });
@@ -144,6 +157,7 @@ export const emailPromemoriaPaziente = (p) => componiEmail({
     ['Ambulatorio', p.ambulatorio_nome],
     ['Indirizzo', p.ambulatorio_indirizzo]
   ],
+  azione: { testo: 'Aggiungi al mio Google Calendar', url: linkGoogleCalendar(p) },
   chiusura: 'Se non può presentarsi, la preghiamo di annullare per liberare il posto.'
 });
 
