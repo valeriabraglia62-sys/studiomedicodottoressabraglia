@@ -301,6 +301,19 @@ export const emailNuovaMedicinaAdmin = (r) => componiEmail({
  * l'elenco dei medicinali invece di rimandare al codice.
  */
 
+/**
+ * Dove va a ritirare il paziente.
+ *
+ * La risposta normale e' la farmacia, e per quello l'ambulatorio non e' scritto
+ * da nessuna parte: la ricetta ci arriva e basta. Il nome di un ambulatorio
+ * compare solo quando lo studio lo ha indicato apposta, per un caso
+ * particolare. Senza questa funzione, nella riga dell'email resterebbe il vuoto
+ * proprio dove il paziente cerca l'unica informazione che gli serve.
+ */
+const doveRitirare = (r) => (r.ambulatorio_nome
+  ? `${r.ambulatorio_nome} — glielo abbiamo messo da parte li'`
+  : 'In farmacia: la ricetta e\' gia\' stata inviata');
+
 export const emailMedicinaConfermata = (r) => componiEmail({
   to: r.email,
   subject: `Ricetta pronta per il ritiro — codice ${r.codice}`,
@@ -308,10 +321,10 @@ export const emailMedicinaConfermata = (r) => componiEmail({
   intro: `Gentile ${esc(r.nome)}, la sua richiesta è stata approvata dal medico ed è pronta per il ritiro.`,
   righe: [
     ['Medicinali', r.farmaci],
-    ['Dove ritirare', r.ambulatorio_nome],
+    ['Dove ritirare', doveRitirare(r)],
     ['Codice richiesta', r.codice]
   ],
-  chiusura: 'Se qualcosa non le torna, ci contatti prima di passare in ambulatorio.'
+  chiusura: 'Se qualcosa non le torna, ci contatti prima di passare a ritirare.'
 });
 
 export const emailMedicinaRifiutata = (r) => componiEmail({
@@ -347,7 +360,7 @@ export const emailMedicinaModificata = (r) => componiEmail({
     ['Le abbiamo preparato', r.farmaci],
     ['Note precedenti', r.note_originali !== r.note ? r.note_originali : null],
     ['Note', r.note],
-    ['Dove ritirare', r.ambulatorio_nome],
+    ['Dove ritirare', doveRitirare(r)],
     ['Codice richiesta', r.codice]
   ],
   chiusura: 'Se qualcosa non corrisponde a quanto ci siamo detti al telefono, ci ricontatti.'

@@ -166,10 +166,16 @@
           <span class="messaggio-errore"></span>
         </div>
 
-        <div class="campo">
-          <label for="med-ambulatorio">Ambulatorio per il ritiro</label>
-          <select id="med-ambulatorio" name="ambulatorio_id"></select>
-        </div>
+        <!--
+          Niente scelta dell'ambulatorio: la ricetta si ritira in farmacia, ed e'
+          quello che succede quasi sempre. Chiederlo al paziente voleva dire
+          fargli scegliere fra due risposte sbagliate. Se per un caso particolare
+          il ritiro va fatto altrove, lo scrive lo studio dal pannello quando
+          conferma: e' una decisione loro, non sua.
+        -->
+        <p class="piccolo tenue" style="margin:.25rem 0 0">
+          La ricetta viene mandata in farmacia. Le scriviamo appena e' pronta.
+        </p>
 
         <div class="campo">
           <label for="med-note">Note <span class="tenue">(facoltative)</span></label>

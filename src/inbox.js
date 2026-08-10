@@ -102,6 +102,20 @@ export function registraEmail({ messageId, mittente, mittenteNome, oggetto, corp
   if (eNostraNotifica(mittente)) return { saltata: true };
 
   const tipo = classifica(oggetto, corpo);
+
+  // Il programma prende solo quello che riconosce. Una richiesta di un paziente
+  // ha parole precise — prenotazione, appuntamento, medicinali, ricetta — e su
+  // quelle si decide; tutto il resto e' posta che non lo riguarda, e prima
+  // finiva lo stesso sulla scrivania, seppellendo le tre righe che contavano
+  // sotto le newsletter.
+  //
+  // Nota per chi legge: questa e' una porta chiusa, non un cestino. Chi chiama
+  // registraEmail riceve indietro "ignorata" e deve lasciare il messaggio NON
+  // letto nella casella, cosi' resta dov'e' e lo vede una persona. Buttarlo via
+  // in silenzio sarebbe peggio del problema che risolve: un paziente che scrive
+  // "buongiorno, posso venire giovedi'?" non usa nessuna di quelle parole.
+  if (tipo === 'altro') return { ignorata: true, tipo };
+
   const codice = generaCodice('EML');
   const adesso = new Date().toISOString();
 
@@ -422,8 +436,18 @@ async function leggiCasella() {
           ricevutaIl: (mail.date || new Date()).toISOString()
         });
 
-        if (!esito.saltata) nuove++;
-        await client.messageFlagsAdd(String(id), ['\\Seen'], { uid: true });
+        if (!esito.saltata && !esito.ignorata) nuove++;
+
+        // Segnare letto vuol dire "di questa me ne sono occupato io": il giro
+        // successivo guarda solo i non letti e non la riguardera' mai piu'.
+        //
+        // Quindi non si tocca quello che abbiamo deciso di ignorare. Una email
+        // che il programma non riconosce resta non letta nella casella, dove la
+        // trova una persona: se fosse una richiesta scritta con parole sue, e'
+        // l'unico modo perche' non sparisca senza che nessuno l'abbia vista.
+        if (!esito.ignorata) {
+          await client.messageFlagsAdd(String(id), ['\\Seen'], { uid: true });
+        }
       }
     } finally {
       lock.release();
