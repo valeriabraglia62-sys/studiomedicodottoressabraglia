@@ -247,10 +247,17 @@ function stato {
     Write-Host 'Risposta del sito: nessuna risposta'
   }
 
+  # Si da' per primo il nome della macchina, non il numero: l'indirizzo IP e'
+  # assegnato dal DHCP e cambia da solo a ogni riconnessione. E' gia' successo
+  # il 10 agosto 2026, da 172.20.10.7 a 172.20.10.10 nel giro di poche ore, e un
+  # indirizzo scritto su un foglietto in ambulatorio sarebbe gia' sbagliato.
+  # Il nome invece resta quello.
+  Write-Host "Dagli altri computer in studio: http://$env:COMPUTERNAME`:$PORTA"
+
   $ip = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
     Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } |
     Select-Object -First 1 -ExpandProperty IPAddress
-  if ($ip) { Write-Host "Dagli altri computer in studio: http://${ip}:$PORTA" }
+  if ($ip) { Write-Host "  se il nome non funziona, adesso e' anche http://${ip}:$PORTA (cambia)" }
 }
 
 function riavvia {

@@ -55,9 +55,26 @@ Queste non cambiano con il trasloco. Chi riprende il lavoro deve saperle.
 
 **Aggiornato al 10 agosto 2026: il trasloco e' avvenuto.** Il server gira sulla
 macchina Windows, come servizio `StudioMedico`, sulla porta 3000, in
-`C:\Users\valer\Desktop\studiomedicodottoressabraglia`. Dagli altri computer
-dello studio si raggiunge a `http://172.20.10.7:3000`. Il Mac non deve piu'
-avviare il server. Resta da fare la prova del riavvio senza login (punto 5.7).
+`C:\Users\valer\Desktop\studiomedicodottoressabraglia`. Il Mac non deve piu'
+avviare il server.
+
+Dagli altri computer dello studio si raggiunge a **`http://PC-DI-VALERIA:3000`**.
+
+**Non usare l'indirizzo numerico.** Questa macchina prende l'IP dal DHCP e
+cambia da solo: la sera del 10 agosto e' passato da `172.20.10.7` a
+`172.20.10.10` nel giro di poche ore. Un numero scritto su un foglietto in
+ambulatorio sarebbe gia' sbagliato il giorno dopo; il nome della macchina invece
+resta quello.
+
+Da sapere: quell'intervallo `172.20.10.x` e' quello dell'hotspot di un telefono,
+non di un router di casa. Finche' la macchina sta agganciata a un telefono, il
+sito c'e' solo quando quel telefono e' li'. Con un router di casa si puo' anche
+fissare l'indirizzo una volta per tutte. La soluzione definitiva resta comunque
+il punto 5.10: con il tunnel l'indirizzo locale non serve piu' a nessuno.
+
+Se dal telefono il nome `PC-DI-VALERIA` non si aprisse, e' perche' non tutti i
+telefoni risolvono i nomi della rete locale: in quel caso serve il numero, e va
+riletto con `.\strumenti\servizio-windows.ps1 stato` ogni volta che cambia.
 
 Com'era prima, per riferimento: il server girava **sul Mac**, avviato da
 `launchd` con l'etichetta `com.studiomedico.server`, sulla porta 3000.
