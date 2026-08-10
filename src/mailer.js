@@ -142,7 +142,11 @@ export const emailAnnullamentoAdmin = (p) => componiEmail({
     ['Data', formattaDataEstesa(p.data)],
     ['Orario', p.ora_inizio],
     ['Ambulatorio', p.ambulatorio_nome],
-    ['Annullata da', p.annullata_da === 'admin' ? 'Studio medico' : 'Paziente']
+    // Questa email la legge solo lo studio, quindi qui puo' starci il nome di
+    // chi ha annullato. Nell'email al paziente resta il lato e basta: a lui
+    // interessa sapere se e' stato lo studio, non quale collaboratore.
+    ['Annullata da', p.annullata_utente
+      || (p.annullata_da === 'admin' ? 'Studio medico' : 'Paziente')]
   ]
 });
 

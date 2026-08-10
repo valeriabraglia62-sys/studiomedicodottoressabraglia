@@ -253,7 +253,7 @@ export function minutiAllAppuntamento(p) {
   return giorniDiff * 1440 + minutiDaOra(p.ora_inizio) - minutiCorrentiRoma();
 }
 
-export function annullaPrenotazione(codice, { da = 'paziente' } = {}) {
+export function annullaPrenotazione(codice, { da = 'paziente', chi = null } = {}) {
   const p = perCodice(codice);
   if (!p) throw new ErroreDominio('Prenotazione non trovata. Controlla il codice.', 404);
   if (p.stato === 'annullata') throw new ErroreDominio('Questa prenotazione è già stata annullata.');
@@ -273,8 +273,10 @@ export function annullaPrenotazione(codice, { da = 'paziente' } = {}) {
 
   const transazione = db.transaction(() => {
     db.prepare(
-      `UPDATE prenotazioni SET stato = 'annullata', annullata_da = ?, annullata_il = ? WHERE id = ?`
-    ).run(da, new Date().toISOString(), p.id);
+      `UPDATE prenotazioni
+          SET stato = 'annullata', annullata_da = ?, annullata_il = ?, annullata_utente = ?
+        WHERE id = ?`
+    ).run(da, new Date().toISOString(), chi || null, p.id);
 
     const aggiornata = dettaglio(p.id);
     accoda('sheet_prenotazione', aggiornata);

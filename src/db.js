@@ -259,6 +259,15 @@ for (const [tabella, colonna, tipo] of [
   ['prenotazioni', 'ora_originale', 'TEXT'],
   ['prenotazioni', 'riprogrammata_il', 'TEXT'],
   ['prenotazioni', 'riprogrammata_da', 'TEXT'],
+  // Chi ha annullato, di persona. Diverso da annullata_da, che vale solo
+  // 'admin' o 'paziente' e serve a dire al paziente se e' stato lo studio o lui
+  // stesso: quella distinzione finisce nell'email e non si tocca.
+  //
+  // Qui invece resta l'indirizzo di chi ha premuto il pulsante. Il pannello lo
+  // usano in tre, e senza questa colonna la domanda "chi ha annullato la visita
+  // della signora?" non aveva risposta da nessuna parte, mentre per gli
+  // spostamenti l'aveva.
+  ['prenotazioni', 'annullata_utente', 'TEXT'],
   // Chiudere una pratica manda il messaggio nel cestino di Gmail. Qui resta
   // scritto quando e' successo: serve a non rincorrere all'infinito un'email
   // gia' spostata, e a poter dire, guardando una riga, se di quel messaggio
