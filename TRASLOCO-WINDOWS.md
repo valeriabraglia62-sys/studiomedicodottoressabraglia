@@ -85,11 +85,15 @@ Cose che funzionano e non vanno toccate durante il trasloco:
   Segnare una email come "gestita" la sposta nel cestino di Gmail — provato dal
   vivo, funziona.
 
-Test: `npm run prova`. Allo stato attuale **90 passano e 12 falliscono**. I 12
-falliscono da prima di questi lavori: sono test scritti quando l'email del
-paziente era facoltativa, e ora e' obbligatoria. Non sono una regressione del
-trasloco. Se dopo il trasloco i numeri sono ancora 90 e 12, il trasloco e'
-riuscito.
+Test: `npm run prova`. **Adesso passano tutte: 102 su 102.**
+
+Fino al 10 agosto 2026 ne fallivano 12, da prima di questi lavori, e ballavano
+fra 11 e 12 da un'esecuzione all'altra. Le cause erano due. La prima, quella
+nota: test scritti quando l'email del paziente era facoltativa, e ora e'
+obbligatoria. La seconda, che nessuno sospettava: il lavoratore dei Moduli Google
+restava acceso durante le prove e infilava nel database usa e getta le richieste
+vere dei pazienti, cosi' i test prendevano il record sbagliato e i conteggi
+cambiavano a ogni giro. Vedi il punto 7.
 
 ---
 
@@ -239,12 +243,9 @@ tutto il suo contenuto: 6 pazienti, 8 prenotazioni, 6 richieste di medicinali, 2
 ambulatori, 14 orari, 37 email gia' processate. C'e' anche `idx_slot_unico`, che
 e' l'unica cosa che impedisce il doppio appuntamento.
 
-I test hanno dato **90 superate e 12 fallite**, i numeri attesi, e le 12 sono
-tutte lo stesso problema gia' noto: l'email del paziente adesso e' obbligatoria.
-Una nota per chi rilancia i test: una esecuzione su tre puo' dare 91 e 11. Nella
-suite c'e' qualcosa di non deterministico, quasi certamente i test che leggono i
-Moduli Google veri, il cui contenuto cambia fra un'esecuzione e l'altra. Non e'
-un guasto, ma non spaventarsi se il numero balla di uno.
+I test, il giorno del trasloco, hanno dato **90 superate e 12 fallite**: i numeri
+attesi, quindi il trasloco era riuscito. Le 12 sono state sistemate la sera
+stessa e adesso passano tutte, 102 su 102 (vedi il punto 7).
 
 Le copie di sicurezza funzionano anche su Windows: la prima e' partita da sola
 pochi minuti dopo l'accensione.
@@ -270,8 +271,8 @@ Scegli una sera in cui non usa il pannello nessuno.
    ```powershell
    npm run prova
    ```
-   Attesi 90 passati e 12 falliti. Numeri diversi vanno capiti prima di andare
-   avanti.
+   Adesso devono passare tutti: 102 su 102. Numeri diversi vanno capiti prima di
+   andare avanti.
 
 Da questo momento il Mac **non deve piu' avviare il server**, altrimenti si torna
 a due archivi che divergono.
@@ -518,8 +519,20 @@ Cose gia' decise ma non ancora fatte, in ordine di utilita':
   password per le app, poi cambiare `EMAIL_USER`/`EMAIL_PASS` nel `.env` e
   `NOTIFY_EMAIL` in `src/config.js` (riga 130, dove c'e' ancora un indirizzo
   scritto fisso come ripiego).
-- **I 12 test che falliscono da prima.** Vanno riscritti per il fatto che l'email
-  del paziente adesso e' obbligatoria.
+- ~~**I 12 test che falliscono da prima.**~~ **Fatto il 10 agosto 2026**: adesso
+  passano tutte, 102 su 102, e tre esecuzioni di fila danno lo stesso numero.
+  Le cause erano due, non una:
+  - L'email del paziente, diventata obbligatoria. Le due prove di carico
+    creavano trecento prenotazioni senza indirizzo, e una riga dei Moduli
+    lasciava il campo vuoto. Aggiunte email `@example.com`, il dominio riservato
+    che non puo' esistere davvero.
+  - **Il lavoratore dei Moduli Google restava acceso durante le prove.** Il file
+    di prova spegneva la casella Gmail e i Fogli, ma non i Moduli: cosi', mentre
+    i test inserivano le proprie righe finte, quello importava nel database usa e
+    getta le richieste vere arrivate dal foglio dello studio. I test prendevano
+    il record sbagliato e i conteggi cambiavano da un giro all'altro. E' il
+    motivo per cui il numero di fallite oscillava fra 11 e 12 senza che nessuno
+    toccasse niente.
 - **Cartella SOLE**: nessuna automazione. Deciso di lasciare l'inserimento delle
   ricette a mano. Non riproporlo.
 - **Fascicolo sanitario nazionale**: idem, fuori portata e non voluto. Nel

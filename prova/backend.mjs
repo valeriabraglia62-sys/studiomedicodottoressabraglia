@@ -20,6 +20,16 @@ process.env.DB_FILE = DB_PROVA;
 process.env.PORT = '3999';
 process.env.INBOX_POLLING_ENABLED = 'false';
 process.env.GOOGLE_SHEETS_ENABLED = 'false';
+
+// Spento anche il lavoratore dei Moduli: acceso, mentre le prove girano legge il
+// foglio delle risposte vero e ne infila le righe nel database usa e getta. Le
+// prove piu' sotto si inseriscono le proprie righe a mano con importaRighe, e si
+// aspettano di trovare sulla scrivania quelle e basta: con dentro anche le
+// richieste vere dei pazienti prendevano il record sbagliato e i conteggi
+// cambiavano da un'esecuzione all'altra. E' il motivo per cui il numero di prove
+// fallite oscillava fra 11 e 12 senza che nessuno avesse toccato niente.
+process.env.GOOGLE_MODULI_ENABLED = 'false';
+
 // Nessuna credenziale: le email restano in coda invece di partire davvero.
 process.env.EMAIL_USER = '';
 process.env.EMAIL_PASS = '';
@@ -475,8 +485,11 @@ console.log('\nModuli Google (richieste arrivate a sito spento)');
 
   // Due pazienti che chiedono lo stesso orario: il secondo non deve passare,
   // ma nemmeno sparire.
+  // Ugo ha la sua email: quello che si prova qui e' lo scontro sull'orario, e
+  // senza email la conferma verrebbe respinta prima ancora di arrivarci,
+  // facendo passare la prova per il motivo sbagliato.
   const doppione = moduli.importaRighe('prenotazione', [INTESTAZIONI,
-    ['09/08/2026 22:30:00', 'Ugo', 'Neri', '3334445566', '',
+    ['09/08/2026 22:30:00', 'Ugo', 'Neri', '3334445566', 'ugo.neri@example.com',
       `${gg}/${mm}/${aaaa}`, primo.ora_inizio, primo.ambulatorio_nome, 'Stesso orario di Marta']]);
   verifica('il doppio orario entra comunque in attesa', doppione.nuove === 1);
 
@@ -552,6 +565,7 @@ console.log('\nTrecento pazienti sullo stesso orario');
           ambulatorio_id: 1, data: giorno, ora_inizio: oraContesa,
           nome: `Paziente${i}`, cognome: 'Prova',
           telefono: `33300${String(i).padStart(5, '0')}`,
+          email: `paziente${i}@example.com`,
           problema: 'Corsa allo stesso slot'
         });
         return 'creata';
@@ -599,6 +613,7 @@ console.log('\nTrecento prenotazioni diverse in contemporanea');
         ambulatorio_id: s.ambulatorio_id, data: s.data, ora_inizio: s.ora_inizio,
         nome: `Utente${i}`, cognome: 'Carico',
         telefono: `33911${String(i).padStart(5, '0')}`,
+        email: `utente${i}@example.com`,
         problema: 'Prova di carico'
       });
       return true;
