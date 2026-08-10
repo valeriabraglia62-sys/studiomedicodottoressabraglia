@@ -1,5 +1,5 @@
 import { db } from './db.js';
-import { config } from './config.js';
+import { config, NOTIFY_EMAIL } from './config.js';
 import { accoda, registraGestore } from './outbox.js';
 import { generaCodice, ErroreDominio } from './prenotazioni.js';
 import { creaRichiesta } from './medicine.js';
@@ -13,25 +13,64 @@ import { creaRichiesta } from './medicine.js';
  * capisce il contenuto, cosi' nulla puo' sfuggire.
  */
 
-const PAROLE_MEDICINE = ['medicin', 'farmac', 'ricett', 'prescriz', 'pastigl', 'compress',
-  'sciroppo', 'pillol', 'terapia', 'piano terapeutico', 'impegnativ'];
-const PAROLE_PRENOTAZIONE = ['prenot', 'appuntament', 'visita', 'controllo', 'disponibil', 'fissare'];
+/**
+ * Le parole si dividono in due gruppi perche' non pesano uguale.
+ *
+ * "Ricetta" o "appuntamento" in una email allo studio vogliono dire una cosa
+ * sola. "Controllo", "disponibile", "visita", "terapia" invece sono parole
+ * dell'italiano di tutti i giorni: comparivano negli avvisi della banca e nelle
+ * newsletter, e bastava una di quelle per far archiviare l'avviso di un bonifico
+ * come se fosse un paziente che chiede una visita.
+ *
+ * Quindi: senza almeno una parola forte non si indovina niente e l'email resta
+ * "altro". Le deboli non decidono da sole, servono solo a sciogliere il dubbio
+ * fra medicinali e prenotazione quando una parola forte c'e' gia'.
+ */
+const MEDICINE_FORTI = ['medicin', 'farmac', 'ricett', 'prescriz', 'impegnativ', 'piano terapeutico'];
+const MEDICINE_DEBOLI = ['pastigl', 'compress', 'sciroppo', 'pillol', 'terapia'];
+const PRENOTAZIONE_FORTI = ['prenot', 'appuntament'];
+const PRENOTAZIONE_DEBOLI = ['visita', 'controllo', 'disponibil', 'fissare'];
+
+const conta = (testo, parole) => parole.filter((p) => testo.includes(p)).length;
 
 function classifica(oggetto, corpo) {
   const t = `${oggetto || ''} ${corpo || ''}`.toLowerCase();
-  const med = PAROLE_MEDICINE.filter((p) => t.includes(p)).length;
-  const pre = PAROLE_PRENOTAZIONE.filter((p) => t.includes(p)).length;
-  if (med === 0 && pre === 0) return 'altro';
+
+  const medForti = conta(t, MEDICINE_FORTI);
+  const preForti = conta(t, PRENOTAZIONE_FORTI);
+  if (medForti === 0 && preForti === 0) return 'altro';
+
+  // Una parola forte vale quanto due deboli: e' il modo piu' semplice di dire
+  // che a decidere e' lei, e che le deboli contano solo a parita' di forti.
+  const med = medForti * 2 + conta(t, MEDICINE_DEBOLI);
+  const pre = preForti * 2 + conta(t, PRENOTAZIONE_DEBOLI);
   return med >= pre ? 'medicina' : 'prenotazione';
 }
 
-/** Riconosce le notifiche generate dal sistema stesso, per non rimbalzarle. */
-function eNostraNotifica(mittente, oggetto) {
-  const propria = mittente?.toLowerCase() === config.email.user.toLowerCase();
-  const soggetti = ['nuova prenotazione', 'annullamento', 'richiesta medicinali',
-    'prenotazione confermata', 'prenotazione annullata', 'ricetta pronta',
-    'promemoria', 'richiesta ricevuta'];
-  return propria && soggetti.some((s) => (oggetto || '').toLowerCase().includes(s));
+/**
+ * Riconosce la posta che non e' una richiesta di un paziente, per non
+ * rimbalzarla dentro come se lo fosse.
+ *
+ * Prima qui c'era anche un elenco di oggetti da riconoscere ("nuova
+ * prenotazione", "ricetta pronta"...), e ogni email nuova che imparavamo a
+ * mandare andava aggiunta a mano a quell'elenco. Nessuno se ne ricordava:
+ * "Spostata: ..." non c'era, e le notifiche degli spostamenti hanno iniziato a
+ * ricomparire fra le email da leggere come se le avesse scritte un paziente.
+ *
+ * L'elenco era la parte fragile e se n'e' andato. Resta il fatto che conta:
+ * mandiamo dalla stessa casella che leggiamo, quindi una email che arriva dal
+ * nostro indirizzo l'abbiamo scritta noi — qualunque sia l'oggetto.
+ */
+function eNostraNotifica(mittente) {
+  const indirizzo = (mittente || '').toLowerCase();
+  if (!indirizzo) return true;
+  if (indirizzo === config.email.user.toLowerCase()) return true;
+  if (indirizzo === NOTIFY_EMAIL.toLowerCase()) return true;
+
+  // Avvisi di mancata consegna: parlano di una nostra email tornata indietro,
+  // non di un paziente che chiede qualcosa. Vanno guardati, ma nel registro
+  // della coda, non nella scrivania di chi risponde ai pazienti.
+  return /^(mailer-daemon|postmaster|no-?reply|noreply)@/.test(indirizzo);
 }
 
 function estraiNome(mittenteNome, mittente) {
@@ -256,7 +295,7 @@ async function leggiCasella() {
         const mittente = mail.from?.value?.[0]?.address || '';
         const oggetto = mail.subject || '';
 
-        if (!mittente || eNostraNotifica(mittente, oggetto)) {
+        if (eNostraNotifica(mittente)) {
           await client.messageFlagsAdd(String(id), ['\\Seen'], { uid: true });
           continue;
         }
