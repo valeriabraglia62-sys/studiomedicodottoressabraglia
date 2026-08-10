@@ -11,7 +11,7 @@ import { config } from './config.js';
  * risultare illeggibile proprio nel momento in cui servirebbe.
  */
 
-const CARTELLA = path.join(path.dirname(config.dbFile), 'backup');
+const CARTELLA = config.cartellaBackup;
 const COPIE_DA_TENERE = 14;
 
 // Le copie prendono il nome dal database che stiamo copiando, non un "medstudent-"

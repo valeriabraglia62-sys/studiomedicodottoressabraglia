@@ -18,6 +18,8 @@ function requireSecret() {
   );
 }
 
+const FILE_ARCHIVIO = path.resolve(ROOT, process.env.DB_FILE || 'data/medstudent.sqlite');
+
 export const config = {
   port: Number(process.env.PORT) || 3000,
   sessionSecret: requireSecret(),
@@ -121,7 +123,18 @@ export const config = {
     }
   },
 
-  dbFile: path.resolve(ROOT, process.env.DB_FILE || 'data/medstudent.sqlite'),
+  dbFile: FILE_ARCHIVIO,
+
+  // Dove finiscono le copie di sicurezza. Il valore predefinito le tiene accanto
+  // all'archivio: comodo, ma non protegge dal guasto del disco, perche' se salta
+  // quello saltano insieme l'originale e tutte le copie. Puntandola a una
+  // cartella sincronizzata, per esempio OneDrive, le copie escono dalla
+  // macchina. Il percorso puo' essere assoluto oppure relativo alla radice del
+  // progetto.
+  cartellaBackup: path.resolve(
+    ROOT,
+    process.env.CARTELLA_BACKUP || path.join(path.dirname(FILE_ARCHIVIO), 'backup')
+  ),
 
   // Finestra entro cui il paziente non puo' piu' annullare da solo.
   cancellazioneMinutiMinimi: 60
