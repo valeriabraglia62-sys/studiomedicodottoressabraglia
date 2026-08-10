@@ -325,9 +325,36 @@ Non e' l'antivirus e non e' un guasto: succedera' ancora. Un riavvio normale
 invece non tocca niente.
 
 Il segnale e' che il sito non risponde piu' e `stato` dice "Avvio automatico non
-installato". Si rimedia rilanciando il comando qui sopra. **Vale la pena
-accorgersene prima dello studio**: se capita di notte, la mattina ad Arceto
-trovano il pannello morto senza sapere perche'.
+installato". Si rimedia rilanciando il comando qui sopra.
+
+**Ma accorgersene guardando non basta**, perche' davanti a questa macchina non
+sta nessuno: se capita di notte, la mattina ad Arceto trovano il pannello morto
+senza sapere perche'. Per questo c'e' `strumenti/sorveglia-servizio.ps1`, da
+registrare come attivita' pianificata ogni dieci minuti. Le attivita' pianificate
+gli aggiornamenti di Windows li sopravvivono, quindi possono rimettere a posto il
+servizio che invece non sopravvive.
+
+Controlla tre cose in fila: se il servizio non esiste piu' lo reinstalla, se
+esiste ma e' fermo lo avvia, se gira ma il sito non risponde lo riavvia. Scrive
+in `logs\sorveglianza.log` solo quando trova qualcosa che non va o quando
+interviene, perche' un log che dice "tutto bene" ogni dieci minuti finirebbe per
+nascondere le righe che contano; per sapere che sta lavorando c'e'
+`logs\sorveglianza-ultimo-controllo.txt`, riscritto a ogni passata.
+
+Si registra cosi', da PowerShell **come amministratore**:
+
+```powershell
+schtasks /create /tn "StudioMedico - sorveglianza" /tr "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\Users\valer\Desktop\studiomedicodottoressabraglia\strumenti\sorveglia-servizio.ps1\"" /sc minute /mo 10 /ru SYSTEM /rl HIGHEST /f
+```
+
+**Quando serve fermare il servizio di proposito** — una manutenzione, o lanciare
+`npm run prova` — prima si crea il file `logs\sorveglianza-in-pausa`, altrimenti
+la sorveglianza lo riaccende sotto le mani e si finisce a litigare con la propria
+automazione. Finito, si cancella il file.
+
+```powershell
+New-Item -ItemType File -Force logs\sorveglianza-in-pausa
+```
 
 Da notare che l'archivio non ha corso pericoli: il server si era chiuso in modo
 pulito e il database e' rimasto integro.
