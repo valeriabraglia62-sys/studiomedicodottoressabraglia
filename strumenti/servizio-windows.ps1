@@ -130,10 +130,19 @@ function fermaDoppioni {
 }
 
 # Il servizio risponde "avviato" appena NSSM parte, ma node ci mette ancora
-# qualche istante ad aprire la porta. Chiedere una volta sola dice "nessuna
-# risposta" su un sito che sta benissimo, quindi si riprova per un po'.
+# qualche istante ad aprire la porta, e la primissima richiesta e' lenta perche'
+# alcune parti del programma si caricano solo al primo uso. Chiedere una volta
+# sola dice "nessuna risposta" su un sito che sta benissimo.
+#
+# Quanto aspettare lo decide chi tiene la porta: se non ascolta nessuno non c'e'
+# niente da aspettare e si risponde subito, se invece qualcuno ascolta allora e'
+# un server che sta ancora scaldandosi e vale la pena dargli tempo.
 function rispostaDelSito {
-  param([int]$SecondiMax = 3)
+  param([int]$SecondiMax = 20)
+
+  if (-not (Get-NetTCPConnection -LocalPort $PORTA -State Listen -ErrorAction SilentlyContinue)) {
+    return $null
+  }
 
   $fine = (Get-Date).AddSeconds($SecondiMax)
   do {
@@ -204,9 +213,7 @@ function fermaServizio {
 }
 
 function stato {
-  # Dopo un avvio si concede piu' tempo al sito per rispondere; a freddo no,
-  # altrimenti un semplice "stato" resterebbe fermo mezzo minuto per niente.
-  param([int]$AttesaSito = 3)
+  param([int]$AttesaSito = 20)
 
   $s = Get-Service -Name $SERVIZIO -ErrorAction SilentlyContinue
   if (-not $s) {
@@ -222,7 +229,13 @@ function stato {
 
   $altri = @(doppioni)
   if ($altri.Count -gt 0) {
-    Write-Host "ATTENZIONE: c'e' un altro server acceso sulla porta $PORTA ($($altri -join ', ')). Spegnilo con: .\strumenti\servizio-windows.ps1 riavvia"
+    if ($s) {
+      Write-Host "ATTENZIONE: c'e' un altro server acceso sulla porta $PORTA ($($altri -join ', ')). Spegnilo con: .\strumenti\servizio-windows.ps1 riavvia"
+    } else {
+      # Senza servizio installato non c'e' niente da riavviare: quel consiglio
+      # darebbe solo un errore a chi lo segue.
+      Write-Host "C'e' un server acceso a mano sulla porta $PORTA ($($altri -join ', ')). Lo sostituira' il servizio quando lo installi."
+    }
   }
 
   $codice = rispostaDelSito -SecondiMax $AttesaSito
