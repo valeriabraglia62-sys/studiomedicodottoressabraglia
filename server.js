@@ -30,7 +30,9 @@ process.on('unhandledRejection', (err) => {
 
 const app = express();
 
-app.set('trust proxy', 1);
+// Vedi config.pubblico.proxyDavanti: da questo numero dipende se l'indirizzo
+// di chi chiama e' un fatto o una dichiarazione dell'interessato.
+app.set('trust proxy', config.pubblico.proxyDavanti);
 app.disable('x-powered-by');
 app.use(express.json({ limit: '256kb' }));
 
@@ -125,6 +127,9 @@ const server = app.listen(config.port, async () => {
   console.log(`  Apertura       ${config.pubblico.https
     ? `su internet con lucchetto${config.pubblico.url ? ` — ${config.pubblico.url}` : ''}`
     : 'solo rete locale (SITO_HTTPS=false)'}`);
+  console.log(`  Indirizzi      ${config.pubblico.proxyDavanti
+    ? `letti da X-Forwarded-For (${config.pubblico.proxyDavanti} proxy davanti)`
+    : 'presi dalla connessione (nessun proxy davanti)'}`);
   console.log(`  Moduli Google  ${config.moduli.enabled
     ? 'in lettura (richieste raccolte anche a sito spento)'
     : 'non attivi (GOOGLE_MODULI_ENABLED=false)'}`);
@@ -133,6 +138,21 @@ const server = app.listen(config.port, async () => {
   const inAttesa = daConfermare();
   if (inAttesa) {
     console.log(`  ${inAttesa} richieste dai Moduli aspettano una conferma nel pannello.\n`);
+  }
+
+  // Le due combinazioni sbagliate fra lucchetto e proxy. Nessuna delle due
+  // impedisce al sito di funzionare, ed e' proprio questo il pericolo:
+  // passerebbero inosservate finche' non fanno danno.
+  if (config.pubblico.https && !config.pubblico.proxyDavanti) {
+    console.log('  ATTENZIONE: sito su internet ma PROXY_DAVANTI=0.');
+    console.log('  Tutti i pazienti risultano provenire dallo stesso indirizzo, quindi i');
+    console.log('  freni anti-abuso li contano come una persona sola e si bloccano a vicenda.');
+    console.log('  Dietro un tunnel Cloudflare metti PROXY_DAVANTI=1.\n');
+  }
+  if (!config.pubblico.https && config.pubblico.proxyDavanti) {
+    console.log('  ATTENZIONE: PROXY_DAVANTI e\' acceso ma il sito non e\' dietro un proxy.');
+    console.log('  L\'indirizzo di chi chiama viene letto da un\'intestazione che chiunque puo\'');
+    console.log('  scriversi da solo: i freni anti-abuso si aggirano cambiandola. Mettilo a 0.\n');
   }
 
   if (!email.ok || !foglio.ok) {

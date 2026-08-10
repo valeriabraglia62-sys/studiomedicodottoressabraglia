@@ -29,7 +29,22 @@ export const config = {
   pubblico: {
     https: bool(process.env.SITO_HTTPS),
     // Indirizzo pubblico, es. https://studio-arceto.it — finisce nelle email.
-    url: (process.env.SITO_URL || '').trim().replace(/\/+$/, '')
+    url: (process.env.SITO_URL || '').trim().replace(/\/+$/, ''),
+
+    // Quanti proxy stanno davanti al sito (il tunnel Cloudflare conta come 1).
+    //
+    // Da questo numero dipende da dove il server prende l'indirizzo di chi
+    // chiama, e quindi se i freni anti-abuso funzionano davvero.
+    //
+    // Con un proxy davanti l'indirizzo vero non e' quello della connessione —
+    // quella arriva dal tunnel — ma sta scritto nell'intestazione
+    // X-Forwarded-For, che il proxy compila per noi.
+    //
+    // Senza proxy davanti quell'intestazione non e' piu' una testimonianza:
+    // se la accettassimo, chiunque potrebbe scriversela da solo e presentarsi
+    // a ogni tentativo come un indirizzo nuovo, rendendo i freni inutili.
+    // Per questo il valore predefinito e' zero: si crede solo alla connessione.
+    proxyDavanti: Math.max(0, Math.trunc(Number(process.env.PROXY_DAVANTI) || 0))
   },
 
   admin: {
