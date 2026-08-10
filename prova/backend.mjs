@@ -346,6 +346,24 @@ console.log('\nEmail in arrivo (rete di sicurezza)');
   });
   verifica('le notifiche partite da noi non rientrano', nostra.saltata === true || !nostra.codice,
     JSON.stringify(nostra));
+
+  // Chiudere la pratica deve mandare il messaggio vero nel cestino di Gmail.
+  // Qui non si arriva fino a Gmail: si verifica che l'ordine parta, che parta
+  // una volta sola e solo per "gestita". Lo spostamento vero lo fa la coda, che
+  // e' anche il motivo per cui il bottone non deve aspettarlo.
+  const inCestino = () => db.prepare(
+    `SELECT COUNT(*) n FROM outbox WHERE tipo = 'cestina_email' AND payload LIKE ?`
+  ).get(`%${incomprensibile.codice}%`).n;
+
+  await chiama('PATCH', `/api/admin/email/${incomprensibile.codice}`, { stato: 'archiviata' }, token);
+  verifica('archiviare non tocca la casella', inCestino() === 0);
+
+  await chiama('PATCH', `/api/admin/email/${incomprensibile.codice}`, { stato: 'gestita' }, token);
+  verifica('segnarla gestita ordina di cestinare il messaggio', inCestino() === 1);
+
+  await chiama('PATCH', `/api/admin/email/${incomprensibile.codice}`, { stato: 'nuova' }, token);
+  await chiama('PATCH', `/api/admin/email/${incomprensibile.codice}`, { stato: 'gestita' }, token);
+  verifica('e non lo riordina a ogni click', inCestino() === 1, `ordini ${inCestino()}`);
 }
 
 console.log('\nIl fascicolo del paziente');

@@ -171,13 +171,119 @@ export function elencoEmail({ stato, pagina = 1, perPagina = 50 } = {}) {
   };
 }
 
+/**
+ * C'e' gia' un ordine di cestinare in attesa per questa email?
+ *
+ * Serve perche' i due segni che avremmo per accorgercene arrivano tardi:
+ * `cestinata_il` si scrive solo quando lo spostamento e' riuscito, e la coda
+ * gira ogni mezzo minuto. In quella finestra un "rimetti da leggere" seguito da
+ * un secondo "gestita" — che e' esattamente cosa fa chi ci ripensa — accodava un
+ * secondo ordine identico: due connessioni alla casella per spostare lo stesso
+ * messaggio, di cui la seconda non lo trova nemmeno piu'.
+ */
+const ordineInCorso = (codice) => Boolean(db.prepare(`
+  SELECT 1 FROM outbox
+   WHERE tipo = 'cestina_email' AND stato = 'in_attesa'
+     AND json_extract(payload, '$.codice') = ?
+   LIMIT 1
+`).get(codice));
+
+/**
+ * Cambia lo stato di un'email sulla scrivania.
+ *
+ * "Gestita" vuol dire che la pratica e' chiusa, e la casella deve saperlo: il
+ * messaggio vero finisce nel cestino di Gmail. Sul cestino va detta una cosa a
+ * voce alta, perche' non e' un archivio: Gmail lo svuota da solo dopo trenta
+ * giorni, e da quel momento di quel messaggio non resta niente da nessuna parte
+ * — tranne qui, dove il testo e' salvato per intero e non lo tocca nessuno.
+ *
+ * Lo spostamento passa dalla coda invece di partire subito. Il motivo e' che
+ * chi ha premuto il bottone non deve aspettare Gmail, e soprattutto non deve
+ * vedere un errore se in quel momento la casella non risponde: la riga resta in
+ * coda e ci si riprova da sola. Il pannello ha gia' segnato la pratica chiusa,
+ * che e' la cosa che gli interessa.
+ */
 export function segnaEmail(codice, stato) {
   if (!['nuova', 'gestita', 'archiviata'].includes(stato)) throw new ErroreDominio('Stato non valido.');
-  const r = db.prepare('UPDATE richieste_email SET stato = ?, gestita_il = ? WHERE codice = ?')
-    .run(stato, new Date().toISOString(), String(codice).toUpperCase());
-  if (!r.changes) throw new ErroreDominio('Email non trovata.', 404);
-  return db.prepare('SELECT * FROM richieste_email WHERE codice = ?').get(String(codice).toUpperCase());
+  const chiave = String(codice).toUpperCase();
+
+  return db.transaction(() => {
+    const r = db.prepare('UPDATE richieste_email SET stato = ?, gestita_il = ? WHERE codice = ?')
+      .run(stato, new Date().toISOString(), chiave);
+    if (!r.changes) throw new ErroreDominio('Email non trovata.', 404);
+
+    const email = db.prepare('SELECT * FROM richieste_email WHERE codice = ?').get(chiave);
+
+    // Solo "gestita": archiviare e' un gesto interno, la casella non c'entra.
+    if (stato === 'gestita' && email.message_id && !email.cestinata_il && !ordineInCorso(chiave)) {
+      accoda('cestina_email', { codice: chiave, message_id: email.message_id });
+    }
+
+    return email;
+  })();
 }
+
+// ---- Il cestino di Gmail --------------------------------------------------
+
+/**
+ * Sposta nel cestino il messaggio corrispondente a una pratica chiusa.
+ *
+ * Il messaggio si ritrova dal suo Message-ID, non dal numero progressivo: i
+ * numeri valgono solo dentro una sessione e per una cartella sola, il
+ * Message-ID e' scritto dentro l'email e resta quello per sempre.
+ *
+ * Se non lo trova non e' un guasto: vuol dire che qualcuno l'ha gia' spostato a
+ * mano, ed e' esattamente il risultato che volevamo. Insistere vorrebbe dire
+ * lasciare in coda per sempre una riga che non potra' mai riuscire.
+ *
+ * La cartella del cestino non si scrive a mano ("[Gmail]/Cestino" cambia con la
+ * lingua dell'account): si chiede al server quale delle sue cartelle e' il
+ * cestino, che e' una cosa che il protocollo sa dire da solo.
+ */
+async function cestinaMessaggio({ codice, message_id: messageId }) {
+  if (!config.email.enabled) {
+    return { rimanda: true, motivo: 'credenziali email non configurate', minuti: 30 };
+  }
+  if (!messageId) return undefined;
+
+  const { ImapFlow } = await caricaLibreriePosta();
+  const client = nuovaConnessione(ImapFlow);
+  let spostato = false;
+
+  try {
+    await client.connect();
+
+    const cartelle = await client.list();
+    const cestino = cartelle.find((c) => c.specialUse === '\\Trash');
+    if (!cestino) throw new Error('la casella non dichiara quale cartella sia il cestino');
+
+    const lock = await client.getMailboxLock('INBOX');
+    try {
+      const uid = await client.search({ header: { 'message-id': messageId } }, { uid: true });
+      if (uid?.length) {
+        await client.messageMove(uid, cestino.path, { uid: true });
+        spostato = true;
+      }
+    } finally {
+      lock.release();
+    }
+  } finally {
+    // Chiusura secca: logout() puo' restare in attesa di una risposta che non
+    // arriva mai, e questa gira dentro il worker della coda.
+    client.close();
+  }
+
+  // La data si scrive solo se il messaggio l'abbiamo spostato noi davvero.
+  // Se non c'era, il lavoro e' comunque finito — ma il pannello non deve
+  // raccontare un gesto che non abbiamo fatto.
+  if (spostato) {
+    db.prepare('UPDATE richieste_email SET cestinata_il = ? WHERE codice = ?')
+      .run(new Date().toISOString(), codice);
+  }
+  return undefined;
+}
+
+registraGestore('cestina_email', cestinaMessaggio);
 
 // ---- Polling IMAP ---------------------------------------------------------
 
@@ -208,6 +314,40 @@ function caricaLibreriePosta() {
       .catch((err) => { libreriePosta = null; throw err; });
   }
   return libreriePosta;
+}
+
+function nuovaConnessione(ImapFlow) {
+  const client = new ImapFlow({
+    host: 'imap.gmail.com',
+    port: 993,
+    secure: true,
+    auth: { user: config.email.user, pass: config.email.pass },
+    logger: false,
+    // Senza questi limiti una connessione che non risponde resta appesa per
+    // sempre: chi la sta usando non tornerebbe mai libero e il lavoro si
+    // fermerebbe in silenzio, proprio la cosa da evitare.
+    connectionTimeout: 15000,
+    greetingTimeout: 10000,
+    socketTimeout: 60000
+  });
+
+  /**
+   * Senza questo ascoltatore il server scriveva "[fatale] promise rifiutata".
+   *
+   * Quando la connessione cade a meta' apertura, ImapFlow fa due cose: fa
+   * fallire connect() — quello lo raccoglie chi chiama — e poi, da un pezzo di
+   * codice che gira per conto suo, chiama emit('error'). Su un EventEmitter
+   * senza ascoltatore per 'error' quella chiamata *lancia*, e finiva fra le
+   * promise rifiutate come se fosse un guasto grave del server.
+   *
+   * Non e' un guasto: e' la casella irraggiungibile per un momento. Si annota
+   * e si riprova dopo.
+   */
+  client.on('error', (err) => {
+    console.error('[inbox] connessione caduta:', err.message);
+  });
+
+  return client;
 }
 
 export async function controllaCasella() {
@@ -252,35 +392,7 @@ async function leggiCasella() {
   const { ImapFlow, simpleParser } = await caricaLibreriePosta();
 
   inCorso = true;
-  const client = new ImapFlow({
-    host: 'imap.gmail.com',
-    port: 993,
-    secure: true,
-    auth: { user: config.email.user, pass: config.email.pass },
-    logger: false,
-    // Senza questi limiti una connessione che non risponde resta appesa per
-    // sempre: inCorso non tornerebbe mai false e la lettura si fermerebbe in
-    // silenzio, proprio la cosa che questa rete di sicurezza deve evitare.
-    connectionTimeout: 15000,
-    greetingTimeout: 10000,
-    socketTimeout: 60000
-  });
-
-  /**
-   * Senza questo ascoltatore il server scriveva "[fatale] promise rifiutata".
-   *
-   * Quando la connessione cade a meta' apertura, ImapFlow fa due cose: fa
-   * fallire connect() — quello lo raccogliamo sotto — e poi, da un pezzo di
-   * codice che gira per conto suo, chiama emit('error'). Su un EventEmitter
-   * senza ascoltatore per 'error' quella chiamata *lancia*, e finiva fra le
-   * promise rifiutate come se fosse un guasto grave del server.
-   *
-   * Non e' un guasto: e' la casella irraggiungibile per un momento. Si annota
-   * e si riprova al giro dopo.
-   */
-  client.on('error', (err) => {
-    console.error('[inbox] connessione caduta:', err.message);
-  });
+  const client = nuovaConnessione(ImapFlow);
 
   // Serve al limite dei 90 secondi per poterla chiudere da fuori.
   clientAttivo = client;
