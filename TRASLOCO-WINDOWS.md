@@ -365,9 +365,28 @@ scrivere le copie li'.
 Costo zero: l'archivio pesa meno di mezzo mega, un anno di copie giornaliere sta
 in centocinquanta mega scarsi.
 
-Da fare: aggiungere una voce di configurazione per la cartella di destinazione
-delle copie, invece di `data/backup/` fisso come adesso (`src/backup.js`, riga
-14). Modifica piccola.
+**La voce di configurazione adesso c'e'**: `CARTELLA_BACKUP` nel `.env`. Lasciata
+vuota, le copie restano in `data/backup` come sempre, quindi finche' non la si
+tocca non cambia niente. Il percorso puo' essere assoluto o relativo alla radice
+del progetto.
+
+Per mandarle su OneDrive basta scrivere nel `.env`:
+
+```
+CARTELLA_BACKUP=C:\Users\valer\OneDrive\StudioMedico\backup
+```
+
+e riavviare il servizio, perche' la configurazione si legge all'avvio.
+
+**Prima di farlo, una cosa va detta chiaramente.** Dentro quelle copie ci sono i
+dati sanitari di persone reali. Sincronizzarle su OneDrive significa metterle su
+un servizio esterno, sull'account personale di chi possiede quella cartella. E' il
+prezzo da pagare per non perdere tutto se salta il disco, ed e' un compromesso
+ragionevole, ma va scelto sapendolo. Non e' una comodita' da attivare di sfuggita.
+
+Da sapere anche: le copie dei test si chiamano `prova-*.sqlite` e quelle vere
+`medstudent-*.sqlite`. Le due serie si contano separatamente, quindi rilanciare i
+test non consuma piu' le quattordici copie buone.
 
 ### 5.10 Il tunnel, il dominio e Access
 
