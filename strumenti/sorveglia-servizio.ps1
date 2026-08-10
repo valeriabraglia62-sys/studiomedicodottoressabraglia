@@ -1,6 +1,7 @@
 # Controlla che il sito sia in piedi e, se non lo e', lo rimette in piedi.
 #
 #   .\strumenti\sorveglia-servizio.ps1            controlla una volta
+#   .\strumenti\sorveglia-servizio.ps1 stato      dice se e' registrata e attiva
 #   .\strumenti\sorveglia-servizio.ps1 registra   crea l'attivita' pianificata
 #   .\strumenti\sorveglia-servizio.ps1 rimuovi    toglie l'attivita' pianificata
 #
@@ -31,7 +32,7 @@
 # logs\sorveglianza-ultimo-controllo.txt, che riporta sempre l'ultima passata.
 
 param(
-  [ValidateSet('controlla', 'registra', 'rimuovi')]
+  [ValidateSet('controlla', 'stato', 'registra', 'rimuovi')]
   [string]$Azione = 'controlla'
 )
 
@@ -177,7 +178,19 @@ function rimuovi {
 function stato {
   $a = Get-ScheduledTask -TaskName $ATTIVITA -ErrorAction SilentlyContinue
   if (-not $a) {
-    Write-Host 'Sorveglianza non registrata.'
+    # Non trovarla non vuol dire che non ci sia. L'attivita' gira come SYSTEM e
+    # un utente normale non ha il permesso di leggerla: Windows in quel caso non
+    # dice "accesso negato", risponde semplicemente che non c'e' niente. Dare per
+    # scontato che manchi manderebbe a reinstallare una cosa gia' installata.
+    if (sonoAmministratore) {
+      Write-Host 'Sorveglianza non registrata.'
+    } else {
+      Write-Host "Non riesco a vedere la sorveglianza da utente normale: e' registrata come SYSTEM."
+      Write-Host 'Per sapere come sta, riapri PowerShell come amministratore e richiedi lo stato.'
+    }
+    if (Test-Path $ULTIMO) {
+      Write-Host ('Ultimo controllo registrato: ' + (Get-Content $ULTIMO -Raw).Trim())
+    }
     return
   }
   $info = Get-ScheduledTaskInfo -TaskName $ATTIVITA
@@ -188,6 +201,7 @@ function stato {
 
 switch ($Azione) {
   'controlla' { controlla }
+  'stato'     { stato }
   'registra'  { registra }
   'rimuovi'   { rimuovi }
 }
