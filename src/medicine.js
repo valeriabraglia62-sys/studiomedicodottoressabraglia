@@ -83,7 +83,8 @@ export function creaRichiesta(dati) {
 
   const transazione = db.transaction(() => {
     const paziente = telefonoValido(telefono)
-      ? trovaOCreaPaziente({ nome, cognome, email, telefono })
+      ? trovaOCreaPaziente({ nome, cognome, email, telefono },
+        { contesto: 'una richiesta di medicinali' })
       : null;
 
     const codice = generaCodice('MED');
