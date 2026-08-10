@@ -9,7 +9,8 @@ import {
 import {
   emailConfermaPaziente, emailNuovaPrenotazioneAdmin,
   emailAnnullamentoPaziente, emailAnnullamentoAdmin,
-  emailPrenotazioneRiprogrammata, emailPrenotazioneRiprogrammataAdmin
+  emailPrenotazioneRiprogrammata, emailPrenotazioneRiprogrammataAdmin,
+  emailAnagraficaDiscordante
 } from './mailer.js';
 
 /** Errore con messaggio pensato per essere mostrato al paziente. */
@@ -41,24 +42,62 @@ export function emailValida(e) {
   return /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(String(e ?? '').trim());
 }
 
-/** Riusa il paziente se lo riconosce, altrimenti lo crea. */
-export function trovaOCreaPaziente({ nome, cognome, email, telefono }) {
+/**
+ * Riusa il paziente se lo riconosce, altrimenti lo crea.
+ *
+ * Le strade per riconoscerlo sono due e non valgono uguale.
+ *
+ * Se coincidono telefono, nome e cognome e' la stessa persona, senza dubbi: li'
+ * si puo' aggiornare l'email, ed e' anche necessario, perche' le conferme
+ * partono verso l'indirizzo scritto sulla scheda e non verso quello appena
+ * digitato. Chi cambia indirizzo, altrimenti, smetterebbe di ricevere qualsiasi
+ * cosa senza capire perche'.
+ *
+ * Se invece coincide solo l'email, la persona potrebbe essere un'altra: basta
+ * una lettera sbagliata per finire sull'indirizzo di qualcun altro. Prima questa
+ * seconda strada riscriveva comunque nome, cognome e telefono della scheda
+ * trovata, e in un archivio sanitario vuol dire che un paziente si prendeva
+ * l'identita' di un altro senza che nessuno se ne accorgesse. Adesso la scheda
+ * non si tocca e la discordanza va allo studio, che sa chi sono i suoi pazienti
+ * e puo' distinguere un cambio di numero da uno scambio di persona.
+ */
+export function trovaOCreaPaziente(
+  { nome, cognome, email, telefono },
+  { contesto = 'il sito' } = {}
+) {
   const tel = normalizzaTelefono(telefono);
   const mail = email ? String(email).trim().toLowerCase() : null;
 
-  let paziente = db.prepare(
+  const perIdentita = db.prepare(
     `SELECT * FROM pazienti
       WHERE telefono = ? AND lower(nome) = lower(?) AND lower(cognome) = lower(?)`
   ).get(tel, nome, cognome);
 
-  if (!paziente && mail) {
-    paziente = db.prepare('SELECT * FROM pazienti WHERE lower(email) = ?').get(mail);
+  if (perIdentita) {
+    db.prepare('UPDATE pazienti SET email = COALESCE(?, email) WHERE id = ?')
+      .run(mail, perIdentita.id);
+    return db.prepare('SELECT * FROM pazienti WHERE id = ?').get(perIdentita.id);
   }
 
-  if (paziente) {
-    db.prepare('UPDATE pazienti SET nome = ?, cognome = ?, email = COALESCE(?, email), telefono = ? WHERE id = ?')
-      .run(nome, cognome, mail, tel, paziente.id);
-    return db.prepare('SELECT * FROM pazienti WHERE id = ?').get(paziente.id);
+  const perEmail = mail
+    ? db.prepare('SELECT * FROM pazienti WHERE lower(email) = ?').get(mail)
+    : null;
+
+  if (perEmail) {
+    const diverso = (a, b) =>
+      String(a ?? '').trim().toLowerCase() !== String(b ?? '').trim().toLowerCase();
+
+    if (diverso(perEmail.nome, nome) || diverso(perEmail.cognome, cognome)
+        || diverso(perEmail.telefono, tel)) {
+      // Sta nella stessa transazione di chi ci ha chiamati: se la prenotazione
+      // poi non va a buon fine, non parte nemmeno questa segnalazione.
+      accoda('email', emailAnagraficaDiscordante({
+        scheda: perEmail,
+        arrivato: { nome, cognome, telefono: tel },
+        contesto
+      }));
+    }
+    return perEmail;
   }
 
   const info = db.prepare(
@@ -187,7 +226,7 @@ export function creaPrenotazione(datiGrezzi, { forza = false } = {}) {
   const d = validaRichiesta(datiGrezzi, forza);
 
   const transazione = db.transaction(() => {
-    const paziente = trovaOCreaPaziente(d);
+    const paziente = trovaOCreaPaziente(d, { contesto: 'una prenotazione di visita' });
     const codice = generaCodice('PRE');
     const adesso = new Date().toISOString();
 

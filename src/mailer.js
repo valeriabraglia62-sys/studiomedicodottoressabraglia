@@ -132,6 +132,33 @@ export const emailAnnullamentoPaziente = (p) => componiEmail({
   chiusura: 'Può prenotare una nuova visita quando desidera dal nostro sito.'
 });
 
+/**
+ * Qualcuno ha prenotato con l'email di una scheda gia' in archivio, ma con
+ * nome, cognome o telefono diversi da quelli scritti li'.
+ *
+ * Il programma non tocca la scheda e manda qui la discordanza, perche' le due
+ * spiegazioni possibili vogliono risposte opposte e sceglierne una da soli
+ * sarebbe un azzardo. Se il paziente ha cambiato numero, la scheda va
+ * aggiornata. Se invece ha sbagliato a scrivere l'indirizzo e ha preso quello
+ * di un altro, aggiornarla vorrebbe dire cancellare l'identita' di una persona
+ * e metterci quella di un'altra, dentro un archivio sanitario.
+ */
+export const emailAnagraficaDiscordante = ({ scheda, arrivato, contesto }) => componiEmail({
+  to: NOTIFY_EMAIL,
+  subject: `Da controllare: dati diversi da quelli in archivio — ${arrivato.nome} ${arrivato.cognome}`,
+  titolo: 'I dati non coincidono con la scheda',
+  righe: [
+    ['Arrivato da', contesto],
+    ['Email usata', scheda.email],
+    ['In archivio', `${scheda.nome} ${scheda.cognome} — ${scheda.telefono || 'nessun telefono'}`],
+    ['Arrivato adesso', `${arrivato.nome} ${arrivato.cognome} — ${arrivato.telefono || 'nessun telefono'}`]
+  ],
+  chiusura: 'La scheda del paziente <strong>non e\' stata modificata</strong>. ' +
+    'Se e\' la stessa persona che ha cambiato recapito, aggiornatela voi. ' +
+    'Se invece sono due persone diverse e l\'indirizzo e\' stato scritto male, ' +
+    'la prenotazione e\' finita sulla scheda sbagliata e va spostata.'
+});
+
 export const emailAnnullamentoAdmin = (p) => componiEmail({
   to: NOTIFY_EMAIL,
   subject: `Annullamento: ${p.paziente_nome} ${p.paziente_cognome} — ${p.data} ${p.ora_inizio}`,
