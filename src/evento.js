@@ -1,4 +1,5 @@
 import { formattaDataEstesa } from './orari.js';
+import { config } from './config.js';
 
 /**
  * Collegamento per aggiungere la visita al calendario del paziente.
@@ -29,7 +30,7 @@ export function linkGoogleCalendar(p) {
 
   const parametri = new URLSearchParams({
     action: 'TEMPLATE',
-    text: `Visita medica — ${p.ambulatorio_nome || 'Studio Medico'}`,
+    text: `Visita medica — ${p.ambulatorio_nome || config.nomeStudio}`,
     dates: `${istante(p.data, p.ora_inizio)}/${istante(p.data, p.ora_fine)}`,
     ctz: FUSO,
     details: dettagli,

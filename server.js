@@ -107,7 +107,7 @@ const manutenzione = setInterval(() => {
 manutenzione.unref?.();
 
 const server = app.listen(config.port, async () => {
-  console.log(`\n  Studio medico — server attivo su http://localhost:${config.port}\n`);
+  console.log(`\n  ${config.nomeStudio} — server attivo su http://localhost:${config.port}\n`);
 
   avviaWorker(30);
   avviaPromemoria();

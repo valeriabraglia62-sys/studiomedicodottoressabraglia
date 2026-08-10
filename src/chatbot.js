@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { db } from './db.js';
+import { config } from './config.js';
 import {
   listaAmbulatori, trovaAmbulatorio, slotDisponibili, formattaDataEstesa,
   oggiISO, aggiungiGiorni, orariAmbulatorio, NOMI_GIORNI, GIORNI_PRENOTABILI, dataValida
@@ -464,7 +465,7 @@ export function benvenuto(sessioneId) {
     }
   }
   const id = sessione ? sessioneId : creaSessione();
-  const testo = 'Ciao! Sono l\'assistente dello studio medico.\n\n' + MENU.testo;
+  const testo = `Ciao! Sono l'assistente dello ${config.nomeStudio}.\n\n` + MENU.testo;
   registraMessaggio(id, 'bot', testo);
   return { sessioneId: id, cronologia: cronologia(id), azioni: MENU.azioni, ripresa: false };
 }

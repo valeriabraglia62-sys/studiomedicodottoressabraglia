@@ -22,6 +22,12 @@ export const config = {
   port: Number(process.env.PORT) || 3000,
   sessionSecret: requireSecret(),
 
+  // Come si chiama lo studio: finisce nel mittente delle email, nel titolo
+  // delle pagine e nelle risposte del chatbot. Sta qui in un posto solo
+  // perche' un nome scritto a mano in dieci file, prima o poi, in uno dei
+  // dieci resta quello vecchio.
+  nomeStudio: (process.env.NOME_STUDIO || '').trim() || 'Studio Medico Dottoressa Braglia',
+
   // Il sito e' raggiungibile da internet, dietro un proxy o un tunnel che
   // fornisce il lucchetto HTTPS. Da attivare SOLO quando quel lucchetto c'e'
   // davvero: acceso troppo presto rimanderebbe i pazienti a un indirizzo
