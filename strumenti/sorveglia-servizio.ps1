@@ -1,9 +1,17 @@
 # Controlla che il sito sia in piedi e, se non lo e', lo rimette in piedi.
 #
-#   .\strumenti\sorveglia-servizio.ps1
+#   .\strumenti\sorveglia-servizio.ps1            controlla una volta
+#   .\strumenti\sorveglia-servizio.ps1 registra   crea l'attivita' pianificata
+#   .\strumenti\sorveglia-servizio.ps1 rimuovi    toglie l'attivita' pianificata
 #
-# Va lanciato da un'attivita' pianificata ogni dieci minuti. Il comando per
-# registrarla sta in fondo a questo file.
+# "registra" e "rimuovi" vogliono PowerShell aperto come amministratore. Il
+# controllo in se' gira da chiunque, ma per rimettere in piedi un servizio
+# servono i diritti, ed e' per questo che l'attivita' gira come SYSTEM.
+#
+# La registrazione sta qui dentro e non in un comando da incollare perche' il
+# comando equivalente con schtasks porta virgolette dentro virgolette: e' scritto
+# nella sintassi di cmd, PowerShell lo smonta prima che schtasks lo veda e
+# l'attivita' non nasce. Meglio un verbo che si legge.
 #
 # A cosa serve, in concreto: il 10 agosto 2026 un aggiornamento di versione di
 # Windows ha cancellato il servizio, voce di registro compresa, e il sito e'
@@ -22,8 +30,15 @@
 # nasconderebbe le righe che contano. Per sapere che sta lavorando c'e' invece
 # logs\sorveglianza-ultimo-controllo.txt, che riporta sempre l'ultima passata.
 
+param(
+  [ValidateSet('controlla', 'registra', 'rimuovi')]
+  [string]$Azione = 'controlla'
+)
+
 $ErrorActionPreference = 'Stop'
 
+$ATTIVITA = 'StudioMedico - sorveglianza'
+$OGNI_MINUTI = 10
 $SERVIZIO = 'StudioMedico'
 $CARTELLA = Split-Path -Parent $PSScriptRoot
 $LOGS = Join-Path $CARTELLA 'logs'
@@ -58,6 +73,14 @@ function sitoRisponde {
   } while ((Get-Date) -lt $fine)
   $false
 }
+
+function sonoAmministratore {
+  $identita = [Security.Principal.WindowsIdentity]::GetCurrent()
+  (New-Object Security.Principal.WindowsPrincipal $identita).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function controlla {
 
 # Chi ferma il servizio di proposito, per una manutenzione o per lanciare i
 # test, crea questo file: senza, la sorveglianza glielo riaccenderebbe sotto le
@@ -102,13 +125,69 @@ catch {
 }
 
 Set-Content $ULTIMO ("{0}  {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $esito) -Encoding UTF8
+Write-Host $esito
 
-# Per registrare l'attivita' pianificata, da PowerShell come amministratore:
-#
-#   schtasks /create /tn "StudioMedico - sorveglianza" ^
-#     /tr "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\Users\valer\Desktop\studiomedicodottoressabraglia\strumenti\sorveglia-servizio.ps1\"" ^
-#     /sc minute /mo 10 /ru SYSTEM /rl HIGHEST /f
-#
+}
+
 # Gira come SYSTEM perche' reinstallare o riavviare un servizio vuole i diritti
 # di amministratore, e ogni dieci minuti perche' e' il ritardo massimo con cui
 # accettiamo che il sito resti giu' senza che nessuno se ne accorga.
+function registra {
+  if (-not (sonoAmministratore)) {
+    throw 'Serve PowerShell aperto come amministratore. Tasto destro su PowerShell, "Esegui come amministratore".'
+  }
+
+  $mio = Join-Path $PSScriptRoot 'sorveglia-servizio.ps1'
+  $azione = New-ScheduledTaskAction -Execute 'powershell.exe' `
+    -Argument ('-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $mio)
+
+  # Due inneschi apposta. Quello all'avvio copre il caso peggiore, cioe' la
+  # macchina che torna su dopo un blackout; quello ripetuto copre tutto il
+  # resto. Con uno solo dei due resterebbe scoperto o l'avvio o il seguito.
+  $inneschi = @(
+    New-ScheduledTaskTrigger -AtStartup
+    New-ScheduledTaskTrigger -Once -At (Get-Date) `
+      -RepetitionInterval (New-TimeSpan -Minutes $OGNI_MINUTI)
+  )
+
+  $identita = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+
+  # Se un controllo si pianta, il successivo non deve accodarsi: meglio saltarlo
+  # e riprovare fra dieci minuti che accumulare copie che si ostacolano.
+  $impostazioni = New-ScheduledTaskSettingsSet -StartWhenAvailable `
+    -MultipleInstances IgnoreNew `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 10) `
+    -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+
+  Register-ScheduledTask -TaskName $ATTIVITA -Action $azione -Trigger $inneschi `
+    -Principal $identita -Settings $impostazioni -Force | Out-Null
+
+  Write-Host "Sorveglianza registrata: controlla ogni $OGNI_MINUTI minuti e a ogni accensione."
+  stato
+}
+
+function rimuovi {
+  if (-not (sonoAmministratore)) {
+    throw 'Serve PowerShell aperto come amministratore.'
+  }
+  Unregister-ScheduledTask -TaskName $ATTIVITA -Confirm:$false
+  Write-Host "Sorveglianza rimossa. Nessuno controllera' piu' che il sito sia in piedi."
+}
+
+function stato {
+  $a = Get-ScheduledTask -TaskName $ATTIVITA -ErrorAction SilentlyContinue
+  if (-not $a) {
+    Write-Host 'Sorveglianza non registrata.'
+    return
+  }
+  $info = Get-ScheduledTaskInfo -TaskName $ATTIVITA
+  Write-Host ("Sorveglianza registrata, stato {0}. Ultima esecuzione: {1}. Prossima: {2}." -f `
+    $a.State, $info.LastRunTime, $info.NextRunTime)
+  if (Test-Path $ULTIMO) { Write-Host ('Ultimo controllo: ' + (Get-Content $ULTIMO -Raw).Trim()) }
+}
+
+switch ($Azione) {
+  'controlla' { controlla }
+  'registra'  { registra }
+  'rimuovi'   { rimuovi }
+}
