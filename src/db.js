@@ -258,7 +258,12 @@ for (const [tabella, colonna, tipo] of [
   ['prenotazioni', 'data_originale', 'TEXT'],
   ['prenotazioni', 'ora_originale', 'TEXT'],
   ['prenotazioni', 'riprogrammata_il', 'TEXT'],
-  ['prenotazioni', 'riprogrammata_da', 'TEXT']
+  ['prenotazioni', 'riprogrammata_da', 'TEXT'],
+  // Chiudere una pratica manda il messaggio nel cestino di Gmail. Qui resta
+  // scritto quando e' successo: serve a non rincorrere all'infinito un'email
+  // gia' spostata, e a poter dire, guardando una riga, se di quel messaggio
+  // esiste ancora una copia nella casella o solo questa qui.
+  ['richieste_email', 'cestinata_il', 'TEXT']
 ]) {
   const presente = db.prepare(`PRAGMA table_info(${tabella})`).all().some((c) => c.name === colonna);
   if (!presente) db.exec(`ALTER TABLE ${tabella} ADD COLUMN ${colonna} ${tipo}`);

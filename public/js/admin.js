@@ -949,6 +949,14 @@ function schedaEmail(m) {
     carta.append(nodo('p', 'piccolo tenue', `Richiesta generata: ${m.collegata_a}`));
   }
 
+  // Il messaggio in Gmail non c'e' piu' in posta in arrivo: il testo qui sopra
+  // e' rimasto l'unica copia che non scade. Va detto, non lasciato scoprire.
+  if (m.cestinata_il) {
+    carta.append(nodo('p', 'piccolo tenue',
+      `Messaggio spostato nel cestino di Gmail il ${quando(m.cestinata_il)}. `
+      + 'Gmail lo svuota dopo trenta giorni: il testo qui sopra resta comunque.'));
+  }
+
   const azioni = nodo('div');
   azioni.style.cssText = 'display:flex;gap:.5rem;margin-top:.85rem;flex-wrap:wrap';
   for (const [stato, testo] of [['gestita', 'Segna come gestita'], ['archiviata', 'Archivia'], ['nuova', 'Rimetti da leggere']]) {
@@ -956,9 +964,17 @@ function schedaEmail(m) {
     const b = nodo('button', 'bottone secondario piccolo', testo);
     b.type = 'button';
     b.addEventListener('click', () => {
+      // "Gestita" tocca anche la casella vera, e non si torna indietro con un
+      // click: chi preme deve saperlo prima, non leggerlo dopo nella scheda.
+      if (stato === 'gestita' && m.message_id && !m.cestinata_il
+        && !confirm('Il messaggio verrà spostato nel cestino di Gmail, dove resta '
+          + 'trenta giorni e poi sparisce. Il testo rimane salvato qui. Procedo?')) return;
       b.disabled = true;
       protetto(async () => {
         await api(`/admin/email/${m.codice}`, { method: 'PATCH', body: { stato } });
+        if (stato === 'gestita' && m.message_id) {
+          avvisa('Segnata come gestita. Il messaggio va nel cestino di Gmail entro un minuto.', 'ok');
+        }
         await caricaEmail();
       });
     });
