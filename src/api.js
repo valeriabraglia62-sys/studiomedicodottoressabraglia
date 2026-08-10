@@ -350,7 +350,10 @@ admin.get('/prenotazioni', (req, res) => {
 });
 
 admin.post('/prenotazioni/:codice/annulla', (req, res) => {
-  const p = prenotazioni.annullaPrenotazione(req.params.codice, { da: 'admin' });
+  const p = prenotazioni.annullaPrenotazione(req.params.codice, {
+    da: 'admin',
+    chi: req.utente?.email || null
+  });
   ok(res, { prenotazione: p, avvisati: attesa.avvisaPerPostoLibero(p) });
 });
 

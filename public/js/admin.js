@@ -614,8 +614,13 @@ function schedaPrenotazione(p) {
   // Annullata: si legge e basta. Riaprirla vorrebbe dire mandare al paziente
   // una seconda email che smentisce la prima.
   if (p.stato !== 'confermata') {
+    // Si scrive chi ha annullato per nome quando lo sappiamo. Le prenotazioni
+    // annullate prima che esistesse annullata_utente non ce l'hanno, e per
+    // quelle resta il vecchio "da admin", che almeno dice il lato.
+    const chiHaAnnullato = p.annullata_utente
+      || (p.annullata_da === 'admin' ? 'lo studio' : 'il paziente');
     carta.append(nodo('div', 'piccolo tenue',
-      `Annullata il ${quando(p.annullata_il)}${p.annullata_da ? ` da ${p.annullata_da}` : ''}`));
+      `Annullata il ${quando(p.annullata_il)} da ${chiHaAnnullato}`));
     return carta;
   }
 
