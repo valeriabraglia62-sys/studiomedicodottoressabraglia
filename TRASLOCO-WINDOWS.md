@@ -53,8 +53,14 @@ Queste non cambiano con il trasloco. Chi riprende il lavoro deve saperle.
 
 ## 3. Dove siamo adesso
 
-Il server gira **sul Mac**, avviato da `launchd` con l'etichetta
-`com.studiomedico.server`, sulla porta 3000.
+**Aggiornato al 10 agosto 2026: il trasloco e' avvenuto.** Il server gira sulla
+macchina Windows, come servizio `StudioMedico`, sulla porta 3000, in
+`C:\Users\valer\Desktop\studiomedicodottoressabraglia`. Dagli altri computer
+dello studio si raggiunge a `http://172.20.10.7:3000`. Il Mac non deve piu'
+avviare il server. Resta da fare la prova del riavvio senza login (punto 5.7).
+
+Com'era prima, per riferimento: il server girava **sul Mac**, avviato da
+`launchd` con l'etichetta `com.studiomedico.server`, sulla porta 3000.
 
 Versioni in uso sul Mac, da replicare su Windows:
 
@@ -178,7 +184,18 @@ Se `npm install` viene lanciato per sbaglio senza l'`.npmrc` e fallisce, la
 cartella `node_modules` resta a meta': va cancellata e rifatta da zero,
 altrimenti npm si porta dietro i pezzi del tentativo fallito.
 
-### 5.5 I tre pezzi che Git non porta
+### 5.5 I tre pezzi che Git non porta — FATTO il 10 agosto 2026
+
+I tre file sono al loro posto, copiati dalla chiavetta e verificati identici
+all'originale con l'impronta SHA256. Attenzione a dove vanno, perche' non e'
+la stessa cartella per tutti e tre: **solo il database sta in `data\`**, mentre
+`.env` e `google-credentials.json` vanno nella radice del progetto, che e' dove
+`src/config.js` li cerca. Messi in `data\` il programma non li troverebbe.
+
+Non sono stati copiati i file di appoggio di SQLite (`-wal`, `-shm`) che stavano
+sulla chiavetta accanto al database: il `-wal` era di zero byte, cioe' non
+conteneva nessuna transazione in sospeso, quindi tutto il contenuto era gia' nel
+file principale. SQLite li ricrea da solo alla prima apertura.
 
 **Il `.gitignore` e' gia' fatto bene**: esclude `.env`, `google-credentials.json`
 e tutta la cartella `data/`. Vuol dire che le password e l'archivio dei pazienti
@@ -197,7 +214,7 @@ Il `.env` va copiato **identico**. In particolare `ADMIN_PASSWORD` non si tocca 
 `SESSION_SECRET` non si rigenera: cambiarlo butterebbe fuori tutti i dispositivi
 gia' collegati.
 
-Le due voci da correggere sul server nuovo, ma **solo al punto 5.9**, quando il
+Le voci da correggere sul server nuovo, ma **solo al punto 5.10**, quando il
 tunnel esiste davvero:
 
 ```
@@ -210,7 +227,29 @@ Metterle prima e' un errore: il sito rimanderebbe a un indirizzo sicuro che non
 esiste ancora, e `PROXY_DAVANTI=1` senza un proxy davanti apre un buco, perche'
 l'intestazione con l'indirizzo di chi chiama se la scriverebbe chi chiama.
 
-### 5.6 Il travaso e la prima prova
+Nel `.env` arrivato dal Mac quelle tre voci **non ci sono proprio**, ed e'
+giusto cosi': senza di loro `src/config.js` usa HTTPS spento, indirizzo pubblico
+vuoto e zero proxy davanti, che e' esattamente lo stato che serve adesso. Non
+vanno aggiunte fino al 5.10.
+
+### 5.6 Il travaso e la prima prova — FATTO il 10 agosto 2026
+
+Riuscito. L'archivio e' arrivato integro (`integrity_check` risponde `ok`) con
+tutto il suo contenuto: 6 pazienti, 8 prenotazioni, 6 richieste di medicinali, 2
+ambulatori, 14 orari, 37 email gia' processate. C'e' anche `idx_slot_unico`, che
+e' l'unica cosa che impedisce il doppio appuntamento.
+
+I test hanno dato **90 superate e 12 fallite**, i numeri attesi, e le 12 sono
+tutte lo stesso problema gia' noto: l'email del paziente adesso e' obbligatoria.
+Una nota per chi rilancia i test: una esecuzione su tre puo' dare 91 e 11. Nella
+suite c'e' qualcosa di non deterministico, quasi certamente i test che leggono i
+Moduli Google veri, il cui contenuto cambia fra un'esecuzione e l'altra. Non e'
+un guasto, ma non spaventarsi se il numero balla di uno.
+
+Le copie di sicurezza funzionano anche su Windows: la prima e' partita da sola
+pochi minuti dopo l'accensione.
+
+Prima di rifare questo passaggio, per chi ci tornasse sopra:
 
 Scegli una sera in cui non usa il pannello nessuno.
 
@@ -237,10 +276,11 @@ Scegli una sera in cui non usa il pannello nessuno.
 Da questo momento il Mac **non deve piu' avviare il server**, altrimenti si torna
 a due archivi che divergono.
 
-### 5.7 Farlo partire da solo
+### 5.7 Farlo partire da solo — FATTO il 10 agosto 2026, prova del riavvio ancora da fare
 
-Gli script in `strumenti/` sono bash e `launchd`: su Windows non partono. Vanno
-rifatti come servizio di Windows.
+Gli script in `strumenti/` sono bash e `launchd`: su Windows non partono. Il loro
+corrispondente adesso c'e' ed e' `strumenti/servizio-windows.ps1`, con gli stessi
+quattro comandi di quello del Mac.
 
 Perche' un servizio e non l'avvio automatico all'accesso: un servizio parte
 **all'accensione, senza che nessuno faccia login**. Se alle tre di notte va via la
@@ -249,20 +289,54 @@ l'avvio all'accesso resterebbe fermo sulla schermata di login, e la mattina
 l'assistente ad Arceto troverebbe il pannello morto senza nessuno davanti a quella
 macchina per accorgersene.
 
-Si usa NSSM, che avvolge un comando qualsiasi e lo registra fra i servizi:
+Si usa NSSM, che avvolge un comando qualsiasi e lo registra fra i servizi.
+**`choco install nssm` non funziona su questa macchina**: non c'e' Chocolatey e
+non c'e' nemmeno winget, manca proprio il pacchetto App Installer. NSSM si prende
+a mano da <https://nssm.cc/download>, versione win64, e il solo `nssm.exe` va in
+`strumenti\nssm.exe`, dove lo script lo cerca da solo. E' escluso da Git di
+proposito: e' un programma di terzi e non si versiona.
+
+Sappi che **NSSM 2.24 non ha firma digitale**. Il file corrisponde all'impronta
+pubblicata dal progetto, ma un antivirus puo' storcere il naso proprio perche'
+registra servizi.
+
+Poi, da PowerShell aperto **come amministratore**:
 
 ```powershell
-choco install nssm
-nssm install StudioMedico "C:\Program Files\nodejs\node.exe" "server.js"
-nssm set StudioMedico AppDirectory C:\Users\<tuo-utente>\Documents\medstudent
-nssm set StudioMedico Start SERVICE_AUTO_START
-nssm set StudioMedico AppStdout C:\Users\<tuo-utente>\Documents\medstudent\logs\servizio.log
-nssm set StudioMedico AppStderr C:\Users\<tuo-utente>\Documents\medstudent\logs\errori.log
-nssm start StudioMedico
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\valer\Desktop\studiomedicodottoressabraglia\strumenti\servizio-windows.ps1" installa
 ```
 
-Prova che regga davvero: riavvia la macchina **senza fare login** e controlla da
-un altro dispositivo che il sito risponda.
+Servono i diritti di amministratore per `installa`, `riavvia` e `rimuovi`, perche'
+su Windows i servizi sono di sistema e non del singolo utente come i LaunchAgent
+di macOS. Solo `stato` gira da utente normale.
+
+Lo script spegne da solo un eventuale server acceso a mano prima di partire, come
+fa quello del Mac.
+
+#### La cosa da non dimenticare: gli aggiornamenti di versione di Windows
+
+**Un aggiornamento di versione di Windows cancella il servizio.** E' successo il
+10 agosto 2026: la macchina si e' aggiornata, e al ritorno il servizio non
+esisteva piu' — sparita anche la voce nel registro. Un aggiornamento del genere
+ri-registra i servizi di Microsoft e butta via quelli di terze parti registrati
+con NSSM, perche' non risultano appartenere a nessun programma installato.
+
+Non e' l'antivirus e non e' un guasto: succedera' ancora. Un riavvio normale
+invece non tocca niente.
+
+Il segnale e' che il sito non risponde piu' e `stato` dice "Avvio automatico non
+installato". Si rimedia rilanciando il comando qui sopra. **Vale la pena
+accorgersene prima dello studio**: se capita di notte, la mattina ad Arceto
+trovano il pannello morto senza sapere perche'.
+
+Da notare che l'archivio non ha corso pericoli: il server si era chiuso in modo
+pulito e il database e' rimasto integro.
+
+#### La prova vera, ancora da fare
+
+Riavviare la macchina **senza fare login** e controllare da un altro dispositivo
+che il sito risponda. Il riavvio del 10 agosto non conta come prova, perche' era
+quello dell'aggiornamento che ha rimosso il servizio.
 
 ### 5.8 Impedire che la macchina si addormenti
 
@@ -369,7 +443,10 @@ Cose gia' decise ma non ancora fatte, in ordine di utilita':
 | `src/api.js`                 | tutte le rotte HTTP                                  |
 | `public/js/admin.js`         | il pannello                                          |
 | `prova/backend.mjs`          | i test                                               |
-| `strumenti/`                 | script macOS, da tradurre per Windows                |
+| `strumenti/avvio-automatico.sh`  | avvio automatico sul Mac (launchd)               |
+| `strumenti/servizio-windows.ps1` | avvio automatico su Windows (servizio, NSSM)     |
+| `strumenti/tunnel-cloudflare.sh` | il tunnel sul Mac, ancora da tradurre            |
+| `.npmrc`                     | impedisce a npm di compilare better-sqlite3          |
 
 Una cosa da sapere sul database: il divieto di due visite confermate stesso
 ambulatorio, stesso giorno, stessa ora e' un indice unico parziale,
