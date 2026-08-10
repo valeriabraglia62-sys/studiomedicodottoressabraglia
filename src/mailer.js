@@ -26,7 +26,7 @@ function guscioHtml(titolo, corpo) {
     </div>
     <div style="padding:24px 28px;font-size:15px;line-height:1.6">${corpo}</div>
     <div style="padding:16px 28px;background:#fafbfc;border-top:1px solid #eceff1;font-size:12px;color:#7a8794">
-      Studio Medico &middot; Ambulatori di Arceto e Casalgrande<br>
+      ${esc(config.nomeStudio)} &middot; Ambulatori di Arceto e Casalgrande<br>
       Messaggio automatico, si prega di non rispondere.
     </div>
   </div></body></html>`;
@@ -73,7 +73,7 @@ registraGestore('email', async (payload) => {
     return;
   }
   await transporter.sendMail({
-    from: `"Studio Medico" <${config.email.user}>`,
+    from: `"${config.nomeStudio}" <${config.email.user}>`,
     to: payload.to,
     subject: payload.subject,
     text: payload.text,
