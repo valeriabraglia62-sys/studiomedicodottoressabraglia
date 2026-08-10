@@ -14,11 +14,10 @@ const NOMI_MESI = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno',
 const NOMI_GIORNI = ['domenica', 'lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato'];
 
 const ETICHETTE_MEDICINE = {
-  nuova: 'Nuova',
-  in_lavorazione: 'In lavorazione',
-  pronta: 'Pronta per il ritiro',
-  consegnata: 'Consegnata',
-  annullata: 'Annullata'
+  nuova: 'Da vedere',
+  confermata: 'Confermata',
+  rifiutata: 'Rifiutata',
+  consegnata: 'Consegnata'
 };
 
 let token = localStorage.getItem(CHIAVE_TOKEN) || '';
@@ -341,7 +340,209 @@ function collegamentoTelefono(numero) {
   return a;
 }
 
+// ---- Pezzi di modulo in comune ---------------------------------------------
+
+// Riempito una volta all'accesso: gli ambulatori non cambiano durante il turno.
+let ambulatoriNoti = [];
+
+function scegliAmbulatorio(selezionato) {
+  const el = nodo('select');
+  for (const a of ambulatoriNoti) {
+    const opzione = nodo('option', null, a.nome);
+    opzione.value = a.id;
+    if (a.id === selezionato) opzione.selected = true;
+    el.append(opzione);
+  }
+  return el;
+}
+
+/** Nome, cognome, telefono, email: identici per una visita e per i medicinali. */
+function campiPaziente() {
+  const campi = {
+    nome: inputTesto('', 'Nome'),
+    cognome: inputTesto('', 'Cognome'),
+    telefono: inputTesto('', '333 1234567'),
+    email: inputTesto('', 'nome@esempio.it')
+  };
+  campi.telefono.type = 'tel';
+  campi.email.type = 'email';
+
+  const riga = nodo('div', 'filtri');
+  riga.append(
+    campoModulo('Nome', campi.nome),
+    campoModulo('Cognome', campi.cognome),
+    campoModulo('Telefono', campi.telefono),
+    campoModulo('Email', campi.email)
+  );
+  return { campi, riga };
+}
+
+/**
+ * Il pezzo di modulo che sceglie il quando: ambulatorio, giorno, ora.
+ *
+ * Di norma propone soltanto gli orari davvero liberi, cosi' allo sportello non
+ * si promette un posto che non c'e'. La spunta "orario mio" apre un campo
+ * libero e insieme accende la forzatura: sono la stessa decisione — "lo metto
+ * dove dico io" — quindi e' giusto che siano un gesto solo. Da quel momento in
+ * poi il riquadro sotto dice a voce alta che cosa si sta scavalcando: giornata
+ * di chiusura, fuori orario, data passata.
+ */
+function selettoreQuando(iniziale = {}) {
+  const ambulatorio = scegliAmbulatorio(iniziale.ambulatorio_id);
+
+  const giorno = nodo('input');
+  giorno.type = 'date';
+  giorno.value = iniziale.data || oggiISO();
+
+  const elenco = nodo('select');
+  const manuale = nodo('input');
+  manuale.type = 'time';
+  manuale.step = 900;
+  manuale.value = iniziale.ora || '';
+
+  const spunta = nodo('input');
+  spunta.type = 'checkbox';
+  const etichettaSpunta = nodo('label', 'piccolo');
+  etichettaSpunta.style.cssText = 'display:flex;gap:.35rem;align-items:center;white-space:nowrap';
+  etichettaSpunta.append(spunta, document.createTextNode('orario mio'));
+
+  const avviso = nodo('div', 'piccolo tenue');
+  avviso.style.marginTop = '.4rem';
+
+  async function proponiLiberi() {
+    elenco.replaceChildren();
+    if (!giorno.value) { avviso.textContent = 'Scegli prima il giorno.'; return; }
+    try {
+      const { slot } = await api(`/disponibilita?data=${giorno.value}` +
+        `&ambulatorio_id=${ambulatorio.value}`);
+      const liberi = slot.filter((s) => s.disponibile);
+      for (const s of liberi) {
+        const opzione = nodo('option', null, `${s.ora_inizio}–${s.ora_fine}`);
+        opzione.value = s.ora_inizio;
+        if (s.ora_inizio === iniziale.ora) opzione.selected = true;
+        elenco.append(opzione);
+      }
+      avviso.textContent = liberi.length
+        ? `${liberi.length} orari liberi.`
+        : 'Nessun orario libero in questa giornata: se serve, spunta "orario mio".';
+    } catch (err) {
+      avviso.textContent = err.message;
+    }
+  }
+
+  async function mostraAvvertimenti() {
+    if (!manuale.value) { avviso.textContent = 'Scrivi l\'orario.'; return; }
+    const parametri = new URLSearchParams({
+      data: giorno.value, ora_inizio: manuale.value, ambulatorio_id: ambulatorio.value
+    });
+    try {
+      const { avvertimenti } = await api(`/admin/prenotazioni/avvertimenti?${parametri}`);
+      avviso.textContent = avvertimenti.length
+        ? avvertimenti.join(' ')
+        : 'Orario insolito ma senza problemi.';
+      avviso.className = avvertimenti.length ? 'avviso info piccolo' : 'piccolo tenue';
+    } catch (err) {
+      avviso.textContent = err.message;
+    }
+  }
+
+  const ridisegna = () => {
+    elenco.classList.toggle('nascosto', spunta.checked);
+    manuale.classList.toggle('nascosto', !spunta.checked);
+    avviso.className = 'piccolo tenue';
+    if (spunta.checked) mostraAvvertimenti(); else proponiLiberi();
+  };
+
+  [spunta, giorno, ambulatorio, manuale].forEach((el) => el.addEventListener('change', ridisegna));
+  ridisegna();
+
+  const riquadroOra = nodo('div');
+  riquadroOra.style.cssText = 'display:flex;gap:.5rem;align-items:center';
+  riquadroOra.append(elenco, manuale, etichettaSpunta);
+
+  const riga = nodo('div', 'filtri');
+  riga.append(
+    campoModulo('Ambulatorio', ambulatorio),
+    campoModulo('Giorno', giorno),
+    campoModulo('Orario', riquadroOra)
+  );
+
+  return {
+    riga,
+    avviso,
+    valori: () => ({
+      ambulatorio_id: Number(ambulatorio.value),
+      data: giorno.value,
+      ora_inizio: spunta.checked ? manuale.value : elenco.value,
+      forza: spunta.checked
+    })
+  };
+}
+
+/** Apre e chiude un modulo di inserimento sotto il bottone "+ Aggiungi". */
+function apriChiudi(contenitore, costruisci) {
+  if (contenitore.firstChild) { contenitore.replaceChildren(); return; }
+  contenitore.replaceChildren(costruisci(() => contenitore.replaceChildren()));
+  contenitore.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
 // ---- Prenotazioni ----------------------------------------------------------
+
+/**
+ * Prenotazione presa al telefono e scritta a mano dallo studio.
+ *
+ * Vale la pena ricordarlo qui: al paziente arriva la stessa email di conferma
+ * che riceverebbe prenotando dal sito. Chi la scrive deve saperlo mentre la
+ * scrive, non scoprirlo dopo — per questo l'email e' un campo obbligatorio e
+ * il bottone si chiama "Crea e avvisa".
+ */
+function moduloNuovaPrenotazione(chiudi) {
+  const carta = nodo('div', 'carta');
+  carta.append(nodo('strong', null, '📅 Nuova prenotazione'));
+  carta.append(nodo('p', 'piccolo tenue',
+    'Al paziente arriva la solita email di conferma, con il codice per disdire.'));
+
+  const { campi, riga } = campiPaziente();
+  const quando = selettoreQuando();
+  const problema = inputTesto('', 'Motivo della visita');
+
+  const rigaMotivo = nodo('div', 'filtri');
+  rigaMotivo.append(campoModulo('Motivo', problema));
+
+  carta.append(riga, quando.riga, quando.avviso, rigaMotivo);
+
+  const azioni = nodo('div', 'azioni');
+  const salva = nodo('button', 'bottone', 'Crea e avvisa il paziente');
+  salva.type = 'button';
+  salva.addEventListener('click', () => {
+    salva.disabled = true;
+    protetto(async () => {
+      try {
+        const { prenotazione } = await api('/admin/prenotazioni', {
+          method: 'POST',
+          body: {
+            nome: campi.nome.value, cognome: campi.cognome.value,
+            telefono: campi.telefono.value, email: campi.email.value,
+            problema: problema.value, ...quando.valori()
+          }
+        });
+        avvisa(`Prenotata: ${prenotazione.codice}. Al paziente parte l'email.`, 'ok');
+        chiudi();
+        await caricaPrenotazioni();
+      } finally {
+        salva.disabled = false;
+      }
+    });
+  });
+
+  const esci = nodo('button', 'bottone secondario', 'Chiudi');
+  esci.type = 'button';
+  esci.addEventListener('click', chiudi);
+
+  azioni.append(salva, esci);
+  carta.append(azioni);
+  return carta;
+}
 
 async function caricaPrenotazioni() {
   const parametri = new URLSearchParams();
@@ -360,39 +561,177 @@ async function caricaPrenotazioni() {
     return;
   }
 
-  const righe = prenotazioni.map((p) => [
-    { testo: p.codice, classe: 'codice' },
-    `${dataBreve(p.data)} ${p.ora_inizio}`,
-    `${p.paziente_nome} ${p.paziente_cognome}`,
-    { nodo: collegamentoTelefono(p.paziente_telefono) },
-    p.ambulatorio_nome,
-    p.problema,
-    { nodo: etichetta(p.stato) },
-    { nodo: p.stato === 'confermata' ? pulsanteAnnulla(p.codice) : nodo('span', 'tenue piccolo', '—') }
-  ]);
-
   contenitore.replaceChildren(
     nodo('p', 'piccolo tenue', `${totale} prenotazioni trovate.`),
-    tabella(['Codice', 'Quando', 'Paziente', 'Telefono', 'Ambulatorio', 'Motivo', 'Stato', ''], righe)
+    ...prenotazioni.map(schedaPrenotazione)
   );
 }
 
-function pulsanteAnnulla(codice) {
-  const b = nodo('button', 'bottone pericolo piccolo', 'Annulla');
-  b.type = 'button';
-  b.addEventListener('click', () => {
-    if (!confirm(`Annullare la prenotazione ${codice}? Il paziente riceverà un avviso.`)) return;
-    b.disabled = true;
+/**
+ * Una scheda per appuntamento, come per i medicinali, e per lo stesso motivo:
+ * annullare e spostare fanno partire un'email al paziente, e una riga di
+ * tabella con due bottoncini in fondo li fa sembrare due click qualsiasi.
+ *
+ * "Riprogrammata" e' un'etichetta, non uno stato salvato: nel database la
+ * prenotazione spostata resta 'confermata', altrimenti sparirebbe dall'agenda,
+ * dai promemoria e dai conteggi — che filtrano tutti su quel valore — e
+ * perderebbe la protezione contro la doppia prenotazione.
+ */
+function schedaPrenotazione(p) {
+  const carta = nodo('div', 'carta');
+  const spostata = Boolean(p.riprogrammata_il) && p.stato === 'confermata';
+
+  const testata = nodo('div');
+  testata.style.cssText = 'display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;justify-content:space-between';
+  const sinistra = nodo('div');
+  sinistra.append(
+    nodo('strong', null, `📅 ${p.paziente_nome} ${p.paziente_cognome}`),
+    nodo('div', 'piccolo tenue',
+      `${dataEstesa(p.data)} alle ${p.ora_inizio} · ${p.ambulatorio_nome} · ${p.codice}`)
+  );
+  const testoStato = { confermata: 'Confermata', annullata: 'Annullata' }[p.stato] || p.stato;
+  testata.append(sinistra, etichetta(p.stato, spostata ? 'Riprogrammata' : testoStato));
+  carta.append(testata);
+
+  const recapiti = nodo('div', 'piccolo');
+  recapiti.style.marginTop = '.4rem';
+  recapiti.append(collegamentoTelefono(p.paziente_telefono));
+  recapiti.append(nodo('span', 'tenue', p.paziente_email ? ` · ${p.paziente_email}` : ' · senza email'));
+  carta.append(recapiti);
+
+  if (p.problema) {
+    const motivo = nodo('div', null, p.problema);
+    motivo.style.marginTop = '.5rem';
+    carta.append(motivo);
+  }
+
+  if (spostata) {
+    carta.append(nodo('div', 'piccolo tenue',
+      `Spostata il ${quando(p.riprogrammata_il)}${p.riprogrammata_da ? ` da ${p.riprogrammata_da}` : ''} · ` +
+      `prima era ${dataBreve(p.data_originale)} alle ${p.ora_originale}`));
+  }
+
+  // Annullata: si legge e basta. Riaprirla vorrebbe dire mandare al paziente
+  // una seconda email che smentisce la prima.
+  if (p.stato !== 'confermata') {
+    carta.append(nodo('div', 'piccolo tenue',
+      `Annullata il ${quando(p.annullata_il)}${p.annullata_da ? ` da ${p.annullata_da}` : ''}`));
+    return carta;
+  }
+
+  const sposta = nodo('details');
+  sposta.style.marginTop = '.75rem';
+  sposta.append(nodo('summary', 'piccolo tenue', 'Sposta questo appuntamento'));
+
+  // Il selettore si costruisce solo alla prima apertura: con cinquanta schede
+  // aperte tutte insieme sarebbero cinquanta chiamate agli orari liberi.
+  let quandoNuovo = null;
+  sposta.addEventListener('toggle', () => {
+    if (!sposta.open || quandoNuovo) return;
+    quandoNuovo = selettoreQuando({
+      ambulatorio_id: p.ambulatorio_id, data: p.data, ora: p.ora_inizio
+    });
+    const conferma = nodo('button', 'bottone', 'Sposta e avvisa il paziente');
+    conferma.type = 'button';
+    conferma.addEventListener('click', () => {
+      conferma.disabled = true;
+      protetto(async () => {
+        try {
+          await api(`/admin/prenotazioni/${p.codice}/riprogramma`,
+            { method: 'POST', body: quandoNuovo.valori() });
+          avvisa(`${p.codice}: spostata. Al paziente parte l'email con prima e dopo.`, 'ok');
+          await caricaPrenotazioni();
+        } finally {
+          conferma.disabled = false;
+        }
+      });
+    });
+    const azioniSposta = nodo('div', 'azioni');
+    azioniSposta.append(conferma);
+    sposta.append(quandoNuovo.riga, quandoNuovo.avviso, azioniSposta);
+  });
+  carta.append(sposta);
+
+  const azioni = nodo('div', 'azioni');
+  const annulla = nodo('button', 'bottone pericolo', 'Annulla');
+  annulla.type = 'button';
+  annulla.addEventListener('click', () => {
+    if (!confirm(`Annullare la prenotazione ${p.codice}? Il paziente riceverà un'email.`)) return;
+    annulla.disabled = true;
     protetto(async () => {
-      await api(`/admin/prenotazioni/${codice}/annulla`, { method: 'POST' });
-      avvisa('Prenotazione annullata.', 'ok');
-      await caricaPrenotazioni();
+      try {
+        await api(`/admin/prenotazioni/${p.codice}/annulla`, { method: 'POST' });
+        avvisa(`${p.codice}: annullata. Al paziente parte l'email.`, 'ok');
+        await caricaPrenotazioni();
+      } finally {
+        annulla.disabled = false;
+      }
     });
   });
-  return b;
+  azioni.append(annulla);
+  carta.append(azioni);
+  return carta;
 }
 
 // ---- Medicinali ------------------------------------------------------------
+
+/**
+ * Richiesta di medicinali presa al telefono. Nasce "da vedere" come tutte le
+ * altre: anche se la scrive lo studio, resta una richiesta da confermare, non
+ * una ricetta gia' pronta. Chi la registra non e' detto sia chi la valuta.
+ */
+function moduloNuovaMedicina(chiudi) {
+  const carta = nodo('div', 'carta');
+  carta.append(nodo('strong', null, '💊 Nuova richiesta di medicinali'));
+  carta.append(nodo('p', 'piccolo tenue',
+    'Entra fra quelle da vedere: la conferma o il rifiuto restano un secondo passaggio.'));
+
+  const { campi, riga } = campiPaziente();
+  const farmaci = areaTesto('', 4);
+  const note = areaTesto('', 2);
+  const ambulatorio = scegliAmbulatorio();
+
+  const riga2 = nodo('div', 'filtri');
+  riga2.append(
+    campoModulo('Medicinali', farmaci),
+    campoModulo('Note', note),
+    campoModulo('Ritiro', ambulatorio)
+  );
+  carta.append(riga, riga2);
+
+  const azioni = nodo('div', 'azioni');
+  const salva = nodo('button', 'bottone', 'Registra la richiesta');
+  salva.type = 'button';
+  salva.addEventListener('click', () => {
+    salva.disabled = true;
+    protetto(async () => {
+      try {
+        const { richiesta } = await api('/admin/medicine', {
+          method: 'POST',
+          body: {
+            nome: campi.nome.value, cognome: campi.cognome.value,
+            telefono: campi.telefono.value, email: campi.email.value,
+            farmaci: farmaci.value, note: note.value,
+            ambulatorio_id: Number(ambulatorio.value) || undefined
+          }
+        });
+        avvisa(`Registrata: ${richiesta.codice}. Ora è fra quelle da vedere.`, 'ok');
+        chiudi();
+        await caricaMedicine();
+      } finally {
+        salva.disabled = false;
+      }
+    });
+  });
+
+  const esci = nodo('button', 'bottone secondario', 'Chiudi');
+  esci.type = 'button';
+  esci.addEventListener('click', chiudi);
+
+  azioni.append(salva, esci);
+  carta.append(azioni);
+  return carta;
+}
 
 async function caricaMedicine() {
   const parametri = new URLSearchParams();
@@ -407,44 +746,160 @@ async function caricaMedicine() {
     return;
   }
 
-  const righe = richieste.map((r) => {
-    const farmaci = nodo('div', null, r.farmaci);
-    farmaci.style.whiteSpace = 'pre-line';
-    return [
-      { testo: r.codice, classe: 'codice' },
-      quando(r.creata_il),
-      `${r.nome} ${r.cognome}`,
-      { nodo: collegamentoTelefono(r.telefono) },
-      { nodo: farmaci },
-      r.ambulatorio_nome || '—',
-      { nodo: selettoreStatoMedicine(r) }
-    ];
-  });
-
   contenitore.replaceChildren(
     nodo('p', 'piccolo tenue', `${totale} richieste trovate.`),
-    tabella(['Codice', 'Ricevuta', 'Paziente', 'Telefono', 'Medicinali', 'Ritiro', 'Stato'], righe)
+    ...richieste.map(schedaMedicina)
   );
 }
 
-function selettoreStatoMedicine(r) {
-  const select = nodo('select');
-  for (const [valore, testo] of Object.entries(ETICHETTE_MEDICINE)) {
-    const opzione = nodo('option', null, testo);
-    opzione.value = valore;
-    if (valore === r.stato) opzione.selected = true;
-    select.append(opzione);
+/** Testo lungo che cresce con quello che contiene: gli elenchi di farmaci vanno a capo. */
+function areaTesto(valore, righe = 3) {
+  const el = nodo('textarea', null, valore ?? '');
+  el.rows = righe;
+  el.style.cssText = 'width:100%;font:inherit;padding:.5rem;border-radius:8px;' +
+    'border:1px solid var(--bordo);resize:vertical';
+  return el;
+}
+
+/**
+ * Una scheda per richiesta, non una riga di tabella con la tendina.
+ *
+ * La tendina di prima faceva sembrare tutti i passaggi ugualmente possibili e
+ * tutti reversibili, mentre ognuno di questi bottoni fa partire un'email al
+ * paziente e non si torna indietro. Con i campi scrivibili accanto ai bottoni,
+ * la telefonata al paziente e la correzione dei farmaci sono lo stesso gesto.
+ */
+function schedaMedicina(r) {
+  const carta = nodo('div', 'carta');
+
+  const testata = nodo('div');
+  testata.style.cssText = 'display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;justify-content:space-between';
+  const sinistra = nodo('div');
+  sinistra.append(
+    nodo('strong', null, `💊 ${r.nome} ${r.cognome}`),
+    nodo('div', 'piccolo tenue', `Arrivata il ${quando(r.creata_il)} · ${r.codice}` +
+      (r.origine && r.origine !== 'sito' ? ` · da ${r.origine}` : ''))
+  );
+  testata.append(sinistra, etichetta(r.stato, ETICHETTE_MEDICINE[r.stato]));
+  carta.append(testata);
+
+  const recapiti = nodo('div', 'piccolo');
+  recapiti.style.marginTop = '.4rem';
+  recapiti.append(collegamentoTelefono(r.telefono));
+  recapiti.append(nodo('span', 'tenue', r.email ? ` · ${r.email}` : ' · senza email'));
+  carta.append(recapiti);
+
+  // Chi non ha lasciato un'indirizzo non ricevera' nessuna delle tre email:
+  // va detto qui, prima di premere, non scoperto dopo.
+  if (!r.email) {
+    carta.append(nodo('div', 'avviso info piccolo',
+      'Questo paziente non ha lasciato un\'email: qualunque risposta gli va data a voce.'));
   }
-  select.addEventListener('change', () => {
-    const nuovo = select.value;
-    select.disabled = true;
-    protetto(async () => {
-      await api(`/admin/medicine/${r.codice}`, { method: 'PATCH', body: { stato: nuovo } });
-      avvisa(`${r.codice}: ${ETICHETTE_MEDICINE[nuovo]}.`, 'ok');
-      await caricaMedicine();
+
+  // Quello che aveva chiesto lui, se nel frattempo e' stato corretto.
+  if (r.farmaci_originali) {
+    const prima = nodo('details');
+    prima.style.marginTop = '.6rem';
+    prima.append(nodo('summary', 'piccolo tenue', 'Aveva chiesto'));
+    const testo = nodo('div', 'piccolo', r.farmaci_originali +
+      (r.note_originali ? `\n\nNote: ${r.note_originali}` : ''));
+    testo.style.cssText = 'white-space:pre-line;margin-top:.5rem;background:var(--sfondo);' +
+      'padding:.75rem;border-radius:8px';
+    prima.append(testo);
+    carta.append(prima);
+  }
+
+  const chiusa = r.stato === 'rifiutata' || r.stato === 'consegnata';
+
+  // Chiusa: si legge e basta. Riaprirla vorrebbe dire mandare al paziente una
+  // seconda email che contraddice la prima.
+  if (chiusa) {
+    const testo = nodo('div', null, r.farmaci);
+    testo.style.cssText = 'white-space:pre-line;margin-top:.6rem';
+    carta.append(testo);
+    if (r.note) carta.append(nodo('div', 'piccolo tenue', `Note: ${r.note}`));
+    if (r.motivo_rifiuto) carta.append(nodo('div', 'piccolo tenue', `Motivo: ${r.motivo_rifiuto}`));
+    carta.append(nodo('div', 'piccolo tenue',
+      `${ETICHETTE_MEDICINE[r.stato]} il ${quando(r.gestita_il)}` +
+      (r.gestita_da ? ` da ${r.gestita_da}` : '')));
+    return carta;
+  }
+
+  const campi = { farmaci: areaTesto(r.farmaci, 4), note: areaTesto(r.note, 2) };
+
+  campi.ambulatorio_id = scegliAmbulatorio(r.ambulatorio_id);
+
+  const riga = nodo('div', 'filtri');
+  riga.style.marginTop = '.85rem';
+  riga.append(
+    campoModulo('Medicinali', campi.farmaci),
+    campoModulo('Note', campi.note),
+    campoModulo('Ritiro', campi.ambulatorio_id)
+  );
+  carta.append(riga);
+
+  const azioni = nodo('div', 'azioni');
+  const tutti = [];
+
+  /** Un bottone che si spegne insieme agli altri finche' il server non risponde. */
+  const bottone = (testo, classe, esegui) => {
+    const b = nodo('button', `bottone ${classe}`, testo);
+    b.type = 'button';
+    b.addEventListener('click', () => {
+      const corpo = esegui();
+      if (corpo === null) return;
+      tutti.forEach((x) => { x.disabled = true; });
+      protetto(async () => {
+        try {
+          await api(`/admin/medicine/${r.codice}/${corpo.azione}`,
+            { method: 'POST', body: corpo.dati || {} });
+          avvisa(corpo.fatto, 'ok');
+          await caricaMedicine();
+        } finally {
+          tutti.forEach((x) => { x.disabled = false; });
+        }
+      });
     });
-  });
-  return select;
+    tutti.push(b);
+    azioni.append(b);
+    return b;
+  };
+
+  const avvisata = (verbo) => (r.email
+    ? `${r.codice}: ${verbo}. Al paziente parte l'email.`
+    : `${r.codice}: ${verbo}. Senza email: avvisalo tu.`);
+
+  if (r.stato === 'nuova') {
+    bottone('Conferma così', '', () => ({ azione: 'conferma', fatto: avvisata('confermata') }));
+  }
+
+  bottone(r.stato === 'nuova' ? 'Conferma con modifiche' : 'Salva modifiche', 'secondario', () => ({
+    azione: 'modifica',
+    dati: {
+      farmaci: campi.farmaci.value,
+      note: campi.note.value,
+      ambulatorio_id: Number(campi.ambulatorio_id.value) || undefined
+    },
+    fatto: avvisata('modificata')
+  }));
+
+  if (r.stato === 'nuova') {
+    bottone('Rifiuta', 'pericolo', () => {
+      const motivo = prompt('Perché non si può fare? Il paziente lo legge nell\'email.');
+      if (motivo === null) return null;
+      return { azione: 'rifiuta', dati: { motivo }, fatto: avvisata('rifiutata') };
+    });
+  }
+
+  if (r.stato === 'confermata') {
+    bottone('Ritirata', '', () => {
+      if (!confirm(`${r.codice}: il paziente è passato a ritirare?`)) return null;
+      return { azione: 'consegnata', fatto: `${r.codice}: segnata come consegnata.` };
+    });
+  }
+
+  carta.append(azioni);
+  return carta;
 }
 
 // ---- Email ricevute --------------------------------------------------------
@@ -519,8 +974,6 @@ function schedaEmail(m) {
 // pannello le mostra con i campi gia' compilati ma modificabili: il paziente
 // scrive di fretta e da un telefono, e chi apre lo studio deve poter
 // raddrizzare un orario o un cognome senza rifare tutto a mano.
-
-let ambulatoriNoti = [];
 
 async function caricaModuli() {
   const parametri = new URLSearchParams();
@@ -613,13 +1066,7 @@ function schedaModulo(m) {
   const riga2 = nodo('div', 'filtri');
 
   if (prenotazione) {
-    campi.ambulatorio_id = nodo('select');
-    for (const a of ambulatoriNoti) {
-      const opzione = nodo('option', null, a.nome);
-      opzione.value = a.id;
-      if (a.id === m.ambulatorio_id) opzione.selected = true;
-      campi.ambulatorio_id.append(opzione);
-    }
+    campi.ambulatorio_id = scegliAmbulatorio(m.ambulatorio_id);
 
     campi.data = nodo('input');
     campi.data.type = 'date';
@@ -1034,6 +1481,11 @@ function collegaFiltri() {
   const ricaricaMedicine = attendi(() => protetto(caricaMedicine));
   $('#med-stato').addEventListener('change', ricaricaMedicine);
   $('#med-cerca').addEventListener('input', ricaricaMedicine);
+
+  $('#pren-aggiungi').addEventListener('click', () =>
+    apriChiudi($('#modulo-prenotazione'), moduloNuovaPrenotazione));
+  $('#med-aggiungi').addEventListener('click', () =>
+    apriChiudi($('#modulo-medicina'), moduloNuovaMedicina));
 
   $('#mail-stato').addEventListener('change', () => protetto(caricaEmail));
   $('#mail-controlla').addEventListener('click', (e) => {

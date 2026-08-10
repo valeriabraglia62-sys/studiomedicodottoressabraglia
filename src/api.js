@@ -326,7 +326,7 @@ admin.get('/riepilogo', (_req, res) => {
       prenotazioni_future: conta(
         `SELECT COUNT(*) n FROM prenotazioni WHERE data > ? AND stato = 'confermata'`, oggi),
       medicine_da_evadere: conta(
-        `SELECT COUNT(*) n FROM richieste_medicine WHERE stato IN ('nuova','in_lavorazione')`),
+        `SELECT COUNT(*) n FROM richieste_medicine WHERE stato = 'nuova'`),
       email_da_leggere: conta(`SELECT COUNT(*) n FROM richieste_email WHERE stato = 'nuova'`),
       moduli_da_confermare: moduli.daConfermare(),
       pazienti: conta('SELECT COUNT(*) n FROM pazienti'),
@@ -354,10 +354,64 @@ admin.post('/prenotazioni/:codice/annulla', (req, res) => {
   ok(res, { prenotazione: p, avvisati: attesa.avvisaPerPostoLibero(p) });
 });
 
+/**
+ * Prenotazione scritta a mano dallo studio: la telefonata, il paziente allo
+ * sportello, la visita da recuperare.
+ *
+ * `forza` salta i limiti pensati per chi prenota da solo — orari di apertura,
+ * giorni di anticipo, il passato. Non salta il divieto di mettere due pazienti
+ * nello stesso posto: quello lo tiene il database.
+ */
+admin.post('/prenotazioni', (req, res) => {
+  const p = prenotazioni.creaPrenotazione(
+    { ...req.body, origine: 'studio' },
+    { forza: Boolean(req.body?.forza) }
+  );
+  res.status(201).json({ success: true, prenotazione: p });
+});
+
+/** Prima di forzare: che cosa si sta scavalcando. Non blocca, informa. */
+admin.get('/prenotazioni/avvertimenti', (req, res) => {
+  ok(res, { avvertimenti: prenotazioni.avvertimenti(req.query) });
+});
+
+admin.post('/prenotazioni/:codice/riprogramma', (req, res) => {
+  ok(res, {
+    prenotazione: prenotazioni.riprogramma(
+      req.params.codice, req.body || {}, req.utente.email,
+      { forza: Boolean(req.body?.forza) }
+    )
+  });
+});
+
+/** Richiesta di medicinali presa al telefono e scritta dallo studio. */
+admin.post('/medicine', (req, res) => {
+  const r = medicine.creaRichiesta({ ...req.body, origine: 'studio' });
+  res.status(201).json({ success: true, richiesta: r });
+});
+
 admin.get('/medicine', (req, res) => ok(res, medicine.elencoAdmin(req.query)));
 
-admin.patch('/medicine/:codice', (req, res) => {
-  ok(res, { richiesta: medicine.aggiornaStato(req.params.codice, req.body?.stato) });
+/**
+ * Una rotta per ogni risposta possibile, invece di un solo PATCH con lo stato
+ * dentro. Cosi' il pannello non puo' inventarsi passaggi che non esistono, e
+ * ogni azione porta con se' quello che le serve: il motivo per il rifiuto, i
+ * farmaci corretti per la modifica.
+ */
+admin.post('/medicine/:codice/conferma', (req, res) => {
+  ok(res, { richiesta: medicine.conferma(req.params.codice, req.utente.email) });
+});
+
+admin.post('/medicine/:codice/rifiuta', (req, res) => {
+  ok(res, { richiesta: medicine.rifiuta(req.params.codice, req.body?.motivo, req.utente.email) });
+});
+
+admin.post('/medicine/:codice/modifica', (req, res) => {
+  ok(res, { richiesta: medicine.modifica(req.params.codice, req.body || {}, req.utente.email) });
+});
+
+admin.post('/medicine/:codice/consegnata', (req, res) => {
+  ok(res, { richiesta: medicine.segnaConsegnata(req.params.codice, req.utente.email) });
 });
 
 admin.get('/email', (req, res) => ok(res, inbox.elencoEmail(req.query)));

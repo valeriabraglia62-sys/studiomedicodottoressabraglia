@@ -127,6 +127,10 @@
 
     <!-- Prenotazioni -->
     <section data-pannello="prenotazioni" class="nascosto">
+      <div class="azioni">
+        <button type="button" class="bottone" id="pren-aggiungi">+ Aggiungi prenotazione</button>
+      </div>
+      <div id="modulo-prenotazione"></div>
       <div class="filtri">
         <div class="campo">
           <label for="pren-dal">Dal</label>
@@ -159,16 +163,19 @@
 
     <!-- Medicinali -->
     <section data-pannello="medicine" class="nascosto">
+      <div class="azioni">
+        <button type="button" class="bottone" id="med-aggiungi">+ Aggiungi richiesta</button>
+      </div>
+      <div id="modulo-medicina"></div>
       <div class="filtri">
         <div class="campo">
           <label for="med-stato">Stato</label>
           <select id="med-stato">
             <option value="">Tutti</option>
-            <option value="nuova">Nuove</option>
-            <option value="in_lavorazione">In lavorazione</option>
-            <option value="pronta">Pronte per il ritiro</option>
+            <option value="nuova">Da vedere</option>
+            <option value="confermata">Confermate</option>
+            <option value="rifiutata">Rifiutate</option>
             <option value="consegnata">Consegnate</option>
-            <option value="annullata">Annullate</option>
           </select>
         </div>
         <div class="campo" style="flex:1;min-width:200px">

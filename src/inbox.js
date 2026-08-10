@@ -139,6 +139,8 @@ export function segnaEmail(codice, stato) {
 let inCorso = false;
 let timer = null;
 let ultimoEsito = { mai_eseguito: true };
+// La connessione del giro in corso, per poterla chiudere se sfora il tempo.
+let clientAttivo = null;
 
 // Limite invalicabile per un giro di lettura. I timeout di ImapFlow coprono la
 // connessione, non l'intera sessione: se il server accetta e poi tace, senza
@@ -168,8 +170,15 @@ export async function controllaCasella() {
 
   let scadenza;
   const limite = new Promise((_, rifiuta) => {
-    scadenza = setTimeout(() => rifiuta(new Error('la casella non ha risposto entro 90 secondi')),
-      TEMPO_MASSIMO_MS);
+    scadenza = setTimeout(() => {
+      // Non basta smettere di aspettare: bisogna chiudere davvero la
+      // connessione. Chiudendola, le attese dentro leggiCasella falliscono,
+      // la sua pulizia parte e inCorso si libera da solo. Senza questa riga
+      // la lettura resterebbe aperta a vuoto e bloccherebbe tutti i giri
+      // successivi.
+      try { clientAttivo?.close(); } catch { /* gia' chiusa */ }
+      rifiuta(new Error('la casella non ha risposto entro 90 secondi'));
+    }, TEMPO_MASSIMO_MS);
   });
 
   try {
@@ -179,7 +188,11 @@ export async function controllaCasella() {
     return ultimoEsito;
   } finally {
     clearTimeout(scadenza);
-    inCorso = false;
+    // inCorso NON si azzera qui. Quando vince il limite dei 90 secondi la
+    // lettura vera continua per conto suo: spegnere la spia adesso lascerebbe
+    // partire il giro successivo sopra quello ancora aperto, con due sessioni
+    // IMAP sulla stessa casella che si marcano i messaggi a vicenda.
+    // Lo fa leggiCasella quando ha davvero finito.
   }
 }
 
@@ -189,8 +202,11 @@ async function leggiCasella() {
     return ultimoEsito;
   }
 
-  inCorso = true;
+  // Le librerie si caricano prima di alzare la spia: se l'import fallisse
+  // dopo, inCorso resterebbe acceso per sempre e la lettura non ripartirebbe.
   const { ImapFlow, simpleParser } = await caricaLibreriePosta();
+
+  inCorso = true;
   const client = new ImapFlow({
     host: 'imap.gmail.com',
     port: 993,
@@ -204,6 +220,25 @@ async function leggiCasella() {
     greetingTimeout: 10000,
     socketTimeout: 60000
   });
+
+  /**
+   * Senza questo ascoltatore il server scriveva "[fatale] promise rifiutata".
+   *
+   * Quando la connessione cade a meta' apertura, ImapFlow fa due cose: fa
+   * fallire connect() — quello lo raccogliamo sotto — e poi, da un pezzo di
+   * codice che gira per conto suo, chiama emit('error'). Su un EventEmitter
+   * senza ascoltatore per 'error' quella chiamata *lancia*, e finiva fra le
+   * promise rifiutate come se fosse un guasto grave del server.
+   *
+   * Non e' un guasto: e' la casella irraggiungibile per un momento. Si annota
+   * e si riprova al giro dopo.
+   */
+  client.on('error', (err) => {
+    console.error('[inbox] connessione caduta:', err.message);
+  });
+
+  // Serve al limite dei 90 secondi per poterla chiudere da fuori.
+  clientAttivo = client;
 
   let nuove = 0;
   try {
@@ -250,6 +285,9 @@ async function leggiCasella() {
     // Chiusura secca: logout() puo' a sua volta restare in attesa di una
     // risposta che non arriva mai.
     client.close();
+    clientAttivo = null;
+    // Solo adesso la casella e' davvero libera per il giro successivo.
+    inCorso = false;
   }
 
   return ultimoEsito;
