@@ -15,6 +15,11 @@ data/
 # Dipendenze
 node_modules/
 
+# Programmi esterni presi a mano: non sono nostri e non si versionano. NSSM
+# serve solo sulla macchina Windows e si riscarica da https://nssm.cc/download,
+# versione win64. Lo script strumenti/servizio-windows.ps1 lo cerca qui.
+strumenti/nssm.exe
+
 # Log
 *.log
 logs/
