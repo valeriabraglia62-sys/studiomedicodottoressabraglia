@@ -23,6 +23,8 @@ installa() {
 
   mkdir -p "$HOME/Library/LaunchAgents" "$CARTELLA/logs"
 
+  fermaDoppioni
+
   # Se era gia' installato lo scarico, altrimenti il file nuovo verrebbe ignorato.
   # Lo scarico non e' immediato: se ripartissi subito macOS risponderebbe
   # "Input/output error" e resteremmo senza sito. Quindi aspetto che sparisca.
@@ -92,14 +94,60 @@ PLISTFINE
   stato
 }
 
+pid_ufficiale() {
+  launchctl print "$BERSAGLIO" 2>/dev/null | awk '/^\tpid =/{print $3}'
+}
+
+# Elenca gli altri server.js accesi su questa stessa cartella.
+#
+# Ne basta uno di troppo per combinare guai difficili da capire: due server
+# sullo stesso database mandano le email due volte, e soprattutto quello di
+# troppo serve le pagine nuove (che legge dal disco a ogni richiesta) usando il
+# codice vecchio che si e' caricato in memoria all'accensione. Il risultato e'
+# un pannello aggiornato che risponde "risorsa non trovata" a pulsanti che
+# esistono. E' gia' successo, e da fuori sembrava un errore del sito.
+#
+# Nascono da un "npm start" lanciato a mano per una prova e mai chiuso: launchctl
+# non ne sa niente, quindi un riavvio del servizio se li lascia dietro.
+doppioni() {
+  local ufficiale
+  ufficiale="$(pid_ufficiale)"
+  for pid in $(pgrep -f 'node.*server\.js' 2>/dev/null || true); do
+    [ "$pid" = "${ufficiale:-0}" ] && continue
+    # Solo quelli che girano davvero in questa cartella: un altro progetto
+    # Node sul Mac non c'entra niente e non va toccato.
+    if lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | grep -qx "n$CARTELLA"; then
+      echo "$pid"
+    fi
+  done
+}
+
+fermaDoppioni() {
+  local trovati
+  trovati="$(doppioni)"
+  [ -z "$trovati" ] && return 0
+  echo "Trovati altri server accesi sulla stessa cartella: $(echo $trovati). Li spengo."
+  # shellcheck disable=SC2086
+  kill $trovati 2>/dev/null || true
+  sleep 2
+  trovati="$(doppioni)"
+  # shellcheck disable=SC2086
+  [ -n "$trovati" ] && { kill -9 $trovati 2>/dev/null || true; sleep 1; }
+  return 0
+}
+
 stato() {
   if launchctl print "$BERSAGLIO" >/dev/null 2>&1; then
     local pid
-    pid="$(launchctl print "$BERSAGLIO" | awk '/^\tpid =/{print $3}')"
+    pid="$(pid_ufficiale)"
     if [ -n "$pid" ]; then echo "Acceso (processo $pid)."; else echo "Registrato ma fermo — guarda logs/errori.log"; fi
   else
     echo "Avvio automatico non installato."
   fi
+
+  local altri
+  altri="$(doppioni)"
+  [ -n "$altri" ] && echo "ATTENZIONE: c'e' un altro server acceso sulla stessa cartella ($(echo $altri)). Spegnilo con: ./strumenti/avvio-automatico.sh riavvia"
   echo -n "Risposta del sito: "
   curl -s -o /dev/null -w "HTTP %{http_code}\n" --max-time 5 http://localhost:3000/ || echo "nessuna risposta"
   local ip
@@ -110,7 +158,7 @@ stato() {
 case "${1:-installa}" in
   installa|'') installa ;;
   stato)       stato ;;
-  riavvia)     launchctl kickstart -k "$BERSAGLIO"; sleep 3; stato ;;
+  riavvia)     fermaDoppioni; launchctl kickstart -k "$BERSAGLIO"; sleep 3; stato ;;
   rimuovi)     launchctl bootout "$BERSAGLIO" 2>/dev/null || true
                rm -f "$PLIST"
                echo "Avvio automatico rimosso. Il sito non ripartira' piu' da solo." ;;
