@@ -95,6 +95,12 @@ const stmtGiaVista = db.prepare('SELECT 1 FROM email_processate WHERE message_id
 export function registraEmail({ messageId, mittente, mittenteNome, oggetto, corpo, ricevutaIl }) {
   if (messageId && stmtGiaVista.get(messageId)) return { saltata: true };
 
+  // Il controllo sta qui, non nel giro di lettura: e' questa la funzione che
+  // scrive sulla scrivania, e una difesa messa un passo prima protegge solo chi
+  // passa da quel passo. Chiunque un domani chiami registraEmail da un'altra
+  // strada trova comunque la porta chiusa.
+  if (eNostraNotifica(mittente)) return { saltata: true };
+
   const tipo = classifica(oggetto, corpo);
   const codice = generaCodice('EML');
   const adesso = new Date().toISOString();
@@ -294,11 +300,6 @@ async function leggiCasella() {
         const mail = await simpleParser(msg.source);
         const mittente = mail.from?.value?.[0]?.address || '';
         const oggetto = mail.subject || '';
-
-        if (eNostraNotifica(mittente)) {
-          await client.messageFlagsAdd(String(id), ['\\Seen'], { uid: true });
-          continue;
-        }
 
         const esito = registraEmail({
           messageId: mail.messageId || `uid-${id}`,

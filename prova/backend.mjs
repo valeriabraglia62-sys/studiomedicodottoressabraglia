@@ -336,6 +336,60 @@ console.log('\nEmail in arrivo (rete di sicurezza)');
 
   const inCoda = await chiama('GET', '/api/admin/email', null, token);
   verifica('le email compaiono nell\'area admin', inCoda.dati.totale === 2, `totale ${inCoda.dati.totale}`);
+
+  // La posta che ci siamo mandati da soli non deve rientrare come richiesta:
+  // e' cosi' che le notifiche di spostamento avevano invaso le email da leggere.
+  const nostra = registraEmail({
+    messageId: '<prova-nostra@example.com>',
+    mittente: config.email.user || 'valeriabraglia62@gmail.com',
+    oggetto: 'Spostata: Tizio Caio — 2026-01-01 10:00', corpo: 'Notifica interna.'
+  });
+  verifica('le notifiche partite da noi non rientrano', nostra.saltata === true || !nostra.codice,
+    JSON.stringify(nostra));
+}
+
+console.log('\nIl fascicolo del paziente');
+{
+  const medicine = await import('../src/medicine.js');
+  const mail = 'fascicolo.prova@example.com';
+  const quantiPazienti = () =>
+    db.prepare('SELECT COUNT(*) n FROM pazienti WHERE lower(email) = ?').get(mail).n;
+
+  // Come arrivano quelle scritte a mano allo studio: c'e' l'indirizzo, il
+  // telefono no. Sono proprio quelle che prima restavano appese al nulla.
+  const richiesta = medicine.creaRichiesta({
+    nome: 'Fascicolo', cognome: 'Diprova', email: mail, telefono: '',
+    farmaci: 'Cardioaspirina 100mg', note: '', origine: 'email'
+  });
+  verifica('finche\' e\' da vedere non inventa un paziente',
+    richiesta.paziente_id == null && quantiPazienti() === 0);
+
+  const confermata = medicine.conferma(richiesta.codice, 'prova@studio');
+  verifica('confermarla apre il fascicolo', confermata.paziente_id != null);
+  verifica('e il paziente e\' uno solo', quantiPazienti() === 1);
+
+  const seconda = medicine.conferma(medicine.creaRichiesta({
+    nome: 'Fascicolo', cognome: 'Diprova', email: mail, telefono: '',
+    farmaci: 'Tachipirina 1000', note: '', origine: 'email'
+  }).codice, 'prova@studio');
+  verifica('la richiesta dopo finisce nello stesso fascicolo, non in uno nuovo',
+    seconda.paziente_id === confermata.paziente_id && quantiPazienti() === 1);
+
+  const scheda = await chiama('GET', `/api/admin/pazienti/${confermata.paziente_id}`, null, token);
+  verifica('il fascicolo mostra tutti e due i medicinali',
+    scheda.dati.medicine?.length === 2, JSON.stringify(scheda.dati.medicine?.map((m) => m.codice)));
+  verifica('e dice come e\' finita ognuna',
+    scheda.dati.medicine?.every((m) => 'gestita_il' in m && 'motivo_rifiuto' in m));
+
+  // Un no non deve lasciare in archivio una persona che non e' mai stata paziente.
+  const rifiutata = medicine.creaRichiesta({
+    nome: 'Niente', cognome: 'Difatto', email: 'rifiuto.prova@example.com', telefono: '',
+    farmaci: 'Qualcosa', note: '', origine: 'email'
+  });
+  medicine.rifiuta(rifiutata.codice, 'non si puo\'', 'prova@studio');
+  verifica('rifiutare non apre nessun fascicolo',
+    db.prepare('SELECT COUNT(*) n FROM pazienti WHERE lower(email) = ?')
+      .get('rifiuto.prova@example.com').n === 0);
 }
 
 console.log('\nModuli Google (richieste arrivate a sito spento)');

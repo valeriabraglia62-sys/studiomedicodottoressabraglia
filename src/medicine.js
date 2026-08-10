@@ -127,6 +127,45 @@ function daGestire(codice, statiAmmessi) {
   return richiesta;
 }
 
+/**
+ * Attacca la richiesta al fascicolo di un paziente, creandolo se non c'e'.
+ *
+ * Alla nascita non lo facciamo sempre, e per un buon motivo: una richiesta
+ * arrivata via email puo' averla scritta chiunque, e il nome ricavato
+ * dall'indirizzo ("mario.rossi@" → Mario Rossi) e' un indizio, non un'identita'.
+ * Registrarlo li' vorrebbe dire riempire l'archivio di persone che forse non
+ * esistono. Cosi' pero' quelle richieste restavano appese al nulla: la
+ * consegnata che c'era in archivio non compariva nel fascicolo di nessuno.
+ *
+ * Confermare invece e' un atto: qualcuno ha letto la richiesta, spesso ha anche
+ * telefonato, e ha detto di si'. Da quel momento la persona esiste davvero, e i
+ * medicinali approvati devono stare nel suo fascicolo accanto alle visite —
+ * altrimenti sono foglietti sparsi che al controllo dopo nessuno ritrova.
+ */
+function collegaAlFascicolo(richiesta) {
+  if (richiesta.paziente_id) return null;
+
+  if (telefonoValido(richiesta.telefono)) {
+    return trovaOCreaPaziente({
+      nome: richiesta.nome, cognome: richiesta.cognome,
+      email: richiesta.email, telefono: richiesta.telefono
+    }).id;
+  }
+
+  // Senza telefono l'unica cosa che identifica davvero la persona e'
+  // l'indirizzo. Il nome no: due omonimi senza numero diventerebbero lo stesso
+  // fascicolo, ed e' un errore che in un archivio sanitario non si ripara.
+  const mail = String(richiesta.email || '').trim().toLowerCase();
+  if (!mail) return null;
+
+  const esistente = db.prepare('SELECT id FROM pazienti WHERE lower(email) = ?').get(mail);
+  if (esistente) return esistente.id;
+
+  return db.prepare(
+    'INSERT INTO pazienti (nome, cognome, email, telefono, creato_il) VALUES (?, ?, ?, ?, ?)'
+  ).run(richiesta.nome, richiesta.cognome, mail, '', new Date().toISOString()).lastInsertRowid;
+}
+
 /** Scrive il nuovo stato e rimanda indietro la riga aggiornata. */
 function applica(richiesta, campi, chi) {
   const colonne = Object.keys(campi).map((c) => `${c} = ?`).join(', ');
@@ -153,7 +192,10 @@ const avvisa = (richiesta, componi) => {
 export function conferma(codice, chi = null) {
   const richiesta = daGestire(codice, ['nuova']);
   return db.transaction(() => {
-    const aggiornata = applica(richiesta, { stato: 'confermata' }, chi);
+    const aggiornata = applica(richiesta, {
+      stato: 'confermata',
+      paziente_id: collegaAlFascicolo(richiesta) ?? richiesta.paziente_id
+    }, chi);
     avvisa(aggiornata, emailMedicinaConfermata);
     return aggiornata;
   })();
@@ -207,7 +249,8 @@ export function modifica(codice, correzioni = {}, chi = null) {
       ambulatorio_id: ambulatorio?.id ?? richiesta.ambulatorio_id,
       farmaci_originali: richiesta.farmaci_originali ?? richiesta.farmaci,
       note_originali: richiesta.farmaci_originali ? richiesta.note_originali : richiesta.note,
-      stato: 'confermata'
+      stato: 'confermata',
+      paziente_id: collegaAlFascicolo(richiesta) ?? richiesta.paziente_id
     }, chi);
 
     avvisa(aggiornata, emailMedicinaModificata);

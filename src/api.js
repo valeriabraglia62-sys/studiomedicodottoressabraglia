@@ -445,10 +445,18 @@ admin.get('/pazienti/:id', richiedeAdmin, (req, res) => {
   ok(res, {
     paziente,
     prenotazioni: prenotazioni.perPaziente(paziente.id),
+    // Il fascicolo deve dire anche *come* e' finita: cosa aveva chiesto il
+    // paziente prima che lo richiamassimo, perche' un no e' stato un no, chi ha
+    // firmato la risposta e quando. Senza queste colonne resterebbe un elenco di
+    // nomi di farmaci, che al controllo dopo non spiega niente.
     medicine: db.prepare(`
-      SELECT codice, farmaci, note, stato, creata_il FROM richieste_medicine
-       WHERE paziente_id = ? OR (lower(email) = lower(?) AND ? <> '')
-       ORDER BY creata_il DESC
+      SELECT r.codice, r.farmaci, r.note, r.stato, r.creata_il, r.origine,
+             r.farmaci_originali, r.motivo_rifiuto, r.gestita_il, r.gestita_da,
+             a.nome AS ambulatorio_nome
+        FROM richieste_medicine r
+        LEFT JOIN ambulatori a ON a.id = r.ambulatorio_id
+       WHERE r.paziente_id = ? OR (lower(r.email) = lower(?) AND ? <> '')
+       ORDER BY r.creata_il DESC
     `).all(paziente.id, paziente.email || '', paziente.email || '')
   });
 });
