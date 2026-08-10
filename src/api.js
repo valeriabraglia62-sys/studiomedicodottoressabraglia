@@ -64,6 +64,50 @@ const limiteScrittura = limite({ max: 30, secondi: 60 });
 const limiteLogin = limite({ max: 10, secondi: 300 });
 const limiteChat = limite({ max: 60, secondi: 60 });
 
+/**
+ * Secondo freno sul login, contato per account invece che per indirizzo.
+ *
+ * Quello per indirizzo ferma una macchina sola che prova mille password. Non
+ * ferma pero' mille macchine che ne provano una a testa sullo stesso account:
+ * ognuna resta larghissimamente sotto la soglia, e l'indirizzo del medico e'
+ * noto perche' e' scritto sul sito. Questo freno guarda l'account, quindi vede
+ * l'attacco anche quando arriva sparpagliato.
+ *
+ * Si contano solo i fallimenti, e un accesso riuscito azzera tutto: chi sa la
+ * password non se ne accorge mai, nemmeno dopo qualche errore di battitura.
+ *
+ * Il prezzo da pagare e' che qualcuno puo' sbagliare apposta trenta volte per
+ * tenere fuori il medico per un quarto d'ora. E' un fastidio recuperabile,
+ * mentre lasciare indovinare la password senza limite non lo e'. Con Cloudflare
+ * Access davanti al pannello il problema non si pone: chi non e' in elenco non
+ * arriva nemmeno a questa riga.
+ */
+const MAX_FALLITI = 30;
+const FINESTRA_FALLITI_MS = 15 * 60 * 1000;
+
+// Nessun ritardo sui primi errori, che sono quelli veri delle persone.
+// Poi la pausa raddoppia: rende l'attacco lento senza bloccare nessuno.
+const RITARDI_MS = [0, 0, 0, 500, 1000, 2000, 4000, 8000];
+
+const falliti = new Map();
+
+setInterval(() => {
+  const taglio = Date.now() - FINESTRA_FALLITI_MS;
+  for (const [k, v] of falliti) if (v.ultimo < taglio) falliti.delete(k);
+}, 60000).unref?.();
+
+const pausa = (ms) => (ms ? new Promise((r) => setTimeout(r, ms)) : Promise.resolve());
+
+function fallimentiRecenti(email) {
+  const v = falliti.get(email);
+  if (!v) return 0;
+  if (Date.now() - v.ultimo > FINESTRA_FALLITI_MS) {
+    falliti.delete(email);
+    return 0;
+  }
+  return v.n;
+}
+
 export const router = express.Router();
 router.use(autenticazioneOpzionale);
 
@@ -182,11 +226,30 @@ router.post('/chat', limiteChat, (req, res) => {
 
 // ---- Autenticazione -------------------------------------------------------
 
-router.post('/auth/login', limiteLogin, (req, res) => {
+router.post('/auth/login', limiteLogin, via(async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
+  const da = req.ip || 'ignoto';
+  const prima = fallimentiRecenti(email);
+
+  if (prima >= MAX_FALLITI) {
+    console.error(`[login] account in pausa dopo ${prima} fallimenti: ${email} — ultimo da ${da}`);
+    throw new ErroreDominio(
+      'Troppi tentativi falliti su questo account. Riprova fra un quarto d\'ora.', 429
+    );
+  }
+
   const utente = db.prepare('SELECT * FROM utenti WHERE email = ?').get(email);
 
   if (!utente || !verificaPassword(String(req.body?.password || ''), utente.password_hash)) {
+    const n = prima + 1;
+    falliti.set(email, { n, ultimo: Date.now() });
+
+    // Finisce in logs/errori.log: e' l'unica traccia di un attacco in corso.
+    // Si scrive l'indirizzo tentato, mai la password provata.
+    console.error(`[login] tentativo fallito n.${n} su ${email || '(email vuota)'} da ${da}`);
+
+    await pausa(RITARDI_MS[Math.min(n, RITARDI_MS.length - 1)]);
+
     // Messaggio unico: non riveliamo se l'indirizzo esiste.
     throw new ErroreDominio('Email o password non corretti.', 401);
   }
@@ -195,6 +258,10 @@ router.post('/auth/login', limiteLogin, (req, res) => {
   if (utente.attivo === 0) {
     throw new ErroreDominio('Questo accesso e\' stato sospeso. Rivolgiti al medico.', 403);
   }
+
+  // Chi sa la password riparte pulito: gli errori di battitura non si sommano
+  // fino a chiudergli la porta il giorno dopo.
+  falliti.delete(email);
 
   utenti.segnaAccesso(utente.id);
   const { token, scadenza } = creaSessione(utente.id);
@@ -210,7 +277,7 @@ router.post('/auth/login', limiteLogin, (req, res) => {
       deve_cambiare_password: Boolean(utente.cambio_password)
     }
   });
-});
+}));
 
 /** Cambio della propria password: lo fa l'interessato, serve quella attuale. */
 router.post('/auth/password', limiteLogin, (req, res) => {
