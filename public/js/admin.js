@@ -389,6 +389,28 @@ function scegliAmbulatorio(selezionato) {
   return el;
 }
 
+/**
+ * Dove si ritira una ricetta. Quasi sempre in farmacia, ed e' il valore
+ * predefinito: al paziente non lo si chiede nemmeno piu'. Resta la possibilita'
+ * di indicare un ambulatorio per i casi particolari, ma la sceglie lo studio
+ * quando conferma, non il paziente quando chiede.
+ */
+function scegliRitiro(selezionato) {
+  const el = nodo('select');
+  const farmacia = nodo('option', null, 'In farmacia');
+  farmacia.value = '';
+  if (!selezionato) farmacia.selected = true;
+  el.append(farmacia);
+
+  for (const a of ambulatoriNoti) {
+    const opzione = nodo('option', null, `Ritiro in ${a.nome}`);
+    opzione.value = a.id;
+    if (a.id === selezionato) opzione.selected = true;
+    el.append(opzione);
+  }
+  return el;
+}
+
 /** Nome, cognome, telefono, email: identici per una visita e per i medicinali. */
 function campiPaziente() {
   const campi = {
@@ -750,7 +772,7 @@ function moduloNuovaMedicina(chiudi) {
   const { campi, riga } = campiPaziente();
   const farmaci = areaTesto('', 4);
   const note = areaTesto('', 2);
-  const ambulatorio = scegliAmbulatorio();
+  const ambulatorio = scegliRitiro();
 
   const riga2 = nodo('div', 'filtri');
   riga2.append(
@@ -888,7 +910,7 @@ function schedaMedicina(r) {
 
   const campi = { farmaci: areaTesto(r.farmaci, 4), note: areaTesto(r.note, 2) };
 
-  campi.ambulatorio_id = scegliAmbulatorio(r.ambulatorio_id);
+  campi.ambulatorio_id = scegliRitiro(r.ambulatorio_id);
 
   const riga = nodo('div', 'filtri');
   riga.style.marginTop = '.85rem';
@@ -1025,11 +1047,12 @@ function schedaEmail(m) {
     const b = nodo('button', 'bottone secondario piccolo', testo);
     b.type = 'button';
     b.addEventListener('click', () => {
-      // "Gestita" tocca anche la casella vera, e non si torna indietro con un
-      // click: chi preme deve saperlo prima, non leggerlo dopo nella scheda.
-      if (stato === 'gestita' && m.message_id && !m.cestinata_il
-        && !confirm('Il messaggio verrà spostato nel cestino di Gmail, dove resta '
-          + 'trenta giorni e poi sparisce. Il testo rimane salvato qui. Procedo?')) return;
+      // Prima qui c'era una richiesta di conferma prima di cestinare. E' stata
+      // tolta di proposito: chiudere una pratica e togliere il messaggio dalla
+      // posta in arrivo sono la stessa cosa, e chiederlo ogni volta a chi lo fa
+      // venti volte al giorno non protegge nessuno, insegna solo a premere
+      // "si" senza leggere. Il testo dell'email resta salvato qui comunque, e
+      // la scheda lo dice.
       b.disabled = true;
       protetto(async () => {
         await api(`/admin/email/${m.codice}`, { method: 'PATCH', body: { stato } });

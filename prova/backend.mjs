@@ -343,11 +343,29 @@ console.log('\nEmail in arrivo (rete di sicurezza)');
   });
   verifica('la stessa email non viene elaborata due volte', doppia.saltata === true);
 
-  const incomprensibile = registraEmail({
+  // Il programma prende solo quello che riconosce. Una email che non parla ne'
+  // di visite ne' di medicinali non entra in archivio e non finisce sulla
+  // scrivania: prima ci finiva, e le tre righe che contavano restavano sepolte
+  // sotto le newsletter.
+  //
+  // "ignorata" non vuol dire "buttata": e' il segnale che il giro di lettura usa
+  // per NON segnare il messaggio come letto su Gmail, cosi' resta li' dov'e' e
+  // lo vede una persona. Se un giorno questa riga diventasse "saltata", una
+  // richiesta scritta con parole diverse sparirebbe senza che nessuno la veda.
+  const nonPertinente = registraEmail({
     messageId: '<prova-2@example.com>',
     mittente: 'tizio@example.com', oggetto: 'Boh', corpo: 'Testo senza senso.'
   });
-  verifica('anche l\'email incomprensibile viene salvata', incomprensibile.codice?.startsWith('EML-'));
+  verifica('l\'email che non c\'entra resta fuori dalla scrivania',
+    nonPertinente.ignorata === true && !nonPertinente.codice, JSON.stringify(nonPertinente));
+
+  const visita = registraEmail({
+    messageId: '<prova-3@example.com>',
+    mittente: 'altro@example.com', mittenteNome: 'Maria Neri',
+    oggetto: 'Prenotazione visita', corpo: 'Vorrei prenotare un appuntamento la settimana prossima.'
+  });
+  verifica('l\'email che chiede una visita viene salvata', visita.codice?.startsWith('EML-'),
+    JSON.stringify(visita));
 
   const inCoda = await chiama('GET', '/api/admin/email', null, token);
   verifica('le email compaiono nell\'area admin', inCoda.dati.totale === 2, `totale ${inCoda.dati.totale}`);
@@ -368,16 +386,16 @@ console.log('\nEmail in arrivo (rete di sicurezza)');
   // e' anche il motivo per cui il bottone non deve aspettarlo.
   const inCestino = () => db.prepare(
     `SELECT COUNT(*) n FROM outbox WHERE tipo = 'cestina_email' AND payload LIKE ?`
-  ).get(`%${incomprensibile.codice}%`).n;
+  ).get(`%${visita.codice}%`).n;
 
-  await chiama('PATCH', `/api/admin/email/${incomprensibile.codice}`, { stato: 'archiviata' }, token);
+  await chiama('PATCH', `/api/admin/email/${visita.codice}`, { stato: 'archiviata' }, token);
   verifica('archiviare non tocca la casella', inCestino() === 0);
 
-  await chiama('PATCH', `/api/admin/email/${incomprensibile.codice}`, { stato: 'gestita' }, token);
+  await chiama('PATCH', `/api/admin/email/${visita.codice}`, { stato: 'gestita' }, token);
   verifica('segnarla gestita ordina di cestinare il messaggio', inCestino() === 1);
 
-  await chiama('PATCH', `/api/admin/email/${incomprensibile.codice}`, { stato: 'nuova' }, token);
-  await chiama('PATCH', `/api/admin/email/${incomprensibile.codice}`, { stato: 'gestita' }, token);
+  await chiama('PATCH', `/api/admin/email/${visita.codice}`, { stato: 'nuova' }, token);
+  await chiama('PATCH', `/api/admin/email/${visita.codice}`, { stato: 'gestita' }, token);
   verifica('e non lo riordina a ogni click', inCestino() === 1, `ordini ${inCestino()}`);
 }
 

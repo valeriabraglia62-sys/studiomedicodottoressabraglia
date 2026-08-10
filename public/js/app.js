@@ -156,13 +156,13 @@ async function caricaAmbulatori() {
   stato.ambulatori = ambulatori;
   stato.ambulatorioId = ambulatori[0]?.id ?? null;
 
-  for (const select of [$('#scelta-ambulatorio'), $('#med-ambulatorio')]) {
-    select.replaceChildren(...ambulatori.map((a) => {
-      const opzione = nodo('option', null, a.nome);
-      opzione.value = a.id;
-      return opzione;
-    }));
-  }
+  // Solo la scelta delle visite: per i medicinali il ritiro e' in farmacia e
+  // quel campo non esiste piu' sul modulo del paziente.
+  $('#scelta-ambulatorio').replaceChildren(...ambulatori.map((a) => {
+    const opzione = nodo('option', null, a.nome);
+    opzione.value = a.id;
+    return opzione;
+  }));
 
   $('#elenco-ambulatori').replaceChildren(...ambulatori.map(schedaAmbulatorio));
 }
