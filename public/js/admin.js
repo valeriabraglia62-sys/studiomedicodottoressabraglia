@@ -299,19 +299,52 @@ async function caricaRiepilogo() {
   // apre lo studio vede subito se c'e' arretrato da confermare.
   aggiornaContatoreModuli(riepilogo.moduli_da_confermare);
 
+  // Ogni numero porta dove quel numero si spiega, con il filtro gia' messo:
+  // leggere "3 medicinali da evadere" e poi doverli cercare a mano fra tutti e
+  // duecento e' esattamente il lavoro che il riepilogo dovrebbe risparmiare.
   const voci = [
-    ['Visite oggi', riepilogo.prenotazioni_oggi],
-    ['Da confermare', riepilogo.moduli_da_confermare],
-    ['Visite future', riepilogo.prenotazioni_future],
-    ['Medicinali da evadere', riepilogo.medicine_da_evadere],
-    ['Email da leggere', riepilogo.email_da_leggere],
-    ['Pazienti in archivio', riepilogo.pazienti],
-    ['Consegne in attesa', riepilogo.consegne_in_attesa]
+    ['Visite oggi', riepilogo.prenotazioni_oggi, {
+      scheda: 'prenotazioni',
+      filtri: { '#pren-dal': oggiISO(), '#pren-al': oggiISO(), '#pren-stato': 'confermata', '#pren-cerca': '' }
+    }],
+    ['Da confermare', riepilogo.moduli_da_confermare, {
+      scheda: 'moduli', filtri: { '#mod-stato': 'nuova' }
+    }],
+    ['Visite future', riepilogo.prenotazioni_future, {
+      scheda: 'prenotazioni',
+      filtri: { '#pren-dal': oggiISO(), '#pren-al': '', '#pren-stato': 'confermata', '#pren-cerca': '' }
+    }],
+    ['Medicinali da evadere', riepilogo.medicine_da_evadere, {
+      scheda: 'medicine', filtri: { '#med-stato': 'nuova' }
+    }],
+    ['Email da leggere', riepilogo.email_da_leggere, {
+      scheda: 'email', filtri: { '#mail-stato': 'nuova' }
+    }],
+    ['Pazienti in archivio', riepilogo.pazienti, {
+      scheda: 'pazienti', filtri: { '#paz-cerca': '' }
+    }],
+    ['Consegne in attesa', riepilogo.consegne_in_attesa, { scheda: 'sistema' }]
   ];
 
-  $('#numeri').replaceChildren(...voci.map(([didascalia, valore]) => {
-    const carta = nodo('div', 'carta riquadro-numero');
+  $('#numeri').replaceChildren(...voci.map(([didascalia, valore, vai]) => {
+    const carta = nodo('button', 'carta riquadro-numero');
+    carta.type = 'button';
     carta.append(nodo('div', 'numero', valore), nodo('div', 'didascalia', didascalia));
+
+    // La scheda dei collaboratori e' nascosta alla segreteria, e allo stesso
+    // modo un riquadro non deve portare dove chi guarda non puo' entrare.
+    const linguetta = $(`#schede button[data-scheda="${vai.scheda}"]`);
+    if (!linguetta || linguetta.hidden) return carta;
+
+    carta.style.cursor = 'pointer';
+    carta.title = `Apri ${didascalia.toLowerCase()}`;
+    carta.addEventListener('click', () => {
+      for (const [selettore, valoreFiltro] of Object.entries(vai.filtri || {})) {
+        const campo = $(selettore);
+        if (campo) campo.value = valoreFiltro;
+      }
+      apriScheda(vai.scheda);
+    });
     return carta;
   }));
 
@@ -453,8 +486,31 @@ function selettoreQuando(iniziale = {}) {
     if (spunta.checked) mostraAvvertimenti(); else proponiLiberi();
   };
 
+  /**
+   * Il modulo si apre quasi sempre a giornata iniziata, spesso a studio chiuso.
+   * Partendo da oggi la tendina degli orari resta vuota — gli orari di oggi sono
+   * gia' passati — e da fuori sembra un campo che non si riesce a selezionare,
+   * non una giornata senza posti. Quindi si parte dal primo giorno che un posto
+   * libero ce l'ha davvero.
+   *
+   * Vale solo quando si apre un modulo nuovo: se stiamo modificando una
+   * prenotazione che esiste, il suo giorno non si tocca.
+   */
+  async function partiDaUnGiornoUtile() {
+    if (iniziale.data) return;
+    try {
+      const { giorni } = await api(`/calendario?ambulatorio_id=${ambulatorio.value}`);
+      const utile = (giorni || []).find((g) => g.liberi > 0);
+      if (utile && utile.data !== giorno.value) {
+        giorno.value = utile.data;
+        proponiLiberi();
+      }
+    } catch { /* se non risponde resta oggi: lo dice gia' l'avviso */ }
+  }
+
   [spunta, giorno, ambulatorio, manuale].forEach((el) => el.addEventListener('change', ridisegna));
   ridisegna();
+  partiDaUnGiornoUtile();
 
   const riquadroOra = nodo('div');
   riquadroOra.style.cssText = 'display:flex;gap:.5rem;align-items:center';

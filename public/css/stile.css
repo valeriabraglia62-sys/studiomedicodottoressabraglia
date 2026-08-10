@@ -506,6 +506,27 @@ td.codice { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-si
 .riquadro-numero .numero { font-size: 2rem; font-weight: 700; color: var(--verde); line-height: 1.1; }
 .riquadro-numero .didascalia { font-size: .8rem; color: var(--testo-tenue); }
 
+/* Nel riepilogo il riquadro e' un bottone, perche' porta alla scheda dove quel
+   numero si spiega. Deve restare identico a una carta — il bottone di suo
+   porterebbe carattere, colore e larghezza propri — e cambiare solo sotto il
+   mouse, che e' l'unico modo per far capire che si puo' premere. */
+button.riquadro-numero {
+  font: inherit;
+  color: inherit;
+  display: block;
+  width: 100%;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s, transform .15s;
+}
+button.riquadro-numero:hover {
+  border-color: var(--verde);
+  transform: translateY(-2px);
+}
+button.riquadro-numero:focus-visible {
+  outline: 2px solid var(--verde);
+  outline-offset: 2px;
+}
+
 td select {
   padding: .35rem .5rem;
   border: 1px solid var(--bordo);
