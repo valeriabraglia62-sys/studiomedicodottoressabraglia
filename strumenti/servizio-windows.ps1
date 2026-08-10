@@ -75,13 +75,45 @@ function trovaNode {
 # non la espone, quindi qui si guarda chi tiene occupata la porta: e' comunque
 # quello il conflitto che conta, perche' due server sulla stessa porta non
 # possono convivere e il secondo sarebbe partito da questa cartella.
-function doppioni {
-  param([int]$PidUfficiale = 0)
+function pidUfficiale {
+  $s = Get-CimInstance Win32_Service -Filter "Name='$SERVIZIO'" -ErrorAction SilentlyContinue
+  if ($s -and $s.ProcessId) { [int]$s.ProcessId } else { 0 }
+}
 
+# Tutti i processi che appartengono al servizio, figli compresi.
+#
+# NSSM fa da guscio: quello che Windows registra come "il processo del servizio"
+# e' nssm.exe, mentre a tenere la porta e' il node che gli sta sotto. Guardando
+# solo il PID del servizio, il suo stesso server risulterebbe un intruso: prima
+# veniva segnalato come doppione da spegnere, che e' il consiglio peggiore
+# possibile.
+function processiDelServizio {
+  $radice = pidUfficiale
+  if (-not $radice) { return @() }
+
+  $tutti = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+  $suoi = [System.Collections.Generic.HashSet[int]]::new()
+  [void]$suoi.Add($radice)
+
+  # Si scende di generazione in generazione finche' non si aggiunge piu' nessuno.
+  $trovatoQualcosa = $true
+  while ($trovatoQualcosa) {
+    $trovatoQualcosa = $false
+    foreach ($p in $tutti) {
+      if ($suoi.Contains([int]$p.ParentProcessId) -and $suoi.Add([int]$p.ProcessId)) {
+        $trovatoQualcosa = $true
+      }
+    }
+  }
+  $suoi
+}
+
+function doppioni {
+  $suoi = processiDelServizio
   $connessioni = Get-NetTCPConnection -LocalPort $PORTA -State Listen -ErrorAction SilentlyContinue
   $trovati = @()
   foreach ($c in $connessioni) {
-    if ($c.OwningProcess -eq $PidUfficiale) { continue }
+    if ($suoi -and $suoi.Contains([int]$c.OwningProcess)) { continue }
     $p = Get-CimInstance Win32_Process -Filter "ProcessId=$($c.OwningProcess)" -ErrorAction SilentlyContinue
     if ($p -and $p.CommandLine -match 'server\.js') { $trovati += [int]$c.OwningProcess }
   }
@@ -89,9 +121,7 @@ function doppioni {
 }
 
 function fermaDoppioni {
-  param([int]$PidUfficiale = 0)
-
-  $trovati = @(doppioni -PidUfficiale $PidUfficiale)
+  $trovati = @(doppioni)
   if ($trovati.Count -eq 0) { return }
 
   Write-Host "Trovati altri server accesi sulla porta $PORTA ($($trovati -join ', ')). Li spengo."
@@ -99,9 +129,18 @@ function fermaDoppioni {
   Start-Sleep -Seconds 2
 }
 
-function pidUfficiale {
-  $s = Get-CimInstance Win32_Service -Filter "Name='$SERVIZIO'" -ErrorAction SilentlyContinue
-  if ($s -and $s.ProcessId) { [int]$s.ProcessId } else { 0 }
+# Il servizio risponde "avviato" appena NSSM parte, ma node ci mette ancora
+# qualche istante ad aprire la porta. Chiedere una volta sola dice "nessuna
+# risposta" su un sito che sta benissimo, quindi si riprova per un po'.
+function rispostaDelSito {
+  param([int]$SecondiMax = 3)
+
+  $fine = (Get-Date).AddSeconds($SecondiMax)
+  do {
+    try { return (Invoke-WebRequest "http://localhost:$PORTA/" -UseBasicParsing -TimeoutSec 5).StatusCode }
+    catch { Start-Sleep -Seconds 1 }
+  } while ((Get-Date) -lt $fine)
+  $null
 }
 
 function installa {
@@ -116,8 +155,7 @@ function installa {
   $esistente = Get-Service -Name $SERVIZIO -ErrorAction SilentlyContinue
   if ($esistente) {
     Write-Host "Servizio gia' presente: lo fermo per aggiornarlo."
-    & $nssm stop $SERVIZIO | Out-Null
-    Start-Sleep -Seconds 2
+    fermaServizio
   } else {
     & $nssm install $SERVIZIO $node 'server.js'
   }
@@ -143,14 +181,33 @@ function installa {
   & $nssm set $SERVIZIO AppRotateBytes 10485760
 
   fermaDoppioni
-  & $nssm start $SERVIZIO
-  Start-Sleep -Seconds 3
+  avviaServizio
 
   Write-Host "Installato. Il sito ripartira' da solo a ogni accensione."
-  stato
+  stato -AttesaSito 30
+}
+
+# Avvio e arresto passano da PowerShell e non da NSSM perche' PowerShell aspetta
+# davvero il cambio di stato. Con "nssm start" il comando torna subito e stampa
+# "stato inatteso SERVICE_START_PENDING", che sembra un guasto e invece e' solo
+# il servizio che sta ancora partendo.
+function avviaServizio {
+  Start-Service -Name $SERVIZIO
+  (Get-Service -Name $SERVIZIO).WaitForStatus('Running', [TimeSpan]::FromSeconds(30))
+}
+
+function fermaServizio {
+  $s = Get-Service -Name $SERVIZIO -ErrorAction SilentlyContinue
+  if (-not $s -or $s.Status -eq 'Stopped') { return }
+  Stop-Service -Name $SERVIZIO -Force
+  $s.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30))
 }
 
 function stato {
+  # Dopo un avvio si concede piu' tempo al sito per rispondere; a freddo no,
+  # altrimenti un semplice "stato" resterebbe fermo mezzo minuto per niente.
+  param([int]$AttesaSito = 3)
+
   $s = Get-Service -Name $SERVIZIO -ErrorAction SilentlyContinue
   if (-not $s) {
     Write-Host 'Avvio automatico non installato.'
@@ -163,15 +220,15 @@ function stato {
     }
   }
 
-  $altri = @(doppioni -PidUfficiale (pidUfficiale))
+  $altri = @(doppioni)
   if ($altri.Count -gt 0) {
     Write-Host "ATTENZIONE: c'e' un altro server acceso sulla porta $PORTA ($($altri -join ', ')). Spegnilo con: .\strumenti\servizio-windows.ps1 riavvia"
   }
 
-  try {
-    $r = Invoke-WebRequest "http://localhost:$PORTA/" -UseBasicParsing -TimeoutSec 5
-    Write-Host "Risposta del sito: HTTP $($r.StatusCode)"
-  } catch {
+  $codice = rispostaDelSito -SecondiMax $AttesaSito
+  if ($codice) {
+    Write-Host "Risposta del sito: HTTP $codice"
+  } else {
     Write-Host 'Risposta del sito: nessuna risposta'
   }
 
@@ -185,13 +242,10 @@ function riavvia {
   if (-not (sonoAmministratore)) {
     throw 'Serve PowerShell aperto come amministratore.'
   }
-  $nssm = trovaNssm
-  & $nssm stop $SERVIZIO | Out-Null
-  Start-Sleep -Seconds 2
+  fermaServizio
   fermaDoppioni
-  & $nssm start $SERVIZIO | Out-Null
-  Start-Sleep -Seconds 3
-  stato
+  avviaServizio
+  stato -AttesaSito 30
 }
 
 function rimuovi {
@@ -199,8 +253,7 @@ function rimuovi {
     throw 'Serve PowerShell aperto come amministratore.'
   }
   $nssm = trovaNssm
-  & $nssm stop $SERVIZIO | Out-Null
-  Start-Sleep -Seconds 2
+  fermaServizio
   & $nssm remove $SERVIZIO confirm | Out-Null
   Write-Host "Avvio automatico rimosso. Il sito non ripartira' piu' da solo."
 }
