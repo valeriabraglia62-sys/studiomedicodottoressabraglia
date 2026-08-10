@@ -344,8 +344,18 @@ nascondere le righe che contano; per sapere che sta lavorando c'e'
 Si registra cosi', da PowerShell **come amministratore**:
 
 ```powershell
-schtasks /create /tn "StudioMedico - sorveglianza" /tr "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\Users\valer\Desktop\studiomedicodottoressabraglia\strumenti\sorveglia-servizio.ps1\"" /sc minute /mo 10 /ru SYSTEM /rl HIGHEST /f
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\valer\Desktop\studiomedicodottoressabraglia\strumenti\sorveglia-servizio.ps1" registra
 ```
+
+Se ne occupa lo script stesso, e non e' un vezzo: il comando equivalente scritto
+con `schtasks` porta virgolette dentro virgolette in sintassi `cmd`, e PowerShell
+le smonta prima che `schtasks` le veda. Il risultato e' che l'attivita' non
+nasce, con un errore che parla di un'opzione mancante e non lascia capire il
+perche'. Provato dal vivo il 10 agosto 2026.
+
+L'attivita' ha due inneschi: uno a ogni accensione, che copre il ritorno dopo un
+blackout, e uno ripetuto ogni dieci minuti per tutto il resto. Con `rimuovi` si
+toglie.
 
 **Quando serve fermare il servizio di proposito** — una manutenzione, o lanciare
 `npm run prova` — prima si crea il file `logs\sorveglianza-in-pausa`, altrimenti
