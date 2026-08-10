@@ -14,11 +14,25 @@ import { config } from './config.js';
 const CARTELLA = path.join(path.dirname(config.dbFile), 'backup');
 const COPIE_DA_TENERE = 14;
 
+// Le copie prendono il nome dal database che stiamo copiando, non un "medstudent-"
+// scritto fisso. I test girano su data/prova.sqlite, che sta nella stessa cartella
+// e quindi finisce nella stessa cartella di backup: con il nome fisso le copie di
+// prova, vuote, diventavano indistinguibili da quelle vere, e ruota() le contava
+// fra le quattordici da tenere spingendo fuori i backup buoni. Quattordici
+// esecuzioni dei test e non restava una copia utile.
+const PREFISSO = `${path.basename(config.dbFile, path.extname(config.dbFile))}-`;
+
+/** Le copie di questo database, dalla piu' vecchia alla piu' recente. */
+const copieEsistenti = () =>
+  fs.readdirSync(CARTELLA)
+    .filter((f) => f.startsWith(PREFISSO) && f.endsWith('.sqlite'))
+    .sort();
+
 const timbro = () => new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
 
 export async function eseguiBackup() {
   fs.mkdirSync(CARTELLA, { recursive: true });
-  const destinazione = path.join(CARTELLA, `medstudent-${timbro()}.sqlite`);
+  const destinazione = path.join(CARTELLA, `${PREFISSO}${timbro()}.sqlite`);
 
   await db.backup(destinazione);
   ruota();
@@ -28,10 +42,7 @@ export async function eseguiBackup() {
 
 /** Tiene solo le ultime copie: senza questo la cartella cresce all'infinito. */
 function ruota() {
-  const copie = fs.readdirSync(CARTELLA)
-    .filter((f) => f.startsWith('medstudent-') && f.endsWith('.sqlite'))
-    .sort()
-    .reverse();
+  const copie = copieEsistenti().reverse();
 
   for (const vecchia of copie.slice(COPIE_DA_TENERE)) {
     fs.unlinkSync(path.join(CARTELLA, vecchia));
@@ -41,9 +52,7 @@ function ruota() {
 export function statoBackup() {
   if (!fs.existsSync(CARTELLA)) return { copie: 0, ultima: null };
 
-  const copie = fs.readdirSync(CARTELLA)
-    .filter((f) => f.startsWith('medstudent-') && f.endsWith('.sqlite'))
-    .sort();
+  const copie = copieEsistenti();
   const ultima = copie.at(-1);
 
   return {
