@@ -30,6 +30,11 @@ process.env.GOOGLE_SHEETS_ENABLED = 'false';
 // fallite oscillava fra 11 e 12 senza che nessuno avesse toccato niente.
 process.env.GOOGLE_MODULI_ENABLED = 'false';
 
+// Le copie di sicurezza delle prove restano qui dentro. Senza questa riga
+// seguirebbero CARTELLA_BACKUP del .env, che sul server punta a OneDrive: ogni
+// "npm run prova" caricherebbe sul cloud una copia di un database usa e getta.
+process.env.CARTELLA_BACKUP = path.join(RADICE, 'data', 'backup-prova');
+
 // Nessuna credenziale: le email restano in coda invece di partire davvero.
 process.env.EMAIL_USER = '';
 process.env.EMAIL_PASS = '';
