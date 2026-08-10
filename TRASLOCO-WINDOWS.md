@@ -357,14 +357,18 @@ L'attivita' ha due inneschi: uno a ogni accensione, che copre il ritorno dopo un
 blackout, e uno ripetuto ogni dieci minuti per tutto il resto. Con `rimuovi` si
 toglie.
 
-**Quando serve fermare il servizio di proposito** — una manutenzione, o lanciare
-`npm run prova` — prima si crea il file `logs\sorveglianza-in-pausa`, altrimenti
-la sorveglianza lo riaccende sotto le mani e si finisce a litigare con la propria
-automazione. Finito, si cancella il file.
+**Quando serve fermare il servizio di proposito** — una manutenzione, un
+aggiornamento del codice, o lanciare `npm run prova` — si usa `ferma`, e alla
+fine `avvia`. Da amministratore:
 
 ```powershell
-New-Item -ItemType File -Force logs\sorveglianza-in-pausa
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\valer\Desktop\studiomedicodottoressabraglia\strumenti\servizio-windows.ps1" ferma
 ```
+
+`ferma` mette anche la sorveglianza in pausa da solo, e `avvia` la riattiva.
+Senza quella pausa, entro dieci minuti la sorveglianza rimetterebbe in piedi il
+servizio proprio mentre ci si sta lavorando, e chi lavora non capirebbe perche'
+il server gli riparte da solo. E' il tipo di cosa che fa perdere un pomeriggio.
 
 Da notare che l'archivio non ha corso pericoli: il server si era chiuso in modo
 pulito e il database e' rimasto integro.

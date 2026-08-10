@@ -2,6 +2,8 @@
 #
 #   .\strumenti\servizio-windows.ps1              installa (o aggiorna)
 #   .\strumenti\servizio-windows.ps1 stato        dice se sta girando
+#   .\strumenti\servizio-windows.ps1 ferma        spegne il sito per lavorarci
+#   .\strumenti\servizio-windows.ps1 avvia        lo riaccende
 #   .\strumenti\servizio-windows.ps1 riavvia      lo spegne e riaccende
 #   .\strumenti\servizio-windows.ps1 rimuovi      toglie l'avvio automatico
 #
@@ -19,7 +21,7 @@
 # macchina per accorgersene.
 
 param(
-  [ValidateSet('installa', 'stato', 'riavvia', 'rimuovi')]
+  [ValidateSet('installa', 'stato', 'ferma', 'avvia', 'riavvia', 'rimuovi')]
   [string]$Azione = 'installa',
 
   # Dove sta nssm.exe. Se non lo passi lo cerco in strumenti\ e poi nel PATH.
@@ -271,9 +273,40 @@ function rimuovi {
   Write-Host "Avvio automatico rimosso. Il sito non ripartira' piu' da solo."
 }
 
+# Spegne il sito per una manutenzione: i test, un aggiornamento del codice, una
+# copia dell'archivio a mano.
+#
+# Mette anche in pausa la sorveglianza, altrimenti entro dieci minuti quella
+# rimetterebbe in piedi il servizio proprio mentre si sta lavorando, e chi
+# lavora non capirebbe perche' il server gli riparte da solo.
+function ferma {
+  if (-not (sonoAmministratore)) {
+    throw 'Serve PowerShell aperto come amministratore.'
+  }
+  New-Item -ItemType Directory -Force $LOGS | Out-Null
+  New-Item -ItemType File -Force (Join-Path $LOGS 'sorveglianza-in-pausa') | Out-Null
+  fermaServizio
+  fermaDoppioni
+  Write-Host "Servizio fermo e sorveglianza in pausa. Il sito adesso non risponde."
+  Write-Host "Quando hai finito:  .\strumenti\servizio-windows.ps1 avvia"
+}
+
+function avvia {
+  if (-not (sonoAmministratore)) {
+    throw 'Serve PowerShell aperto come amministratore.'
+  }
+  fermaDoppioni
+  avviaServizio
+  Remove-Item (Join-Path $LOGS 'sorveglianza-in-pausa') -ErrorAction SilentlyContinue
+  Write-Host 'Servizio riacceso e sorveglianza riattivata.'
+  stato -AttesaSito 30
+}
+
 switch ($Azione) {
   'installa' { installa }
   'stato'    { stato }
+  'ferma'    { ferma }
+  'avvia'    { avvia }
   'riavvia'  { riavvia }
   'rimuovi'  { rimuovi }
 }
