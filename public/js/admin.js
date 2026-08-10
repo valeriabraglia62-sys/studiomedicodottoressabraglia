@@ -1227,15 +1227,150 @@ async function caricaPazienti() {
     return;
   }
 
+  // Il fascicolo lo apre solo il medico: contiene i motivi delle visite, che
+  // alla segreteria non servono per fare il suo lavoro. Il server la respinge
+  // comunque, ma un nome che non si apre e' piu' onesto di un errore dopo il
+  // click.
+  const medico = utenteAttivo?.ruolo === 'admin';
+
   contenitore.replaceChildren(tabella(
     ['Cognome e nome', 'Telefono', 'Email', 'Visite'],
     pazienti.map((p) => [
-      `${p.cognome} ${p.nome}`,
+      { nodo: medico ? apriFascicoloBottone(p) : nodo('span', null, `${p.cognome} ${p.nome}`) },
       { nodo: collegamentoTelefono(p.telefono) },
       p.email || '—',
       p.visite
     ])
   ));
+}
+
+function apriFascicoloBottone(p) {
+  const b = nodo('button', null, `${p.cognome} ${p.nome}`);
+  b.type = 'button';
+  b.style.cssText = 'background:none;border:0;padding:0;font:inherit;color:var(--verde);'
+    + 'cursor:pointer;text-align:left;text-decoration:underline';
+  b.addEventListener('click', () => protetto(() => apriFascicolo(p.id)));
+  return b;
+}
+
+/**
+ * Il fascicolo del paziente: visite e medicinali nella stessa schermata.
+ *
+ * Finora queste due cose vivevano in due schede diverse e non si incontravano
+ * mai. Ma la domanda che ci si fa davanti a una persona non e' "quali
+ * prenotazioni ha" ne' "quali ricette ha chiesto": e' "cos'e' successo a questa
+ * persona". Rispondere richiede di vedere le due storie una accanto all'altra.
+ *
+ * Le terapie approvate stanno in cima e da sole. Una richiesta rifiutata o
+ * ancora da vedere e' una pratica; una confermata e' una cosa che il paziente
+ * sta prendendo davvero, e mescolarle vorrebbe dire dover leggere ogni riga per
+ * sapere quali sono le seconde.
+ */
+async function apriFascicolo(id) {
+  const { paziente, prenotazioni, medicine } = await api(`/admin/pazienti/${id}`);
+  const contenitore = $('#elenco-pazienti');
+
+  const indietro = nodo('button', 'bottone secondario piccolo', '← Torna all\'elenco');
+  indietro.type = 'button';
+  indietro.addEventListener('click', () => protetto(caricaPazienti));
+  const barra = nodo('div', 'azioni');
+  barra.append(indietro);
+
+  const intestazione = nodo('div', 'carta');
+  intestazione.append(nodo('h3', null, `${paziente.cognome} ${paziente.nome}`));
+  const recapiti = nodo('div', 'piccolo');
+  recapiti.append(collegamentoTelefono(paziente.telefono));
+  recapiti.append(nodo('span', 'tenue', paziente.email ? ` · ${paziente.email}` : ' · senza email'));
+  intestazione.append(recapiti);
+  intestazione.append(nodo('div', 'piccolo tenue', `In archivio dal ${quando(paziente.creato_il)}`));
+
+  const attive = medicine.filter((m) => m.stato === 'confermata' || m.stato === 'consegnata');
+  const altre = medicine.filter((m) => !attive.includes(m));
+
+  contenitore.replaceChildren(
+    barra,
+    intestazione,
+    sezioneFascicolo('💊 Medicinali approvati', attive.map((m) => rigaMedicinaFascicolo(m)),
+      'Nessun medicinale approvato per questo paziente.'),
+    sezioneFascicolo('📋 Altre richieste di medicinali', altre.map((m) => rigaMedicinaFascicolo(m)), null),
+    sezioneFascicolo('📅 Visite', prenotazioni.map((p) => rigaVisitaFascicolo(p)),
+      'Nessuna visita registrata.')
+  );
+}
+
+/** Un blocco del fascicolo. Se non ha righe e non ha niente da dire, sparisce. */
+function sezioneFascicolo(titolo, righe, seVuoto) {
+  const carta = nodo('div', 'carta');
+  carta.style.marginTop = '1rem';
+  carta.append(nodo('h3', null, titolo));
+  if (!righe.length) {
+    if (!seVuoto) { carta.hidden = true; return carta; }
+    carta.append(nodo('p', 'piccolo tenue', seVuoto));
+    return carta;
+  }
+  righe.forEach((r) => carta.append(r));
+  return carta;
+}
+
+function rigaFascicolo() {
+  const riga = nodo('div');
+  riga.style.cssText = 'padding:.7rem 0;border-top:1px solid var(--bordo)';
+  return riga;
+}
+
+function rigaMedicinaFascicolo(m) {
+  const riga = rigaFascicolo();
+
+  const testa = nodo('div');
+  testa.style.cssText = 'display:flex;flex-wrap:wrap;gap:.5rem;justify-content:space-between;align-items:center';
+  testa.append(
+    nodo('span', 'piccolo tenue', `${quando(m.creata_il)} · ${m.codice}`
+      + (m.origine && m.origine !== 'sito' ? ` · da ${m.origine}` : '')),
+    etichetta(m.stato, ETICHETTE_MEDICINE[m.stato])
+  );
+  riga.append(testa);
+
+  const farmaci = nodo('div', null, m.farmaci);
+  farmaci.style.whiteSpace = 'pre-wrap';
+  riga.append(farmaci);
+
+  if (m.note) riga.append(nodo('div', 'piccolo tenue', m.note));
+
+  // Se l'elenco e' stato corretto al telefono, quello che il paziente aveva
+  // chiesto resta scritto: e' la differenza fra i due che spiega la telefonata.
+  if (m.farmaci_originali && m.farmaci_originali !== m.farmaci) {
+    const prima = nodo('details');
+    prima.append(nodo('summary', 'piccolo tenue', 'Aveva chiesto'));
+    const testo = nodo('div', 'piccolo tenue', m.farmaci_originali);
+    testo.style.whiteSpace = 'pre-wrap';
+    prima.append(testo);
+    riga.append(prima);
+  }
+
+  if (m.motivo_rifiuto) riga.append(nodo('div', 'piccolo tenue', `Rifiutata: ${m.motivo_rifiuto}`));
+  if (m.gestita_il) {
+    riga.append(nodo('div', 'piccolo tenue',
+      `${ETICHETTE_MEDICINE[m.stato]} il ${quando(m.gestita_il)}`
+      + (m.gestita_da ? ` da ${m.gestita_da}` : '')));
+  }
+  return riga;
+}
+
+function rigaVisitaFascicolo(p) {
+  const riga = rigaFascicolo();
+  const spostata = Boolean(p.riprogrammata_il) && p.stato === 'confermata';
+
+  const testa = nodo('div');
+  testa.style.cssText = 'display:flex;flex-wrap:wrap;gap:.5rem;justify-content:space-between;align-items:center';
+  const testoStato = { confermata: 'Confermata', annullata: 'Annullata' }[p.stato] || p.stato;
+  testa.append(
+    nodo('span', null, `${dataEstesa(p.data)} alle ${p.ora_inizio} · ${p.ambulatorio_nome}`),
+    etichetta(p.stato, spostata ? 'Riprogrammata' : testoStato)
+  );
+  riga.append(testa);
+  riga.append(nodo('div', 'piccolo tenue', p.codice));
+  if (p.problema) riga.append(nodo('div', null, p.problema));
+  return riga;
 }
 
 // ---- Collaboratori ---------------------------------------------------------
