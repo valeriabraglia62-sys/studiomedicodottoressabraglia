@@ -338,19 +338,59 @@ Riavviare la macchina **senza fare login** e controllare da un altro dispositivo
 che il sito risponda. Il riavvio del 10 agosto non conta come prova, perche' era
 quello dell'aggiornamento che ha rimosso il servizio.
 
-### 5.8 Impedire che la macchina si addormenti
+### 5.8 Impedire che la macchina si addormenti — FATTO il 10 agosto 2026, manca solo l'ibernazione
 
 Uno standby dopo mezz'ora e' lo scenario cattivo: nessuno la tocca perche' e' un
 server, quindi si addormenta proprio quando non c'e' nessuno li' a riaccenderla.
+Era impostata a 15 minuti con la corrente attaccata, quindi il problema era
+reale e attivo.
+
+**La macchina e' un portatile**, un ASUS VivoBook X580GD, e questo cambia il
+capitolo: il documento era scritto pensando a un fisso. Un portatile ha due
+punti deboli in piu' e uno in meno.
+
+Quello in meno: **niente da toccare nel BIOS**. Sui fissi serve l'impostazione
+"riaccenditi quando torna la corrente", altrimenti dopo un blackout la macchina
+resta spenta e tutto il lavoro sul servizio non serve. Qui c'e' la batteria, che
+fa da gruppo di continuita': un blackout non spegne niente.
+
+I due in piu':
+
+- **A batteria si sospendeva dopo 10 minuti.** Cosi' la batteria non serviva a
+  niente: durante un blackout il sito sarebbe caduto lo stesso, solo dieci minuti
+  piu' tardi. Adesso non si sospende ne' con la corrente ne' a batteria.
+- **Chiudere il coperchio sospendeva la macchina.** E' il modo piu' banale e piu'
+  probabile di ammazzare il server: basta che qualcuno passi e lo chiuda. Adesso
+  chiudere il coperchio non fa niente.
+
+Comandi dati, tutti riusciti senza diritti di amministratore:
 
 ```powershell
 powercfg /change standby-timeout-ac 0
 powercfg /change hibernate-timeout-ac 0
 powercfg /change monitor-timeout-ac 10
+powercfg /change standby-timeout-dc 0
+powercfg /change hibernate-timeout-dc 0
+powercfg /setacvalueindex SCHEME_CURRENT SUB_BUTTONS 5ca83367-6e45-459f-a27b-476b1d01c936 0
+powercfg /setdcvalueindex SCHEME_CURRENT SUB_BUTTONS 5ca83367-6e45-459f-a27b-476b1d01c936 0
+powercfg /setactive SCHEME_CURRENT
+```
+
+Lo schermo si spegne dopo dieci minuti con la corrente e dopo tre a batteria, la
+macchina resta sveglia.
+
+Resta da dare, e vuole PowerShell **come amministratore**:
+
+```powershell
 powercfg /hibernate off
 ```
 
-Lo schermo si spegne dopo dieci minuti, la macchina resta sveglia.
+Toglie anche l'avvio rapido, che su un server e' un bene: garantisce che
+un'accensione sia un'accensione vera e non il risveglio da uno stato salvato.
+
+**Il coperchio conviene comunque tenerlo aperto.** Un portatile che lavora chiuso
+scalda, e adesso che chiuderlo non lo sospende piu' resterebbe a macinare con le
+prese d'aria schiacciate.
 
 Poi, in Impostazioni → Windows Update → Opzioni avanzate, imposta le ore di
 attivita' in modo che i riavvii se li prenda di notte. Con il servizio installato
