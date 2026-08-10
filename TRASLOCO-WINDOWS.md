@@ -141,25 +141,42 @@ git clone https://github.com/<tuo-utente>/medstudent.git
 cd medstudent
 ```
 
-### 5.4 Installare le dipendenze
+### 5.4 Installare le dipendenze — FATTO il 10 agosto 2026
 
 ```powershell
 npm install
 ```
 
-E' il passaggio meno prevedibile. `better-sqlite3` non e' JavaScript puro: e'
-codice compilato. Di solito scarica un binario gia' pronto per Windows e finisce
-in un minuto. Se quel binario non esiste per la combinazione di versioni, prova a
-compilarlo e servono gli strumenti di Visual Studio (qualche giga, mezz'ora).
+Finisce in una ventina di secondi, 283 pacchetti, senza compilare niente.
 
-Se `npm install` fallisce parlando di `node-gyp`, `MSBuild` o `Visual Studio`:
+**Gli strumenti di Visual Studio non servono.** Questo punto prima diceva il
+contrario, e mandava a scaricare qualche giga per niente. Ecco cosa succede
+davvero, perche' l'errore porta fuori strada.
 
-```powershell
-npm install --global windows-build-tools
-```
+`better-sqlite3` non va piu' compilato: il pacchetto pubblicato contiene gia' i
+binari pronti per tutte le piattaforme, Windows x64 compreso, e nel manifesto
+dichiara `gypfile: false`, cioe' "non compilarmi". Dentro il pacchetto pero'
+restano anche i sorgenti, quindi npm trova `binding.gyp` sul disco, ignora quella
+dichiarazione e lancia `node-gyp` di testa sua. Su Windows quel tentativo si
+ferma su "Could not find any Python installation", che sembra chiedere Python e i
+compilatori C++ ma sta solo facendo un lavoro inutile. Sul Mac non si era mai
+visto perche' li' la compilazione riusciva in silenzio: gli strumenti di Xcode ci
+sono gia'.
 
-oppure installa "Visual Studio Build Tools" scegliendo il carico di lavoro
-"Sviluppo di applicazioni desktop con C++".
+A fermare tutto questo c'e' il file `.npmrc` nella radice, con dentro
+`ignore-scripts=true` e il commento che spiega il perche'. Vale anche sul Mac,
+dove evita la stessa compilazione inutile. Non toglie niente al programma:
+nessuna dipendenza qui ha bisogno di uno script di installazione, e `npm start` e
+`npm run prova` continuano a funzionare, perche' `ignore-scripts` ferma gli
+script dei pacchetti scaricati, non quelli scritti in `package.json`.
+
+Da qui viene anche la riga `"hasInstallScript": true` comparsa in
+`package-lock.json` accanto a `better-sqlite3`: e' npm che annota la sua
+decisione sbagliata. Con l'`.npmrc` davanti non ha piu' effetto.
+
+Se `npm install` viene lanciato per sbaglio senza l'`.npmrc` e fallisce, la
+cartella `node_modules` resta a meta': va cancellata e rifatta da zero,
+altrimenti npm si porta dietro i pezzi del tentativo fallito.
 
 ### 5.5 I tre pezzi che Git non porta
 
