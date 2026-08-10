@@ -123,7 +123,7 @@ CREATE TABLE IF NOT EXISTS richieste_medicine (
   note          TEXT,
   ambulatorio_id INTEGER REFERENCES ambulatori(id),
   origine       TEXT NOT NULL DEFAULT 'sito',   -- sito | email | chatbot
-  stato         TEXT NOT NULL DEFAULT 'nuova',  -- nuova | in_lavorazione | pronta | consegnata | annullata
+  stato         TEXT NOT NULL DEFAULT 'nuova',  -- nuova | confermata | rifiutata | consegnata
   creata_il     TEXT NOT NULL,
   aggiornata_il TEXT
 );
@@ -237,10 +237,53 @@ for (const [tabella, colonna, tipo] of [
   // Password provvisoria da cambiare al primo ingresso: cosi' la password
   // vera la conosce solo il collaboratore, nemmeno il medico.
   ['utenti', 'cambio_password', 'INTEGER NOT NULL DEFAULT 0'],
-  ['utenti', 'ultimo_accesso', 'TEXT']
+  ['utenti', 'ultimo_accesso', 'TEXT'],
+  // Le medicine non si "lavorano" piu': si confermano, si rifiutano o si
+  // cambiano dopo una telefonata. Queste colonne tengono il perche' di un
+  // rifiuto e la memoria di com'era la richiesta prima di essere corretta,
+  // che serve per dire al paziente che cosa e' cambiato.
+  ['richieste_medicine', 'motivo_rifiuto', 'TEXT'],
+  ['richieste_medicine', 'farmaci_originali', 'TEXT'],
+  ['richieste_medicine', 'note_originali', 'TEXT'],
+  ['richieste_medicine', 'gestita_il', 'TEXT'],
+  ['richieste_medicine', 'gestita_da', 'TEXT'],
+  // Spostare un appuntamento non e' annullarlo: la prenotazione resta la
+  // stessa e resta 'confermata'. Qui si tiene da dove e' partita, che serve
+  // per dire al paziente qual era il vecchio appuntamento.
+  //
+  // Uno stato 'riprogrammata' sarebbe stato un errore: idx_slot_unico vale
+  // solo WHERE stato = 'confermata', quindi una prenotazione spostata avrebbe
+  // perso la protezione contro la doppia prenotazione, e sarebbe sparita da
+  // agenda, promemoria e conteggi, che filtrano tutti sullo stesso valore.
+  ['prenotazioni', 'data_originale', 'TEXT'],
+  ['prenotazioni', 'ora_originale', 'TEXT'],
+  ['prenotazioni', 'riprogrammata_il', 'TEXT'],
+  ['prenotazioni', 'riprogrammata_da', 'TEXT']
 ]) {
   const presente = db.prepare(`PRAGMA table_info(${tabella})`).all().some((c) => c.name === colonna);
   if (!presente) db.exec(`ALTER TABLE ${tabella} ADD COLUMN ${colonna} ${tipo}`);
+}
+
+/**
+ * Stati delle medicine, da cinque a quattro.
+ *
+ * "in lavorazione" e "pronta" raccontavano il lavoro dello studio; adesso
+ * conta la risposta data al paziente, che e' l'unica cosa che lui vede
+ * arrivare per email. Le righe gia' scritte vanno portate nel nuovo giro,
+ * altrimenti resterebbero in uno stato che il pannello non sa piu' mostrare.
+ *
+ * Si esegue a ogni avvio ed e' innocua a vuoto: dopo la prima volta non
+ * trova piu' niente da cambiare.
+ */
+for (const [vecchio, nuovo] of [
+  // Era stata presa in carico ma non ancora evasa: torna fra quelle da vedere.
+  ['in_lavorazione', 'nuova'],
+  // La ricetta c'era: per il paziente equivale a un si'.
+  ['pronta', 'confermata'],
+  // Un no detto con un'altra parola.
+  ['annullata', 'rifiutata']
+]) {
+  db.prepare('UPDATE richieste_medicine SET stato = ? WHERE stato = ?').run(nuovo, vecchio);
 }
 
 const AMBULATORI_INIZIALI = [
@@ -248,7 +291,7 @@ const AMBULATORI_INIZIALI = [
     id: 1,
     nome: 'Ambulatorio di Arceto',
     indirizzo: 'Via Piazza Castello, 10 - Arceto',
-    telefono: '0522980035',
+    telefono: '3291545236',
     orari: { 1: ['10:30', '13:00'], 2: ['10:30', '13:00'], 3: ['17:00', '19:00'], 4: ['10:30', '13:00'], 5: ['10:30', '13:00'] }
   },
   {

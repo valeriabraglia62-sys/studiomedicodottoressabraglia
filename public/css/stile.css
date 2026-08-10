@@ -319,10 +319,9 @@ a { color: var(--verde); }
   white-space: nowrap;
 }
 
-.etichetta.confermata, .etichetta.pronta, .etichetta.gestita { background: var(--verde-chiaro); color: var(--verde-scuro); }
-.etichetta.annullata { background: #fee2e2; color: var(--rosso); }
+.etichetta.confermata, .etichetta.gestita { background: var(--verde-chiaro); color: var(--verde-scuro); }
+.etichetta.annullata, .etichetta.rifiutata { background: #fee2e2; color: var(--rosso); }
 .etichetta.nuova { background: var(--blu-tenue); color: var(--blu); }
-.etichetta.in_lavorazione { background: var(--ambra-tenue); color: var(--ambra); }
 .etichetta.consegnata, .etichetta.archiviata { background: #f1f5f9; color: #475569; }
 
 /* ---- Tabelle ----------------------------------------------------------- */

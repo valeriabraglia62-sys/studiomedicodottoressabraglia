@@ -5,17 +5,29 @@ import {
   ErroreDominio, generaCodice, trovaOCreaPaziente, telefonoValido, emailValida
 } from './prenotazioni.js';
 import {
-  emailNuovaMedicinaAdmin, emailRicevutaMedicinaPaziente, emailMedicinaPronta
+  emailNuovaMedicinaAdmin, emailRicevutaMedicinaPaziente,
+  emailMedicinaConfermata, emailMedicinaRifiutata, emailMedicinaModificata
 } from './mailer.js';
 
-export const STATI = ['nuova', 'in_lavorazione', 'pronta', 'consegnata', 'annullata'];
+/**
+ * Il giro di una richiesta di medicinali.
+ *
+ *   nuova ──┬─ conferma ──────────► confermata ── ritiro ──► consegnata
+ *           ├─ modifica ──────────► confermata
+ *           └─ rifiuta ───────────► rifiutata
+ *
+ * Gli stati raccontano la risposta data al paziente, non il lavoro dello
+ * studio: sono le stesse tre parole che gli arrivano per email. "Modifica"
+ * non e' uno stato a se' perche' cambiare una richiesta vuol dire accettarla
+ * cambiando qualcosa, e al paziente interessa sapere che e' stata accolta.
+ */
+export const STATI = ['nuova', 'confermata', 'rifiutata', 'consegnata'];
 
 export const ETICHETTE_STATO = {
-  nuova: 'Nuova',
-  in_lavorazione: 'In lavorazione',
-  pronta: 'Pronta per il ritiro',
-  consegnata: 'Consegnata',
-  annullata: 'Annullata'
+  nuova: 'Da vedere',
+  confermata: 'Confermata',
+  rifiutata: 'Rifiutata',
+  consegnata: 'Consegnata'
 };
 
 const testoPulito = (v, max) => String(v ?? '').trim().replace(/[ \t]+/g, ' ').slice(0, max);
@@ -43,6 +55,19 @@ export function creaRichiesta(dati) {
   if (nome.length < 2) throw new ErroreDominio('Inserisci un nome valido.');
   if (cognome.length < 2) throw new ErroreDominio('Inserisci un cognome valido.');
   if (farmaci.length < 2) throw new ErroreDominio('Indica quali medicinali ti servono.');
+
+  /**
+   * L'email adesso serve sempre, e non e' una formalita': conferma, rifiuto e
+   * modifica esistono solo come messaggi scritti al paziente. Una richiesta
+   * senza indirizzo sarebbe una richiesta a cui non si puo' rispondere.
+   *
+   * Unica eccezione, la lettura automatica della casella: li' l'indirizzo c'e'
+   * sempre per forza — e' il mittente — ma se un giorno mancasse, buttare via
+   * la richiesta sarebbe peggio che registrarla e richiamare.
+   */
+  if (!email && origine !== 'email') {
+    throw new ErroreDominio('Serve un indirizzo email: le rispondiamo lì.');
+  }
   if (email && !emailValida(email)) throw new ErroreDominio('L\'indirizzo email non è valido.');
 
   // Dalle email in arrivo il telefono spesso manca: non blocchiamo la richiesta,
@@ -84,26 +109,119 @@ export function creaRichiesta(dati) {
   return transazione();
 }
 
-export function aggiornaStato(codice, nuovoStato) {
-  if (!STATI.includes(nuovoStato)) throw new ErroreDominio('Stato non valido.');
-
+/**
+ * Prende la richiesta e la prepara al passaggio successivo.
+ *
+ * Il controllo sullo stato di partenza non e' pignoleria: senza, due persone
+ * che aprono il pannello insieme potrebbero rispondere due volte alla stessa
+ * richiesta, e al paziente arriverebbero due email che si contraddicono.
+ */
+function daGestire(codice, statiAmmessi) {
   const richiesta = perCodice(codice);
   if (!richiesta) throw new ErroreDominio('Richiesta non trovata.', 404);
-  if (richiesta.stato === nuovoStato) return richiesta;
+  if (!statiAmmessi.includes(richiesta.stato)) {
+    throw new ErroreDominio(
+      `Questa richiesta è già stata gestita: risulta ${ETICHETTE_STATO[richiesta.stato].toLowerCase()}.`
+    );
+  }
+  return richiesta;
+}
 
-  const transazione = db.transaction(() => {
-    db.prepare('UPDATE richieste_medicine SET stato = ?, aggiornata_il = ? WHERE id = ?')
-      .run(nuovoStato, new Date().toISOString(), richiesta.id);
+/** Scrive il nuovo stato e rimanda indietro la riga aggiornata. */
+function applica(richiesta, campi, chi) {
+  const colonne = Object.keys(campi).map((c) => `${c} = ?`).join(', ');
+  db.prepare(
+    `UPDATE richieste_medicine SET ${colonne}, aggiornata_il = ?, gestita_il = ?, gestita_da = ? WHERE id = ?`
+  ).run(...Object.values(campi), new Date().toISOString(), new Date().toISOString(), chi || null, richiesta.id);
 
-    const aggiornata = dettaglio(richiesta.id);
-    accoda('sheet_medicina', aggiornata);
-    if (nuovoStato === 'pronta' && aggiornata.email) {
-      accoda('email', emailMedicinaPronta(aggiornata));
-    }
+  const aggiornata = dettaglio(richiesta.id);
+  accoda('sheet_medicina', aggiornata);
+  return aggiornata;
+}
+
+/**
+ * Il paziente riceve una email per ognuna delle tre risposte, ma solo se ha
+ * lasciato un indirizzo: molte richieste arrivano con il solo telefono, e
+ * quelle si chiudono con una chiamata. Il pannello lo segnala, cosi' chi
+ * gestisce sa che quel paziente va avvisato a voce.
+ */
+const avvisa = (richiesta, componi) => {
+  if (richiesta.email) accoda('email', componi(richiesta));
+};
+
+/** Va bene cosi' come l'ha chiesta il paziente. */
+export function conferma(codice, chi = null) {
+  const richiesta = daGestire(codice, ['nuova']);
+  return db.transaction(() => {
+    const aggiornata = applica(richiesta, { stato: 'confermata' }, chi);
+    avvisa(aggiornata, emailMedicinaConfermata);
     return aggiornata;
-  });
+  })();
+}
 
-  return transazione();
+/** Non si puo' fare. Il motivo finisce nell'email: un no secco non aiuta nessuno. */
+export function rifiuta(codice, motivo, chi = null) {
+  const richiesta = daGestire(codice, ['nuova']);
+  return db.transaction(() => {
+    const aggiornata = applica(
+      richiesta,
+      { stato: 'rifiutata', motivo_rifiuto: testoPulito(motivo, 300) || null },
+      chi
+    );
+    avvisa(aggiornata, emailMedicinaRifiutata);
+    return aggiornata;
+  })();
+}
+
+/**
+ * Si accetta, ma cambiando qualcosa: e' il caso della telefonata al paziente.
+ *
+ * La richiesta di partenza va conservata prima di sovrascriverla, altrimenti
+ * l'email non potrebbe dire *che cosa* e' cambiato e il paziente si ritroverebbe
+ * scritto un elenco diverso da quello che ricorda di aver chiesto. Si salva solo
+ * la prima volta: il confronto utile e' sempre con quello che aveva chiesto lui.
+ *
+ * Si puo' modificare anche una richiesta gia' confermata — capita che la
+ * farmacia non abbia un farmaco e si debba richiamare il paziente. Una
+ * richiesta rifiutata o gia' ritirata invece e' chiusa.
+ */
+export function modifica(codice, correzioni = {}, chi = null) {
+  const richiesta = daGestire(codice, ['nuova', 'confermata']);
+
+  const farmaci = testoPulito(correzioni.farmaci ?? richiesta.farmaci, 1500);
+  if (farmaci.length < 2) throw new ErroreDominio('Indica quali medicinali sono stati approvati.');
+
+  const note = testoPulito(correzioni.note ?? richiesta.note, 500) || null;
+  const ambulatorio = correzioni.ambulatorio_id
+    ? trovaAmbulatorio(correzioni.ambulatorio_id)
+    : null;
+
+  if (farmaci === richiesta.farmaci && note === richiesta.note && !ambulatorio) {
+    throw new ErroreDominio('Non hai cambiato niente: usa Conferma se la richiesta va bene così.');
+  }
+
+  return db.transaction(() => {
+    const aggiornata = applica(richiesta, {
+      farmaci,
+      note,
+      ambulatorio_id: ambulatorio?.id ?? richiesta.ambulatorio_id,
+      farmaci_originali: richiesta.farmaci_originali ?? richiesta.farmaci,
+      note_originali: richiesta.farmaci_originali ? richiesta.note_originali : richiesta.note,
+      stato: 'confermata'
+    }, chi);
+
+    avvisa(aggiornata, emailMedicinaModificata);
+    return aggiornata;
+  })();
+}
+
+/**
+ * Il paziente e' passato a ritirare. Nessuna email: se ne e' appena andato,
+ * un messaggio che gli dice quello che ha appena fatto sarebbe solo rumore.
+ */
+export function segnaConsegnata(codice, chi = null) {
+  const richiesta = daGestire(codice, ['confermata']);
+  return db.transaction(() => applica(richiesta, { stato: 'consegnata' }, chi))();
 }
 
 export function elencoAdmin({ stato, cerca, pagina = 1, perPagina = 50 } = {}) {
@@ -125,7 +243,7 @@ export function elencoAdmin({ stato, cerca, pagina = 1, perPagina = 50 } = {}) {
 
   const righe = db.prepare(
     `${SELECT_COMPLETO} ${filtro} ORDER BY
-       CASE r.stato WHEN 'nuova' THEN 0 WHEN 'in_lavorazione' THEN 1 WHEN 'pronta' THEN 2 ELSE 3 END,
+       CASE r.stato WHEN 'nuova' THEN 0 WHEN 'confermata' THEN 1 ELSE 2 END,
        r.creata_il DESC
      LIMIT ? OFFSET ?`
   ).all(...par, limite, offset);

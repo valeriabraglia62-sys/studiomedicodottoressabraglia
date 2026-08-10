@@ -110,7 +110,6 @@ const interpretaAmbulatorio = (t) => {
 };
 
 const affermativo = (t) => contiene(t, 'si', 'sì', 'confermo', 'conferma', 'ok', 'va bene', 'certo', 'procedi');
-const negativo = (t) => contiene(t, 'no', 'annulla', 'stop', 'lascia', 'niente');
 
 // ---- Risposte riutilizzabili ---------------------------------------------
 
@@ -266,20 +265,17 @@ function gestisciPrenota(stato, t) {
       if (!telefonoValido(t)) return risposta('Il numero non sembra valido. Riprova (esempio: 3331234567).');
       d.telefono = t.replace(/[\s.\-()]/g, '');
       stato.passo = 'email';
-      return risposta('Vuoi lasciare anche un\'email per ricevere la conferma?',
-        [{ id: 'salta', etichetta: 'Salta questo passaggio' }]);
+      // Non si puo' piu' saltare: la conferma, l'eventuale spostamento e
+      // l'annullamento viaggiano per email. Chiederla qui, e non lasciare che
+      // il rifiuto arrivi alla fine, evita di far compilare tutto per niente.
+      return risposta('Qual è la tua email? Ti mandiamo lì la conferma con il codice.');
     }
 
     case 'email': {
-      if (t === 'salta' || negativo(t)) {
-        d.email = null;
-      } else {
-        if (!emailValida(t)) {
-          return risposta('L\'email non sembra valida. Riprova oppure salta.',
-            [{ id: 'salta', etichetta: 'Salta questo passaggio' }]);
-        }
-        d.email = t.trim().toLowerCase();
+      if (!emailValida(t)) {
+        return risposta('L\'email non sembra valida: riprova (esempio: nome@esempio.it).');
       }
+      d.email = t.trim().toLowerCase();
       stato.passo = 'problema';
       return risposta('Ultima cosa: qual è il motivo della visita?');
     }
@@ -291,7 +287,7 @@ function gestisciPrenota(stato, t) {
       const amb = trovaAmbulatorio(d.ambulatorio_id);
       return risposta(
         `Controlla che sia tutto giusto:\n\n` +
-        `👤 ${d.nome} ${d.cognome}\n📞 ${d.telefono}\n${d.email ? `✉️ ${d.email}\n` : ''}` +
+        `👤 ${d.nome} ${d.cognome}\n📞 ${d.telefono}\n✉️ ${d.email}\n` +
         `🏥 ${amb.nome}\n📅 ${formattaDataEstesa(d.data)}\n🕐 ${d.ora_inizio}\n📝 ${d.problema}\n\nConfermo?`,
         [{ id: 'conferma', etichetta: '✅ Confermo' }, { id: 'ricomincia', etichetta: '✏️ Ricomincia' }]);
     }
@@ -307,8 +303,7 @@ function gestisciPrenota(stato, t) {
         return risposta(
           `✅ Prenotazione confermata!\n\n**Codice: ${p.codice}**\n` +
           `${formattaDataEstesa(p.data)} alle ${p.ora_inizio}\n${p.ambulatorio_nome}\n${p.ambulatorio_indirizzo}\n\n` +
-          `Conserva il codice: ti serve per annullare.` +
-          (p.paziente_email ? ' Ti abbiamo inviato una email di conferma.' : ''),
+          `Conserva il codice: ti serve per annullare. Ti abbiamo inviato una email di conferma.`,
           MENU.azioni, { prenotazione: p.codice });
       } catch (err) {
         if (err instanceof ErroreDominio) {
@@ -349,23 +344,19 @@ function gestisciMedicine(stato, t) {
       if (!telefonoValido(t)) return risposta('Il numero non sembra valido. Riprova (esempio: 3331234567).');
       d.telefono = t.replace(/[\s.\-()]/g, '');
       stato.passo = 'email';
-      return risposta('Vuoi lasciare un\'email per essere avvisato quando è pronta?',
-        [{ id: 'salta', etichetta: 'Salta questo passaggio' }]);
+      // Il medico risponde sempre per iscritto — confermata, rifiutata o
+      // cambiata — quindi l'indirizzo serve per forza.
+      return risposta('Qual è la tua email? Ti scriviamo lì la risposta del medico.');
 
     case 'email': {
-      if (t === 'salta' || negativo(t)) {
-        d.email = null;
-      } else {
-        if (!emailValida(t)) {
-          return risposta('L\'email non sembra valida. Riprova oppure salta.',
-            [{ id: 'salta', etichetta: 'Salta questo passaggio' }]);
-        }
-        d.email = t.trim().toLowerCase();
+      if (!emailValida(t)) {
+        return risposta('L\'email non sembra valida: riprova (esempio: nome@esempio.it).');
       }
+      d.email = t.trim().toLowerCase();
       stato.passo = 'conferma';
       return risposta(
         `Controlla che sia tutto giusto:\n\n👤 ${d.nome} ${d.cognome}\n📞 ${d.telefono}\n` +
-        `${d.email ? `✉️ ${d.email}\n` : ''}💊 ${d.farmaci}\n\nConfermo?`,
+        `✉️ ${d.email}\n💊 ${d.farmaci}\n\nConfermo?`,
         [{ id: 'conferma', etichetta: '✅ Confermo' }, { id: 'ricomincia', etichetta: '✏️ Ricomincia' }]);
     }
 

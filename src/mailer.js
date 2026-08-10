@@ -146,6 +146,50 @@ export const emailAnnullamentoAdmin = (p) => componiEmail({
   ]
 });
 
+/**
+ * L'appuntamento e' stato spostato dallo studio.
+ *
+ * Il vecchio e il nuovo appuntamento stanno uno sotto l'altro: e' l'unico modo
+ * perche' il paziente capisca al volo che non deve presentarsi quando aveva
+ * segnato. Il codice non cambia, e va detto: altrimenti cerca una prenotazione
+ * nuova che non esiste.
+ */
+export const emailPrenotazioneRiprogrammata = (p) => componiEmail({
+  to: p.paziente_email,
+  subject: `Appuntamento spostato al ${formattaDataEstesa(p.data)} — ${p.ora_inizio}`,
+  titolo: 'Appuntamento spostato',
+  intro: `Gentile ${esc(p.paziente_nome)}, il suo appuntamento è stato spostato. ` +
+    'Trova qui sotto il vecchio e il nuovo orario.',
+  righe: [
+    ['Prima era', `${formattaDataEstesa(p.data_precedente)} alle ${p.ora_precedente}` +
+      (p.ambulatorio_precedente && p.ambulatorio_precedente !== p.ambulatorio_nome
+        ? ` — ${p.ambulatorio_precedente}` : '')],
+    ['Adesso è', `${formattaDataEstesa(p.data)} alle ${p.ora_inizio}`],
+    ['Ambulatorio', p.ambulatorio_nome],
+    ['Indirizzo', p.ambulatorio_indirizzo],
+    ['Motivo', p.problema],
+    ['Codice prenotazione', p.codice]
+  ],
+  azione: { testo: 'Aggiungi al mio Google Calendar', url: linkGoogleCalendar(p) },
+  chiusura: `Il codice <strong>${esc(p.codice)}</strong> resta lo stesso. ` +
+    'Se il nuovo orario non le va bene ci telefoni: troviamo un\'alternativa.'
+});
+
+export const emailPrenotazioneRiprogrammataAdmin = (p) => componiEmail({
+  to: NOTIFY_EMAIL,
+  subject: `Spostata: ${p.paziente_nome} ${p.paziente_cognome} — ${p.data} ${p.ora_inizio}`,
+  titolo: 'Prenotazione spostata',
+  righe: [
+    ['Paziente', `${p.paziente_nome} ${p.paziente_cognome}`],
+    ['Telefono', p.paziente_telefono],
+    ['Prima era', `${formattaDataEstesa(p.data_precedente)} alle ${p.ora_precedente}`],
+    ['Adesso è', `${formattaDataEstesa(p.data)} alle ${p.ora_inizio}`],
+    ['Ambulatorio', p.ambulatorio_nome],
+    ['Codice', p.codice],
+    ['Spostata da', p.riprogrammata_da]
+  ]
+});
+
 export const emailPromemoriaPaziente = (p) => componiEmail({
   to: p.paziente_email,
   subject: `Promemoria: visita domani alle ${p.ora_inizio}`,
@@ -217,12 +261,65 @@ export const emailNuovaMedicinaAdmin = (r) => componiEmail({
   ]
 });
 
-export const emailMedicinaPronta = (r) => componiEmail({
+/**
+ * Le tre risposte a una richiesta di medicinali.
+ *
+ * Sono le uniche email che il paziente riceve dopo aver chiesto una ricetta,
+ * quindi devono bastare da sole: chi le legge non ha davanti il sito ne'
+ * ricorda a memoria che cosa aveva scritto. Per questo ripetono sempre
+ * l'elenco dei medicinali invece di rimandare al codice.
+ */
+
+export const emailMedicinaConfermata = (r) => componiEmail({
   to: r.email,
   subject: `Ricetta pronta per il ritiro — codice ${r.codice}`,
-  titolo: 'Ricetta pronta',
-  intro: `Gentile ${esc(r.nome)}, la sua ricetta è pronta per il ritiro.`,
-  righe: [['Medicinali', r.farmaci], ['Codice richiesta', r.codice]]
+  titolo: 'Richiesta confermata',
+  intro: `Gentile ${esc(r.nome)}, la sua richiesta è stata approvata dal medico ed è pronta per il ritiro.`,
+  righe: [
+    ['Medicinali', r.farmaci],
+    ['Dove ritirare', r.ambulatorio_nome],
+    ['Codice richiesta', r.codice]
+  ],
+  chiusura: 'Se qualcosa non le torna, ci contatti prima di passare in ambulatorio.'
+});
+
+export const emailMedicinaRifiutata = (r) => componiEmail({
+  to: r.email,
+  subject: `Richiesta medicinali non accolta — codice ${r.codice}`,
+  titolo: 'Richiesta non accolta',
+  intro: `Gentile ${esc(r.nome)}, purtroppo la sua richiesta di medicinali non può essere accolta.`,
+  righe: [
+    ['Medicinali richiesti', r.farmaci],
+    // Senza il perche' il paziente richiama per forza, e la telefonata la
+    // riceve lo studio: scriverlo qui fa risparmiare tempo a tutti e due.
+    ['Motivo', r.motivo_rifiuto],
+    ['Codice richiesta', r.codice]
+  ],
+  chiusura: 'Per capire come procedere ci telefoni pure, oppure fissi una visita.'
+});
+
+/**
+ * La richiesta e' stata accolta ma cambiata dopo una telefonata.
+ *
+ * Il paziente ha gia' parlato con lo studio, quindi questa email non porta la
+ * notizia: la mette per iscritto. Il prima e il dopo stanno uno sotto l'altro
+ * apposta, perche' a distanza di giorni nessuno ricorda i dettagli di una
+ * telefonata e l'unica cosa che conta e' cosa andra' a ritirare.
+ */
+export const emailMedicinaModificata = (r) => componiEmail({
+  to: r.email,
+  subject: `Richiesta medicinali aggiornata — codice ${r.codice}`,
+  titolo: 'Richiesta confermata con modifiche',
+  intro: `Gentile ${esc(r.nome)}, come d'accordo la sua richiesta è stata approvata con qualche cambiamento.`,
+  righe: [
+    ['Lei aveva chiesto', r.farmaci_originali],
+    ['Le abbiamo preparato', r.farmaci],
+    ['Note precedenti', r.note_originali !== r.note ? r.note_originali : null],
+    ['Note', r.note],
+    ['Dove ritirare', r.ambulatorio_nome],
+    ['Codice richiesta', r.codice]
+  ],
+  chiusura: 'Se qualcosa non corrisponde a quanto ci siamo detti al telefono, ci ricontatti.'
 });
 
 export async function verificaConnessioneEmail() {

@@ -8,7 +8,8 @@ import {
 } from './orari.js';
 import {
   emailConfermaPaziente, emailNuovaPrenotazioneAdmin,
-  emailAnnullamentoPaziente, emailAnnullamentoAdmin
+  emailAnnullamentoPaziente, emailAnnullamentoAdmin,
+  emailPrenotazioneRiprogrammata, emailPrenotazioneRiprogrammataAdmin
 } from './mailer.js';
 
 /** Errore con messaggio pensato per essere mostrato al paziente. */
@@ -67,7 +68,89 @@ export function trovaOCreaPaziente({ nome, cognome, email, telefono }) {
   return db.prepare('SELECT * FROM pazienti WHERE id = ?').get(info.lastInsertRowid);
 }
 
-function validaRichiesta(dati) {
+/**
+ * Controlla giorno, ora e ambulatorio di un appuntamento.
+ *
+ * `forza` e' il permesso che ha solo lo studio dal pannello: salta i limiti
+ * pensati per il paziente — orari di apertura, allineamento agli slot, quanto
+ * in anticipo si puo' prenotare, e anche il passato, perche' capita di dover
+ * registrare a posteriori una visita gia' fatta.
+ *
+ * Una cosa resta vietata anche forzando: due appuntamenti nello stesso
+ * ambulatorio alla stessa ora. Non e' un limite burocratico, e' l'unica cosa
+ * che impedisce di dare a due pazienti lo stesso posto; il divieto e' scritto
+ * nel database (idx_slot_unico), non solo qui.
+ */
+function validaQuando(dati, ambulatorio, forza) {
+  if (!dataValida(dati.data)) throw new ErroreDominio('Data non valida.');
+  if (!/^\d{2}:\d{2}$/.test(String(dati.ora_inizio || ''))) throw new ErroreDominio('Orario non valido.');
+
+  const oggi = oggiISO();
+  const inizio = minutiDaOra(dati.ora_inizio);
+
+  if (!forza) {
+    if (dati.data < oggi) throw new ErroreDominio('Non è possibile prenotare in una data passata.');
+    if (dati.data > aggiungiGiorni(oggi, GIORNI_PRENOTABILI)) {
+      throw new ErroreDominio(`Si può prenotare al massimo ${GIORNI_PRENOTABILI} giorni in anticipo.`);
+    }
+
+    // L'orario richiesto deve cadere davvero dentro l'apertura dell'ambulatorio.
+    const orario = db.prepare('SELECT ora_inizio, ora_fine FROM orari WHERE ambulatorio_id = ? AND giorno = ?')
+      .get(ambulatorio.id, giornoSettimana(dati.data));
+
+    if (!orario?.ora_inizio) {
+      throw new ErroreDominio(`${ambulatorio.nome} è chiuso in questa giornata.`);
+    }
+
+    const apertura = minutiDaOra(orario.ora_inizio);
+    const chiusura = minutiDaOra(orario.ora_fine);
+
+    if (inizio < apertura || inizio + DURATA_SLOT_MINUTI > chiusura) {
+      throw new ErroreDominio(`Orario fuori dagli orari di apertura (${orario.ora_inizio}-${orario.ora_fine}).`);
+    }
+    if ((inizio - apertura) % DURATA_SLOT_MINUTI !== 0) {
+      throw new ErroreDominio('Orario non allineato agli slot disponibili.');
+    }
+    if (dati.data === oggi && inizio <= minutiCorrentiRoma()) {
+      throw new ErroreDominio('Questo orario è già passato.');
+    }
+  }
+
+  return { data: dati.data, ora_inizio: dati.ora_inizio, ora_fine: oraDaMinuti(inizio + DURATA_SLOT_MINUTI) };
+}
+
+/** Quello che lo studio deve sapere prima di forzare, senza impedirglielo. */
+export function avvertimenti({ data, ora_inizio, ambulatorio_id }) {
+  const note = [];
+  const ambulatorio = trovaAmbulatorio(ambulatorio_id);
+  if (!ambulatorio || !dataValida(data) || !/^\d{2}:\d{2}$/.test(String(ora_inizio || ''))) return note;
+
+  const oggi = oggiISO();
+  if (data < oggi) note.push('Questa data è già passata.');
+  else if (data === oggi && minutiDaOra(ora_inizio) <= minutiCorrentiRoma()) {
+    note.push('Quest\'ora di oggi è già passata.');
+  }
+
+  const orario = db.prepare('SELECT ora_inizio, ora_fine FROM orari WHERE ambulatorio_id = ? AND giorno = ?')
+    .get(ambulatorio.id, giornoSettimana(data));
+
+  if (!orario?.ora_inizio) note.push(`${ambulatorio.nome} di solito è chiuso in questa giornata.`);
+  else {
+    const inizio = minutiDaOra(ora_inizio);
+    if (inizio < minutiDaOra(orario.ora_inizio) || inizio + DURATA_SLOT_MINUTI > minutiDaOra(orario.ora_fine)) {
+      note.push(`Fuori dall'orario di apertura (${orario.ora_inizio}-${orario.ora_fine}).`);
+    }
+  }
+
+  const chiusura = db.prepare(
+    'SELECT motivo FROM chiusure WHERE ? BETWEEN dal AND al AND (ambulatorio_id IS NULL OR ambulatorio_id = ?)'
+  ).get(data, ambulatorio.id);
+  if (chiusura) note.push(`Giornata di chiusura: ${chiusura.motivo}.`);
+
+  return note;
+}
+
+function validaRichiesta(dati, forza = false) {
   const nome = testoPulito(dati.nome, 60);
   const cognome = testoPulito(dati.cognome, 60);
   const problema = testoPulito(dati.problema, 500);
@@ -77,48 +160,19 @@ function validaRichiesta(dati) {
   if (nome.length < 2) throw new ErroreDominio('Inserisci un nome valido.');
   if (cognome.length < 2) throw new ErroreDominio('Inserisci un cognome valido.');
   if (!telefonoValido(telefono)) throw new ErroreDominio('Inserisci un numero di telefono valido (8-11 cifre).');
-  if (email && !emailValida(email)) throw new ErroreDominio('L\'indirizzo email non è valido.');
+  // L'email non e' piu' facoltativa: conferma, annullamento e spostamento
+  // vengono comunicati per iscritto, e senza indirizzo il paziente resterebbe
+  // l'unico a non sapere che cosa e' successo al suo appuntamento.
+  if (!email) throw new ErroreDominio('Serve un indirizzo email: le confermiamo lì l\'appuntamento.');
+  if (!emailValida(email)) throw new ErroreDominio('L\'indirizzo email non è valido.');
   if (problema.length < 3) throw new ErroreDominio('Descrivi brevemente il motivo della visita.');
-
-  if (!dataValida(dati.data)) throw new ErroreDominio('Data non valida.');
-  if (!/^\d{2}:\d{2}$/.test(String(dati.ora_inizio || ''))) throw new ErroreDominio('Orario non valido.');
-
-  const oggi = oggiISO();
-  if (dati.data < oggi) throw new ErroreDominio('Non è possibile prenotare in una data passata.');
-  if (dati.data > aggiungiGiorni(oggi, GIORNI_PRENOTABILI)) {
-    throw new ErroreDominio(`Si può prenotare al massimo ${GIORNI_PRENOTABILI} giorni in anticipo.`);
-  }
 
   const ambulatorio = trovaAmbulatorio(dati.ambulatorio_id);
   if (!ambulatorio) throw new ErroreDominio('Ambulatorio non valido.');
 
-  // L'orario richiesto deve cadere davvero dentro l'apertura dell'ambulatorio.
-  const orario = db.prepare('SELECT ora_inizio, ora_fine FROM orari WHERE ambulatorio_id = ? AND giorno = ?')
-    .get(ambulatorio.id, giornoSettimana(dati.data));
-
-  if (!orario?.ora_inizio) {
-    throw new ErroreDominio(`${ambulatorio.nome} è chiuso in questa giornata.`);
-  }
-
-  const inizio = minutiDaOra(dati.ora_inizio);
-  const apertura = minutiDaOra(orario.ora_inizio);
-  const chiusura = minutiDaOra(orario.ora_fine);
-
-  if (inizio < apertura || inizio + DURATA_SLOT_MINUTI > chiusura) {
-    throw new ErroreDominio(`Orario fuori dagli orari di apertura (${orario.ora_inizio}-${orario.ora_fine}).`);
-  }
-  if ((inizio - apertura) % DURATA_SLOT_MINUTI !== 0) {
-    throw new ErroreDominio('Orario non allineato agli slot disponibili.');
-  }
-  if (dati.data === oggi && inizio <= minutiCorrentiRoma()) {
-    throw new ErroreDominio('Questo orario è già passato.');
-  }
-
   return {
     nome, cognome, email, telefono, problema, ambulatorio,
-    data: dati.data,
-    ora_inizio: dati.ora_inizio,
-    ora_fine: oraDaMinuti(inizio + DURATA_SLOT_MINUTI),
+    ...validaQuando(dati, ambulatorio, forza),
     origine: dati.origine || 'sito'
   };
 }
@@ -129,8 +183,8 @@ const SLOT_OCCUPATO = 'Questo orario è appena stato prenotato da un altro pazie
  * Crea la prenotazione. Dato, email e sincronizzazione col foglio vengono
  * scritti in un'unica transazione: o riesce tutto, o non resta traccia di nulla.
  */
-export function creaPrenotazione(datiGrezzi) {
-  const d = validaRichiesta(datiGrezzi);
+export function creaPrenotazione(datiGrezzi, { forza = false } = {}) {
+  const d = validaRichiesta(datiGrezzi, forza);
 
   const transazione = db.transaction(() => {
     const paziente = trovaOCreaPaziente(d);
@@ -230,6 +284,77 @@ export function annullaPrenotazione(codice, { da = 'paziente' } = {}) {
   });
 
   return transazione();
+}
+
+/**
+ * Sposta un appuntamento gia' preso: altro giorno, altra ora, altro ambulatorio.
+ *
+ * Non e' un annullamento seguito da una nuova prenotazione, ed e' una
+ * differenza che si vede: il codice resta quello che il paziente ha in mano,
+ * e non gli arrivano due email che si contraddicono ("annullata" e subito
+ * dopo "confermata"). Ne riceve una sola, che dice da dove a dove.
+ *
+ * Lo stato resta 'confermata' apposta. Un valore diverso farebbe sparire
+ * l'appuntamento da agenda, promemoria e conteggi — che filtrano tutti su
+ * 'confermata' — e soprattutto gli toglierebbe idx_slot_unico, l'indice
+ * parziale che impedisce di dare lo stesso posto a due pazienti.
+ */
+export function riprogramma(codice, correzioni = {}, chi = null, { forza = false } = {}) {
+  const p = perCodice(codice);
+  if (!p) throw new ErroreDominio('Prenotazione non trovata. Controlla il codice.', 404);
+  if (p.stato !== 'confermata') {
+    throw new ErroreDominio('Questa prenotazione è annullata: non si può spostare.');
+  }
+
+  const ambulatorio = trovaAmbulatorio(correzioni.ambulatorio_id || p.ambulatorio_id);
+  if (!ambulatorio) throw new ErroreDominio('Ambulatorio non valido.');
+
+  const quando = validaQuando({
+    data: correzioni.data || p.data,
+    ora_inizio: correzioni.ora_inizio || p.ora_inizio
+  }, ambulatorio, forza);
+
+  if (quando.data === p.data && quando.ora_inizio === p.ora_inizio
+      && ambulatorio.id === p.ambulatorio_id) {
+    throw new ErroreDominio('Non hai spostato niente: giorno, ora e ambulatorio sono gli stessi.');
+  }
+
+  const transazione = db.transaction(() => {
+    db.prepare(`
+      UPDATE prenotazioni
+         SET data = ?, ora_inizio = ?, ora_fine = ?, ambulatorio_id = ?,
+             data_originale = COALESCE(data_originale, ?),
+             ora_originale  = COALESCE(ora_originale, ?),
+             riprogrammata_il = ?, riprogrammata_da = ?,
+             promemoria_il = NULL
+       WHERE id = ?
+    `).run(quando.data, quando.ora_inizio, quando.ora_fine, ambulatorio.id,
+      p.data, p.ora_inizio, new Date().toISOString(), chi || null, p.id);
+
+    const aggiornata = dettaglio(p.id);
+    // Il vecchio appuntamento serve all'email per dire da dove si e' spostato.
+    aggiornata.data_precedente = p.data;
+    aggiornata.ora_precedente = p.ora_inizio;
+    aggiornata.ambulatorio_precedente = p.ambulatorio_nome;
+
+    accoda('sheet_prenotazione', aggiornata);
+    // L'indirizzo adesso e' obbligatorio, ma le prenotazioni prese prima di
+    // questa regola possono non averlo: senza il controllo finirebbe in coda
+    // una email senza destinatario, che riprova e fallisce all'infinito.
+    if (aggiornata.paziente_email) accoda('email', emailPrenotazioneRiprogrammata(aggiornata));
+    accoda('email', emailPrenotazioneRiprogrammataAdmin(aggiornata));
+    return aggiornata;
+  });
+
+  try {
+    return transazione();
+  } catch (err) {
+    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || /UNIQUE constraint/i.test(err.message)) {
+      throw new ErroreDominio(
+        'In quell\'ambulatorio, a quell\'ora, c\'è già un altro paziente. Scegli un altro orario.', 409);
+    }
+    throw err;
+  }
 }
 
 export function elencoAdmin({ dal, al, stato, ambulatorio_id, cerca, pagina = 1, perPagina = 50 } = {}) {
