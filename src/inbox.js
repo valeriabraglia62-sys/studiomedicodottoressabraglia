@@ -91,6 +91,13 @@ const estraiTelefono = (testo) => {
 
 const stmtGiaVista = db.prepare('SELECT 1 FROM email_processate WHERE message_id = ?');
 
+const stmtSegnaVista = db.prepare(
+  'INSERT OR IGNORE INTO email_processate (message_id, ricevuta_il, esito, riferimento) VALUES (?, ?, ?, ?)'
+);
+
+/** Un messaggio gia' passato da qui, qualunque sia stata la conclusione. */
+export const giaVista = (messageId) => Boolean(messageId && stmtGiaVista.get(messageId));
+
 /** Salva l'email e, se e' una richiesta di medicinali, la converte subito. */
 export function registraEmail({ messageId, mittente, mittenteNome, oggetto, corpo, ricevutaIl }) {
   if (messageId && stmtGiaVista.get(messageId)) return { saltata: true };
@@ -109,12 +116,17 @@ export function registraEmail({ messageId, mittente, mittenteNome, oggetto, corp
   // finiva lo stesso sulla scrivania, seppellendo le tre righe che contavano
   // sotto le newsletter.
   //
-  // Nota per chi legge: questa e' una porta chiusa, non un cestino. Chi chiama
-  // registraEmail riceve indietro "ignorata" e deve lasciare il messaggio NON
-  // letto nella casella, cosi' resta dov'e' e lo vede una persona. Buttarlo via
-  // in silenzio sarebbe peggio del problema che risolve: un paziente che scrive
-  // "buongiorno, posso venire giovedi'?" non usa nessuna di quelle parole.
-  if (tipo === 'altro') return { ignorata: true, tipo };
+  // Nota per chi legge: questa e' una porta chiusa, non un cestino. Il messaggio
+  // resta intatto in casella — non viene ne' cancellato ne' segnato come letto —
+  // e chi guarda la posta lo trova dov'e' sempre stato. Qui si annota soltanto
+  // "questo l'ho gia' guardato e non mi riguarda", altrimenti la stessa email
+  // verrebbe riscaricata e riesaminata a ogni giro, per sempre.
+  if (tipo === 'altro') {
+    if (messageId) {
+      stmtSegnaVista.run(messageId, new Date().toISOString(), 'ignorata', null);
+    }
+    return { ignorata: true, tipo };
+  }
 
   const codice = generaCodice('EML');
   const adesso = new Date().toISOString();
@@ -312,6 +324,17 @@ let clientAttivo = null;
 // questo il controllo resterebbe appeso e la lettura si fermerebbe per sempre.
 const TEMPO_MASSIMO_MS = 90_000;
 
+// Quanti giorni di posta si riguardano a ogni giro. Sette e non uno: se il
+// programma resta spento per un fine settimana, al ritorno deve ritrovare anche
+// quello che e' arrivato mentre non c'era. Riguardare non costa, perche' di
+// ogni messaggio si chiede prima solo la busta e quelli gia' visti si saltano.
+const GIORNI_DA_GUARDARE = 7;
+
+// Tetto ai messaggi esaminati in un giro, per non restare appesi su una casella
+// molto piena. Si prendono i piu' recenti: restare indietro sui vecchi e' meno
+// grave che perdere quelli appena arrivati.
+const MASSIMO_PER_GIRO = 80;
+
 /**
  * Le librerie per leggere la posta si caricano al primo controllo, non all'avvio.
  *
@@ -416,10 +439,34 @@ async function leggiCasella() {
     await client.connect();
     const lock = await client.getMailboxLock('INBOX');
     try {
-      // Solo i messaggi non letti: quelli gia' visti sono stati elaborati.
-      const uid = await client.search({ seen: false }, { uid: true });
+      // Si guardano i messaggi degli ultimi giorni, letti o non letti che siano.
+      //
+      // Prima si cercavano solo i non letti, e bastava che una persona aprisse
+      // l'email in Gmail prima del giro — anche solo per vedere cos'era — perche'
+      // il programma non la incontrasse mai piu'. E' successo l'11 agosto 2026:
+      // due richieste arrivate alle 8:03, aperte a mano pochi minuti dopo, e per
+      // il programma non erano mai esistite.
+      //
+      // A dire cosa e' gia' stato elaborato adesso e' la tabella
+      // email_processate, che tiene il Message-ID di ognuna: e' una memoria
+      // nostra, che nessuno puo' cambiare per sbaglio dal telefono. Il
+      // contrassegno di lettura torna a essere quello che dovrebbe: una cosa di
+      // chi legge la posta, non un pezzo di macchina.
+      const daQuando = new Date(Date.now() - GIORNI_DA_GUARDARE * 86400000);
+      const uid = await client.search({ since: daQuando }, { uid: true });
 
-      for (const id of (uid || []).slice(0, 50)) {
+      // Dal piu' recente: se un giorno arrivassero piu' messaggi del tetto, e'
+      // meglio restare indietro sui vecchi che sui nuovi.
+      for (const id of (uid || []).slice(-MASSIMO_PER_GIRO).reverse()) {
+        // Prima si chiede solo la busta, che e' poche centinaia di byte, e si
+        // guarda se quel Message-ID lo conosciamo gia'. Adesso che la stessa
+        // finestra di giorni viene riletta ogni due minuti, scaricare ogni volta
+        // il testo di tutti i messaggi vorrebbe dire ripassare gli stessi
+        // megabyte tutto il giorno per non trovarci quasi mai niente di nuovo.
+        const busta = await client.fetchOne(String(id), { envelope: true }, { uid: true });
+        const idMessaggio = busta?.envelope?.messageId || `uid-${id}`;
+        if (giaVista(idMessaggio)) continue;
+
         const msg = await client.fetchOne(String(id), { source: true }, { uid: true });
         if (!msg?.source) continue;
 
@@ -428,7 +475,7 @@ async function leggiCasella() {
         const oggetto = mail.subject || '';
 
         const esito = registraEmail({
-          messageId: mail.messageId || `uid-${id}`,
+          messageId: mail.messageId || idMessaggio,
           mittente,
           mittenteNome: mail.from?.value?.[0]?.name || '',
           oggetto,
@@ -437,17 +484,6 @@ async function leggiCasella() {
         });
 
         if (!esito.saltata && !esito.ignorata) nuove++;
-
-        // Segnare letto vuol dire "di questa me ne sono occupato io": il giro
-        // successivo guarda solo i non letti e non la riguardera' mai piu'.
-        //
-        // Quindi non si tocca quello che abbiamo deciso di ignorare. Una email
-        // che il programma non riconosce resta non letta nella casella, dove la
-        // trova una persona: se fosse una richiesta scritta con parole sue, e'
-        // l'unico modo perche' non sparisca senza che nessuno l'abbia vista.
-        if (!esito.ignorata) {
-          await client.messageFlagsAdd(String(id), ['\\Seen'], { uid: true });
-        }
       }
     } finally {
       lock.release();
