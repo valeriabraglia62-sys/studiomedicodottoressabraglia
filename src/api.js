@@ -437,7 +437,17 @@ admin.get('/pazienti', (req, res) => {
 
   ok(res, {
     pazienti: db.prepare(`
-      SELECT p.*, (SELECT COUNT(*) FROM prenotazioni WHERE paziente_id = p.id) AS visite
+      SELECT p.*,
+             (SELECT COUNT(*) FROM prenotazioni WHERE paziente_id = p.id) AS visite,
+             -- I primi farmaci che prende, i piu' recenti. Servono nell'elenco e
+             -- non solo nel fascicolo: con il paziente al telefono si cerca il
+             -- nome e la risposta deve essere gia' li', senza dover aprire la
+             -- scheda per scoprire che quella persona prende il Coumadin.
+             (SELECT group_concat(farmaco, ' · ') FROM (
+                SELECT farmaco FROM medicine_abituali
+                 WHERE paziente_id = p.id ORDER BY ultima_volta DESC LIMIT 3
+              )) AS medicine,
+             (SELECT COUNT(*) FROM medicine_abituali WHERE paziente_id = p.id) AS quante_medicine
         FROM pazienti p ${dove} ORDER BY p.cognome, p.nome LIMIT 200
     `).all(...par)
   });

@@ -1330,6 +1330,23 @@ function collegaModuli() {
 
 // ---- Pazienti --------------------------------------------------------------
 
+/**
+ * I medicinali di un paziente, per la riga dell'elenco.
+ *
+ * Se ne ha piu' di tre si scrive quanti sono gli altri invece di stiparli
+ * tutti: una riga con dodici farmaci non si legge, e chi cerca quel dettaglio
+ * apre il fascicolo. Il trattino quando non ce n'e' nessuno e' voluto, cosi' la
+ * colonna resta allineata e si vede a colpo d'occhio chi non ha terapie.
+ */
+function cellaMedicine(p) {
+  if (!p.medicine) return nodo('span', 'tenue', '—');
+
+  const cella = nodo('span', 'piccolo', p.medicine);
+  const altri = (p.quante_medicine || 0) - p.medicine.split(' · ').length;
+  if (altri > 0) cella.append(nodo('span', 'tenue', ` · e altri ${altri}`));
+  return cella;
+}
+
 async function caricaPazienti() {
   const cerca = $('#paz-cerca').value.trim();
   const { pazienti } = await api(`/admin/pazienti?${new URLSearchParams(cerca ? { cerca } : {})}`);
@@ -1346,12 +1363,17 @@ async function caricaPazienti() {
   // click.
   const medico = utenteAttivo?.ruolo === 'admin';
 
+  // I farmaci stanno nell'elenco e non solo dentro il fascicolo: al telefono si
+  // cerca il nome, e la risposta a "cosa prende?" deve essere gia' li'. Se ne
+  // mostrano tre, i piu' recenti, con il conto degli altri: la riga deve restare
+  // leggibile, non diventare un foglietto di terapia.
   contenitore.replaceChildren(tabella(
-    ['Cognome e nome', 'Telefono', 'Email', 'Visite'],
+    ['Cognome e nome', 'Telefono', 'Email', 'Prende di solito', 'Visite'],
     pazienti.map((p) => [
       { nodo: medico ? apriFascicoloBottone(p) : nodo('span', null, `${p.cognome} ${p.nome}`) },
       { nodo: collegamentoTelefono(p.telefono) },
       p.email || '—',
+      { nodo: cellaMedicine(p) },
       p.visite
     ])
   ));
@@ -1766,14 +1788,32 @@ function collegaFiltri() {
 
   $('#mail-stato').addEventListener('change', () => protetto(caricaEmail));
   $('#mail-controlla').addEventListener('click', (e) => {
-    e.target.disabled = true;
+    // Il controllo apre una connessione alla casella e riguarda sette giorni di
+    // posta, un messaggio alla volta: puo' metterci mezzo minuto abbondante, e
+    // il limite prima di arrendersi e' novanta secondi. Con il solo bottone
+    // spento e nessun'altra indicazione sembrava bloccato, e chi aspettava non
+    // aveva modo di sapere se stesse lavorando o fosse morto li'.
+    const bottone = e.target;
+    const testoOriginale = bottone.textContent;
+    bottone.disabled = true;
+    bottone.textContent = 'Controllo in corso…';
+
+    const partito = Date.now();
+    const avanzamento = setInterval(() => {
+      bottone.textContent = `Controllo in corso… ${Math.round((Date.now() - partito) / 1000)}s`;
+    }, 1000);
+
     protetto(async () => {
       const { esito } = await api('/admin/email/controlla', { method: 'POST' });
       avvisa(esito?.saltato
-        ? 'Un controllo era già in corso.'
+        ? 'Un controllo era già in corso: aspetta che finisca quello.'
         : `Controllo eseguito: ${esito?.nuove ?? 0} nuove email.`, 'ok');
       await caricaEmail();
-    }).finally(() => { e.target.disabled = false; });
+    }).finally(() => {
+      clearInterval(avanzamento);
+      bottone.textContent = testoOriginale;
+      bottone.disabled = false;
+    });
   });
 
   $('#paz-cerca').addEventListener('input', attendi(() => protetto(caricaPazienti)));
