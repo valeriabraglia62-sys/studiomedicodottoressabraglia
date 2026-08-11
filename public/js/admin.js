@@ -273,6 +273,8 @@ const CARICATORI = {
   moduli: caricaModuli,
   prenotazioni: caricaPrenotazioni,
   medicine: caricaMedicine,
+  specialistiche: caricaSpecialistiche,
+  esami: caricaEsami,
   email: caricaEmail,
   pazienti: caricaPazienti,
   collaboratori: caricaCollaboratori,
@@ -763,9 +765,77 @@ function schedaPrenotazione(p) {
  * altre: anche se la scrive lo studio, resta una richiesta da confermare, non
  * una ricetta gia' pronta. Chi la registra non e' detto sia chi la valuta.
  */
-function moduloNuovaMedicina(chiudi) {
+/**
+ * Le prescrizioni allegate, mostrate qui dentro.
+ *
+ * Chi legge una richiesta con il paziente al telefono deve vedere la foto, non
+ * scaricarla, aprirla e cercarla nella cartella dei download. L'anteprima e'
+ * piccola apposta — serve a capire di cosa si parla — e cliccandola si apre a
+ * pagina intera.
+ *
+ * Il contenuto arriva da /api/admin/allegati, che vuole il token: per questo si
+ * scarica con fetch e si mostra da li', invece di puntarci direttamente con un
+ * src, che partirebbe senza intestazione e si prenderebbe un 401.
+ */
+function riquadroAllegati(allegati) {
+  const carta = nodo('div');
+  carta.style.marginTop = '.85rem';
+  carta.append(nodo('div', 'piccolo tenue',
+    allegati.length === 1 ? 'Documento allegato' : `${allegati.length} documenti allegati`));
+
+  const griglia = nodo('div', 'anteprime');
+
+  for (const a of allegati) {
+    const riquadro = nodo('div', 'anteprima');
+    const eImmagine = String(a.tipo_mime || '').startsWith('image/');
+
+    if (eImmagine) {
+      const img = nodo('img');
+      img.alt = a.nome;
+      img.style.cursor = 'zoom-in';
+      protetto(async () => {
+        const risposta = await fetch(`/api/admin/allegati/${a.id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!risposta.ok) return;
+        const blob = await risposta.blob();
+        img.src = URL.createObjectURL(blob);
+        img.addEventListener('click', () => window.open(img.src, '_blank', 'noopener'));
+      });
+      riquadro.append(img);
+    } else {
+      const apri = nodo('button', 'bottone secondario piccolo', '📄 Apri');
+      apri.type = 'button';
+      apri.addEventListener('click', () => protetto(async () => {
+        const risposta = await fetch(`/api/admin/allegati/${a.id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!risposta.ok) throw new Error('Non riesco ad aprire il documento.');
+        const url = URL.createObjectURL(await risposta.blob());
+        window.open(url, '_blank', 'noopener');
+      }));
+      riquadro.append(apri);
+    }
+
+    riquadro.append(nodo('span', 'piccolo tenue',
+      `${a.nome} · ${Math.max(1, Math.round(a.byte / 1024))} kB`));
+    griglia.append(riquadro);
+  }
+
+  carta.append(griglia);
+  return carta;
+}
+
+const PAROLE_TIPO = {
+  medicina: { icona: '💊', titolo: 'Nuova richiesta di medicinali', campo: 'Medicinali' },
+  specialistica: { icona: '🩺', titolo: 'Nuova visita specialistica', campo: 'Quale visita' },
+  esami: { icona: '🧪', titolo: 'Nuovi esami del sangue', campo: 'Quali esami' }
+};
+
+function moduloNuovaMedicina(chiudi, tipo = 'medicina') {
+  const parole = PAROLE_TIPO[tipo] || PAROLE_TIPO.medicina;
   const carta = nodo('div', 'carta');
-  carta.append(nodo('strong', null, '💊 Nuova richiesta di medicinali'));
+  carta.append(nodo('strong', null, `${parole.icona} ${parole.titolo}`));
   carta.append(nodo('p', 'piccolo tenue',
     'Entra fra quelle da vedere: la conferma o il rifiuto restano un secondo passaggio.'));
 
@@ -776,7 +846,7 @@ function moduloNuovaMedicina(chiudi) {
 
   const riga2 = nodo('div', 'filtri');
   riga2.append(
-    campoModulo('Medicinali', farmaci),
+    campoModulo(parole.campo, farmaci),
     campoModulo('Note', note),
     campoModulo('Ritiro', ambulatorio)
   );
@@ -792,6 +862,7 @@ function moduloNuovaMedicina(chiudi) {
         const { richiesta } = await api('/admin/medicine', {
           method: 'POST',
           body: {
+            tipo,
             nome: campi.nome.value, cognome: campi.cognome.value,
             telefono: campi.telefono.value, email: campi.email.value,
             farmaci: farmaci.value, note: note.value,
@@ -800,7 +871,8 @@ function moduloNuovaMedicina(chiudi) {
         });
         avvisa(`Registrata: ${richiesta.codice}. Ora è fra quelle da vedere.`, 'ok');
         chiudi();
-        await caricaMedicine();
+        await caricaRichieste(
+          Object.keys(SCHEDE_RICHIESTE).find((s) => SCHEDE_RICHIESTE[s].tipo === tipo));
       } finally {
         salva.disabled = false;
       }
@@ -816,13 +888,27 @@ function moduloNuovaMedicina(chiudi) {
   return carta;
 }
 
-async function caricaMedicine() {
-  const parametri = new URLSearchParams();
-  if ($('#med-stato').value) parametri.set('stato', $('#med-stato').value);
-  if ($('#med-cerca').value.trim()) parametri.set('cerca', $('#med-cerca').value.trim());
+/**
+ * Le tre schede del pannello sono la stessa scheda con un filtro diverso.
+ *
+ * Per chi ci lavora il gesto e' identico — si guarda, si corregge, si risponde —
+ * e tre pagine diverse per fare la stessa cosa sarebbero solo tre posti in cui
+ * cercare un difetto. Cambia il tipo, cambiano i campi dei filtri, il resto no.
+ */
+const SCHEDE_RICHIESTE = {
+  medicine: { tipo: 'medicina', stato: '#med-stato', cerca: '#med-cerca', elenco: '#elenco-medicine' },
+  specialistiche: { tipo: 'specialistica', stato: '#spe-stato', cerca: '#spe-cerca', elenco: '#elenco-specialistiche' },
+  esami: { tipo: 'esami', stato: '#esa-stato', cerca: '#esa-cerca', elenco: '#elenco-esami' }
+};
+
+async function caricaRichieste(scheda) {
+  const c = SCHEDE_RICHIESTE[scheda];
+  const parametri = new URLSearchParams({ tipo: c.tipo });
+  if ($(c.stato).value) parametri.set('stato', $(c.stato).value);
+  if ($(c.cerca).value.trim()) parametri.set('cerca', $(c.cerca).value.trim());
 
   const { richieste, totale } = await api(`/admin/medicine?${parametri}`);
-  const contenitore = $('#elenco-medicine');
+  const contenitore = $(c.elenco);
 
   if (!richieste.length) {
     contenitore.replaceChildren(vuoto('Nessuna richiesta con questi filtri.'));
@@ -834,6 +920,14 @@ async function caricaMedicine() {
     ...richieste.map(schedaMedicina)
   );
 }
+
+// Dichiarazioni di funzione e non costanti, di proposito: CARICATORI le nomina
+// molto piu' in alto nel file, e una costante li' non esiste ancora. Scritte
+// come costanti il pannello moriva al caricamento con "Cannot access before
+// initialization", cioe' schermata vuota e nessuna scheda che si apre.
+function caricaMedicine() { return caricaRichieste('medicine'); }
+function caricaSpecialistiche() { return caricaRichieste('specialistiche'); }
+function caricaEsami() { return caricaRichieste('esami'); }
 
 /** Testo lungo che cresce con quello che contiene: gli elenchi di farmaci vanno a capo. */
 function areaTesto(valore, righe = 3) {
@@ -859,7 +953,7 @@ function schedaMedicina(r) {
   testata.style.cssText = 'display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;justify-content:space-between';
   const sinistra = nodo('div');
   sinistra.append(
-    nodo('strong', null, `💊 ${r.nome} ${r.cognome}`),
+    nodo('strong', null, `${(PAROLE_TIPO[r.tipo] || PAROLE_TIPO.medicina).icona} ${r.nome} ${r.cognome}`),
     nodo('div', 'piccolo tenue', `Arrivata il ${quando(r.creata_il)} · ${r.codice}` +
       (r.origine && r.origine !== 'sito' ? ` · da ${r.origine}` : ''))
   );
@@ -892,6 +986,8 @@ function schedaMedicina(r) {
     carta.append(prima);
   }
 
+  if (r.allegati?.length) carta.append(riquadroAllegati(r.allegati));
+
   const chiusa = r.stato === 'rifiutata' || r.stato === 'consegnata';
 
   // Chiusa: si legge e basta. Riaprirla vorrebbe dire mandare al paziente una
@@ -922,7 +1018,7 @@ function schedaMedicina(r) {
   const riga = nodo('div', 'filtri');
   riga.style.marginTop = '.85rem';
   riga.append(
-    campoModulo('Medicinali', campi.farmaci),
+    campoModulo((PAROLE_TIPO[r.tipo] || PAROLE_TIPO.medicina).campo, campi.farmaci),
     campoModulo('Note', campi.note),
     campoModulo('Ritiro', campi.ambulatorio_id),
     campoModulo('N. ricetta', campi.numero_ricetta)
@@ -945,7 +1041,12 @@ function schedaMedicina(r) {
           await api(`/admin/medicine/${r.codice}/${corpo.azione}`,
             { method: 'POST', body: corpo.dati || {} });
           avvisa(corpo.fatto, 'ok');
-          await caricaMedicine();
+          // Si ricarica la scheda a cui appartiene questa richiesta, non sempre
+          // quella dei medicinali: rispondendo a una visita specialistica, la
+          // riga sarebbe rimasta a schermo com'era.
+          await caricaRichieste(
+            Object.keys(SCHEDE_RICHIESTE).find((s) => SCHEDE_RICHIESTE[s].tipo === r.tipo)
+            || 'medicine');
         } finally {
           tutti.forEach((x) => { x.disabled = false; });
         }
@@ -1836,14 +1937,24 @@ function collegaFiltri() {
     protetto(caricaPrenotazioni);
   });
 
-  const ricaricaMedicine = attendi(() => protetto(caricaMedicine));
-  $('#med-stato').addEventListener('change', ricaricaMedicine);
-  $('#med-cerca').addEventListener('input', ricaricaMedicine);
+  // Filtri e bottone "aggiungi" delle tre schede: stesso collegamento, tre volte.
+  for (const [scheda, c] of Object.entries(SCHEDE_RICHIESTE)) {
+    const ricarica = attendi(() => protetto(() => caricaRichieste(scheda)));
+    $(c.stato).addEventListener('change', ricarica);
+    $(c.cerca).addEventListener('input', ricarica);
+  }
 
   $('#pren-aggiungi').addEventListener('click', () =>
     apriChiudi($('#modulo-prenotazione'), moduloNuovaPrenotazione));
-  $('#med-aggiungi').addEventListener('click', () =>
-    apriChiudi($('#modulo-medicina'), moduloNuovaMedicina));
+
+  for (const [bottone, contenitore, tipo] of [
+    ['#med-aggiungi', '#modulo-medicina', 'medicina'],
+    ['#spe-aggiungi', '#modulo-specialistica', 'specialistica'],
+    ['#esa-aggiungi', '#modulo-esame', 'esami']
+  ]) {
+    $(bottone).addEventListener('click', () =>
+      apriChiudi($(contenitore), (chiudi) => moduloNuovaMedicina(chiudi, tipo)));
+  }
 
   $('#mail-stato').addEventListener('change', () => protetto(caricaEmail));
   $('#mail-controlla').addEventListener('click', (e) => {
