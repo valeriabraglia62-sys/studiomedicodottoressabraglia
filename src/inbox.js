@@ -467,6 +467,24 @@ async function leggiCasella() {
         const idMessaggio = busta?.envelope?.messageId || `uid-${id}`;
         if (giaVista(idMessaggio)) continue;
 
+        // Le notifiche di annullamento che il programma manda finiscono nella
+        // stessa casella che legge, perche' mittente e destinatario sono lo
+        // stesso indirizzo. Restano li' a riempire la posta in arrivo senza
+        // dire niente di nuovo: l'annullamento e' gia' registrato, il paziente
+        // e' gia' stato avvisato, e chi apre la casella la mattina se le trova
+        // in mezzo alle richieste vere. Vanno nel cestino.
+        //
+        // Solo quelle di annullamento: le conferme di nuove prenotazioni le
+        // lasciamo stare, che qualcuno le usa per accorgersi al volo che e'
+        // entrata una richiesta senza aprire il pannello.
+        const mittenteBusta = busta?.envelope?.from?.[0]?.address || '';
+        const oggettoBusta = busta?.envelope?.subject || '';
+        if (eNostraNotifica(mittenteBusta) && /^\s*Annullamento:/i.test(oggettoBusta)) {
+          accoda('cestina_email', { codice: null, message_id: idMessaggio });
+          stmtSegnaVista.run(idMessaggio, new Date().toISOString(), 'cestinata', null);
+          continue;
+        }
+
         const msg = await client.fetchOne(String(id), { source: true }, { uid: true });
         if (!msg?.source) continue;
 

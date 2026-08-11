@@ -39,6 +39,22 @@ process.env.CARTELLA_BACKUP = path.join(RADICE, 'data', 'backup-prova');
 process.env.EMAIL_USER = '';
 process.env.EMAIL_PASS = '';
 
+// server.js intercetta le eccezioni e le scrive senza uscire: in produzione e'
+// giusto, perche' un errore su una richiesta non deve buttare giu' il sito per
+// tutti gli altri. Qui pero' quella rete di sicurezza fa danno: un errore in una
+// prova lascerebbe il server in ascolto e il processo appeso, e chi lancia i
+// test aspetterebbe per sempre senza capire perche'. Successo l'11 agosto 2026:
+// dieci minuti di attesa per un indice sbagliato.
+//
+// Node chiama tutti i gestori registrati, quindi questo si aggiunge a quello di
+// server.js senza toglierlo: lui scrive, questo fa uscire con un errore.
+for (const evento of ['uncaughtException', 'unhandledRejection']) {
+  process.on(evento, (err) => {
+    console.error(`\nPROVE INTERROTTE — ${evento}:`, err);
+    process.exit(1);
+  });
+}
+
 const BASE = 'http://localhost:3999';
 
 let passati = 0;
@@ -232,6 +248,45 @@ let token = null;
 
   const finto = await chiama('GET', '/api/admin/prenotazioni', null, 'token-inventato');
   verifica('un token inventato non apre nulla', finto.stato === 401);
+}
+
+console.log('\nGli annullamenti vecchi non ingombrano l\'elenco');
+{
+  // Un annullamento serve il giorno che succede; il giorno dopo e' rumore su un
+  // elenco che si guarda di corsa. Sparisce dalla vista, non dall'archivio: chi
+  // lo cerca lo ritrova filtrando su "annullate".
+  // Lo slot si chiede adesso invece di pescarlo da slotLiberi: quella lista e'
+  // dell'inizio, e nel frattempo le prove qui sopra ne hanno occupati parecchi.
+  const disponibili = await chiama('GET', `/api/disponibilita?data=${giorno}&ambulatorio_id=1`);
+  const slot = (disponibili.dati.slot || []).find((s) => s.disponibile);
+  verifica('c\'e\' uno slot libero per questa prova', Boolean(slot));
+
+  const creata = await chiama('POST', '/api/prenotazioni', {
+    ambulatorio_id: 1, data: giorno, ora_inizio: slot.ora_inizio,
+    nome: 'Vecchio', cognome: 'Annullamento', telefono: '3335554444',
+    email: 'vecchio.annullamento@example.com', problema: 'Verifica sparizione dall elenco'
+  });
+  const codice = creata.dati.prenotazione?.codice;
+  await chiama('POST', `/api/prenotazioni/${codice}/annulla`);
+
+  const appena = await chiama('GET', '/api/admin/prenotazioni', null, token);
+  verifica('appena annullata si vede ancora',
+    appena.dati.prenotazioni.some((p) => p.codice === codice));
+
+  // La si invecchia di tre giorni senza aspettare tre giorni.
+  db.prepare('UPDATE prenotazioni SET annullata_il = ? WHERE codice = ?')
+    .run(new Date(Date.now() - 3 * 86400000).toISOString(), codice);
+
+  const dopo = await chiama('GET', '/api/admin/prenotazioni', null, token);
+  verifica('passato un giorno sparisce dall\'elenco',
+    !dopo.dati.prenotazioni.some((p) => p.codice === codice));
+
+  const cercandola = await chiama('GET', '/api/admin/prenotazioni?stato=annullata', null, token);
+  verifica('ma chi la cerca fra le annullate la ritrova',
+    cercandola.dati.prenotazioni.some((p) => p.codice === codice));
+
+  const dalPaziente = await chiama('GET', `/api/prenotazioni/${codice}`);
+  verifica('e il paziente col suo codice la vede sempre', dalPaziente.stato === 200);
 }
 
 console.log('\nAccessi personali dei collaboratori');

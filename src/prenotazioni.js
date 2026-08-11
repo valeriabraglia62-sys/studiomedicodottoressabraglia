@@ -405,6 +405,18 @@ export function elencoAdmin({ dal, al, stato, ambulatorio_id, cerca, pagina = 1,
   if (dal) { dove.push('p.data >= ?'); par.push(dal); }
   if (al) { dove.push('p.data <= ?'); par.push(al); }
   if (stato) { dove.push('p.stato = ?'); par.push(stato); }
+
+  // Un annullamento serve il giorno che succede: bisogna vederlo, capire se
+  // richiamare il paziente, accorgersi che un orario si e' liberato. Il giorno
+  // dopo e' solo una riga in mezzo alle altre, e su un elenco che si guarda di
+  // corsa la mattina il rumore fa perdere le cose che contano.
+  //
+  // Spariscono dalla vista, non dall'archivio: chi le cerca le ritrova mettendo
+  // il filtro su "Annullate", e la storia resta scritta. Nascondere e cancellare
+  // si somigliano solo finche' non serve rispondere a "ma io non avevo disdetto".
+  if (!stato) {
+    dove.push("(p.stato <> 'annullata' OR date(p.annullata_il) >= date('now', '-1 day'))");
+  }
   if (ambulatorio_id) { dove.push('p.ambulatorio_id = ?'); par.push(ambulatorio_id); }
   if (cerca) {
     dove.push(`(pa.nome LIKE ? OR pa.cognome LIKE ? OR pa.telefono LIKE ?
