@@ -279,19 +279,63 @@ export const MASSIMO_BYTE_ALLEGATO = 10 * 1024 * 1024;
 // dal caricamento ripetuto per sbaglio, che con le foto capita spesso.
 const MASSIMO_ALLEGATI = 5;
 
+/**
+ * I formati che si possono aprire dentro il pannello senza rischi.
+ *
+ * L'elenco e' corto apposta, ed e' il prezzo per poter guardare un documento
+ * senza scaricarlo. Mostrare un file dentro la pagina vuol dire darlo in pasto
+ * al browser nella sessione di chi ha appena fatto il login: un HTML o un SVG
+ * li' dentro eseguono il loro contenuto, e chi carica e' un paziente qualunque
+ * arrivato da internet. Immagini e PDF invece il browser li disegna e basta.
+ *
+ * Ogni voce porta la firma con cui il file si riconosce davvero. Il tipo
+ * dichiarato da chi carica non conta niente: e' una cosa che dice lui, e
+ * cambiarla costa un secondo.
+ */
+const FORMATI = [
+  { mime: 'image/jpeg', firma: [0xff, 0xd8, 0xff] },
+  { mime: 'image/png', firma: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] },
+  { mime: 'image/gif', firma: [0x47, 0x49, 0x46, 0x38] },
+  { mime: 'application/pdf', firma: [0x25, 0x50, 0x44, 0x46] },
+  // WEBP e HEIC non hanno la firma all'inizio: sta dopo i primi byte di
+  // intestazione. I telefoni recenti fotografano in HEIC senza dichiararlo.
+  { mime: 'image/webp', firma: [0x57, 0x45, 0x42, 0x50], da: 8 },
+  { mime: 'image/heic', firma: [0x66, 0x74, 0x79, 0x70], da: 4 }
+];
+
+export const FORMATI_AMMESSI = FORMATI.map((f) => f.mime);
+
+/**
+ * Che cosa e' davvero questo file, guardandoci dentro.
+ *
+ * Fidarsi dell'etichetta vorrebbe dire rifiutare foto buone — i telefoni a
+ * volte non dichiarano niente — e accettarne di cattive. La firma sta scritta
+ * nei primi byte e non si puo' dichiarare.
+ */
+function riconosci(contenuto) {
+  for (const f of FORMATI) {
+    const da = f.da || 0;
+    if (contenuto.length < da + f.firma.length) continue;
+    if (f.firma.every((b, i) => contenuto[da + i] === b)) return f;
+  }
+  return null;
+}
+
 const NOME_PULITO = /[\\/:*?"<>|\u0000-\u001f]/g;
 
 /**
  * Attacca un file a una richiesta.
  *
- * Si accetta qualunque tipo, come chiesto: il paziente fotografa la
- * prescrizione con quello che ha, e discutere di formati con chi sta cercando
- * di mandarci un documento e' il modo migliore per non riceverlo. Quello che
- * NON si fa e' fidarsi di come si chiama o di cosa dice di essere: il nome
- * viene ripulito dai caratteri che sui percorsi combinano guai, e il tipo
- * dichiarato dal browser si tiene solo per sapere come mostrarlo.
+ * Si accettano solo foto e PDF, ed e' un restringimento voluto: lo studio deve
+ * poter guardare la prescrizione dentro il pannello senza scaricarla, e per
+ * farlo il file finisce dentro la pagina. Li' un HTML o un SVG eseguirebbero il
+ * loro contenuto nella sessione di chi ha appena fatto il login.
+ *
+ * Il formato si riconosce dai byte, non da quello che dichiara chi carica: un
+ * file puo' chiamarsi foto.jpg e dire di essere image/jpeg pur essendo altro,
+ * mentre la firma dentro non si cambia senza cambiare il file.
  */
-export function allegaFile(richiestaId, { nome, tipoMime, contenuto }) {
+export function allegaFile(richiestaId, { nome, contenuto }) {
   const richiesta = dettaglio(richiestaId);
   if (!richiesta) throw new ErroreDominio('Richiesta non trovata.', 404);
 
@@ -299,6 +343,14 @@ export function allegaFile(richiestaId, { nome, tipoMime, contenuto }) {
   if (contenuto.length > MASSIMO_BYTE_ALLEGATO) {
     throw new ErroreDominio(
       `Il file è troppo grande: il limite è ${Math.round(MASSIMO_BYTE_ALLEGATO / 1024 / 1024)} MB.`
+    );
+  }
+
+  const formato = riconosci(contenuto);
+  if (!formato) {
+    throw new ErroreDominio(
+      'Si possono allegare solo foto (JPG, PNG, GIF, WEBP, HEIC) o PDF. '
+      + 'Se hai un documento di altro tipo, fotografalo.'
     );
   }
 
@@ -314,10 +366,10 @@ export function allegaFile(richiestaId, { nome, tipoMime, contenuto }) {
   const info = db.prepare(`
     INSERT INTO allegati (richiesta_id, nome, tipo_mime, byte, contenuto, caricato_il)
     VALUES (?, ?, ?, ?, ?, ?)
-  `).run(richiestaId, nomePulito, testoPulito(tipoMime, 120) || null,
+  `).run(richiestaId, nomePulito, formato.mime,
     contenuto.length, contenuto, new Date().toISOString());
 
-  return { id: info.lastInsertRowid, nome: nomePulito, byte: contenuto.length };
+  return { id: info.lastInsertRowid, nome: nomePulito, byte: contenuto.length, tipo: formato.mime };
 }
 
 /** L'elenco degli allegati, senza il contenuto: quello pesa e serve solo a chi lo apre. */
@@ -453,6 +505,11 @@ export function elencoAdmin({ stato, tipo, cerca, pagina = 1, perPagina = 50 } =
        r.creata_il DESC
      LIMIT ? OFFSET ?`
   ).all(...par, limite, offset);
+
+  // Gli allegati vengono attaccati qui e non con una JOIN: sono pochi per
+  // richiesta e una riga per allegato moltiplicherebbe le richieste stesse.
+  // Il contenuto non entra mai in questo elenco, solo nome e dimensione.
+  for (const r of righe) r.allegati = allegatiDi(r.id);
 
   return { richieste: righe, totale, pagina: Number(pagina) || 1, pagine: Math.ceil(totale / limite) || 1 };
 }

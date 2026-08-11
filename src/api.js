@@ -228,7 +228,6 @@ router.post('/medicine/:codice/allegato', limiteScrittura,
 
     const esito = medicine.allegaFile(r.id, {
       nome: req.query.nome,
-      tipoMime: req.get('content-type'),
       contenuto: req.body
     });
 
@@ -457,25 +456,27 @@ admin.post('/medicine/:codice/consegnata', (req, res) => {
 });
 
 /**
- * Scarica un allegato. Solo dal pannello: sono documenti sanitari.
+ * Il contenuto di un allegato, per guardarlo dentro il pannello.
  *
- * Due accorgimenti che sembrano dettagli e non lo sono. Il file esce sempre
- * come allegato da scaricare, mai mostrato dentro la pagina: accettiamo
- * qualunque tipo, e fra i tipi che un paziente puo' mandare ci sono HTML e SVG,
- * che aperti dentro il pannello eseguirebbero il loro contenuto nella sessione
- * di chi ha appena fatto il login. E il tipo dichiarato dal browser di chi ha
- * caricato non si rimanda indietro cosi' com'e', perche' e' una cosa che diceva
- * lui: si manda un tipo generico e ci pensa il sistema operativo ad aprirlo con
- * quello che serve.
+ * Esce con il suo tipo vero, quello riconosciuto dai byte al momento del
+ * caricamento, e "inline" cosi' il browser lo disegna nella pagina invece di
+ * scaricarlo. Si puo' fare solo perche' i tipi ammessi sono pochi e sono tutti
+ * roba che il browser disegna e basta: se un domani si riaprisse la porta a
+ * HTML o SVG, questa riga tornerebbe a dover essere "attachment".
+ *
+ * nosniff resta comunque: dice al browser di credere al tipo che gli diciamo e
+ * di non tirare a indovinare guardando il contenuto.
  */
 admin.get('/allegati/:id', (req, res) => {
   const a = medicine.allegato(Number(req.params.id));
   if (!a) throw new ErroreDominio('Allegato non trovato.', 404);
 
-  res.setHeader('Content-Type', 'application/octet-stream');
+  const mostrabile = medicine.FORMATI_AMMESSI.includes(a.tipo_mime);
+
+  res.setHeader('Content-Type', mostrabile ? a.tipo_mime : 'application/octet-stream');
   res.setHeader('Content-Length', a.byte);
   res.setHeader('Content-Disposition',
-    `attachment; filename="${a.nome.replace(/"/g, '')}"`);
+    `${mostrabile ? 'inline' : 'attachment'}; filename="${a.nome.replace(/"/g, '')}"`);
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.send(a.contenuto);
 });
