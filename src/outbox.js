@@ -18,6 +18,49 @@ export function registraGestore(tipo, fn) {
   gestori.set(tipo, fn);
 }
 
+/**
+ * Come si compone l'avviso "questa notifica non riesce a partire".
+ *
+ * Lo passa il mailer, invece di essere importato da qui, perche' e' il mailer a
+ * registrarsi come gestore della coda: importarlo da questa parte chiuderebbe
+ * il giro e i due moduli non si caricherebbero piu'.
+ */
+let componiAvvisoDifficolta = null;
+export function impostaAvvisoDifficolta(fn) {
+  componiAvvisoDifficolta = fn;
+}
+
+/**
+ * Avvisa lo studio che una consegna continua a fallire.
+ *
+ * Prima qui c'era solo una riga di console, che su una macchina senza nessuno
+ * davanti non la legge mai nessuno: il paziente non sapeva che la sua ricetta
+ * era pronta, e lo studio non sapeva che il paziente non lo sapeva.
+ *
+ * L'avviso e' a sua volta una email in coda. Se a essere rotto e' proprio
+ * l'invio, aspettera' insieme alle altre e partira' quando l'invio torna: e'
+ * il momento in cui serve, perche' e' allora che si scopre cosa e' rimasto
+ * indietro. Il contrassegno serve a non avvisare del fallimento di un avviso,
+ * che sarebbe un giro senza fine.
+ */
+function avvisaDifficolta(riga, errore) {
+  if (!componiAvvisoDifficolta) return;
+
+  let payload = {};
+  try { payload = JSON.parse(riga.payload); } catch { /* payload illeggibile */ }
+  if (payload.avvisoInterno) return;
+
+  accoda('email', {
+    ...componiAvvisoDifficolta({
+      tipo: riga.tipo,
+      tentativi: riga.tentativi + 1,
+      errore: String(errore?.message || errore).slice(0, 300),
+      destinatario: payload.to || null
+    }),
+    avvisoInterno: true
+  });
+}
+
 const stmtAccoda = db.prepare(`
   INSERT INTO outbox (tipo, payload, prossimo_tentativo, creato_il)
   VALUES (?, ?, ?, ?)
@@ -89,6 +132,7 @@ export async function elaboraCoda() {
 
         if (tentativi === SOGLIA_ALLARME) {
           console.error(`[outbox] "${riga.tipo}" #${riga.id} fallito ${tentativi} volte: ${err?.message}`);
+          avvisaDifficolta(riga, err);
         }
       }
     }

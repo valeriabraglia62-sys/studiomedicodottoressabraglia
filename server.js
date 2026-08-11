@@ -8,6 +8,7 @@ import { avviaPolling, fermaPolling } from './src/inbox.js';
 import { avviaLetturaModuli, fermaLetturaModuli, daConfermare } from './src/moduli.js';
 import { avviaPromemoria, fermaPromemoria } from './src/promemoria.js';
 import { avviaBackup, fermaBackup } from './src/backup.js';
+import { avviaBattito, fermaBattito } from './src/battito.js';
 import { pulisciChatVecchie } from './src/chatbot.js';
 import { verificaConnessioneEmail } from './src/mailer.js';
 import { verificaFoglio } from './src/sheets.js';
@@ -112,6 +113,15 @@ const server = app.listen(config.port, async () => {
   avviaWorker(30);
   avviaPromemoria();
   avviaBackup();
+
+  // Va fatto partire prima di tutto il resto che potrebbe scrivere in coda: se
+  // il sito e' stato giu', l'avviso deve trovarsi in cima e non dopo trenta
+  // richieste raccolte dai Moduli nel frattempo.
+  const assenza = avviaBattito();
+  if (assenza) {
+    console.log(`  ATTENZIONE     il sito e' stato irraggiungibile per circa ${assenza.minuti} minuti`);
+  }
+
   if (config.inbox.enabled) avviaPolling();
   // Prima cosa all'accensione: raccogliere le richieste arrivate mentre il
   // sito era spento. E' il motivo per cui i Moduli esistono.
@@ -177,6 +187,10 @@ function spegni(segnale) {
   fermaLetturaModuli();
   fermaPromemoria();
   fermaBackup();
+  // Segna l'ora anche adesso: una chiusura ordinata non e' un'interruzione, e
+  // senza quest'ultima scrittura il tempo di un riavvio verrebbe misurato a
+  // partire dall'ultimo battito, fino a un minuto prima.
+  fermaBattito();
 
   server.close(() => {
     chiudiDb();

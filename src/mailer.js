@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 import { config, NOTIFY_EMAIL } from './config.js';
-import { registraGestore } from './outbox.js';
+import { registraGestore, impostaAvvisoDifficolta } from './outbox.js';
 import { formattaDataEstesa } from './orari.js';
 import { linkGoogleCalendar } from './evento.js';
 
@@ -157,6 +157,78 @@ export const emailAnagraficaDiscordante = ({ scheda, arrivato, contesto }) => co
     'Se e\' la stessa persona che ha cambiato recapito, aggiornatela voi. ' +
     'Se invece sono due persone diverse e l\'indirizzo e\' stato scritto male, ' +
     'la prenotazione e\' finita sulla scheda sbagliata e va spostata.'
+});
+
+/**
+ * Un istante scritto come lo direbbe una persona: "ieri alle 23:40" non si puo'
+ * fare in una email che si legge chissa' quando, ma "10/08/2026 alle 23:40" si'.
+ * Ora italiana, perche' chi legge sta a Reggio Emilia e non a Greenwich.
+ */
+function momentoLeggibile(istante) {
+  const d = new Date(istante);
+  if (Number.isNaN(d.getTime())) return String(istante);
+  return d.toLocaleString('it-IT', {
+    timeZone: 'Europe/Rome',
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
+}
+
+/** "6 ore e 20 minuti" si legge, "380 minuti" bisogna calcolarlo. */
+function durataLeggibile(minuti) {
+  if (minuti < 60) return `${minuti} minuti`;
+  const ore = Math.floor(minuti / 60);
+  const resto = minuti % 60;
+  const parteOre = ore === 1 ? 'un\'ora' : `${ore} ore`;
+  return resto ? `${parteOre} e ${resto} minuti` : parteOre;
+}
+
+/**
+ * Il sito e' stato irraggiungibile e adesso e' tornato.
+ *
+ * Si manda al ritorno e non durante, per il motivo piu' banale: mentre e' giu'
+ * il programma non gira e non puo' mandare niente. Serve a non far passare
+ * inosservata un'interruzione notturna: se i pazienti hanno trovato la pagina
+ * chiusa per sei ore, qualcuno deve saperlo e andare a guardare cosa e'
+ * arrivato dai Moduli nel frattempo.
+ */
+export const emailSitoTornato = ({ spentoDa, tornatoIl, minuti }) => componiEmail({
+  to: NOTIFY_EMAIL,
+  subject: `Il sito e' rimasto spento per ${durataLeggibile(minuti)}`,
+  titolo: 'Il sito era irraggiungibile',
+  intro: 'Il programma si e\' riacceso adesso e si e\' accorto di essere stato fermo. ' +
+    'In quelle ore chi provava a prenotare dal sito non ci riusciva.',
+  righe: [
+    ['Ultimo segno di vita', momentoLeggibile(spentoDa)],
+    ['Tornato attivo', momentoLeggibile(tornatoIl)],
+    ['Quanto e\' durata', durataLeggibile(minuti)]
+  ],
+  chiusura: 'Le richieste arrivate dai Moduli Google in quelle ore sono state raccolte ' +
+    'e stanno in "Da confermare". Le notifiche rimaste in sospeso sono ripartite da sole.'
+});
+
+/**
+ * Una notifica a un paziente continua a non partire.
+ *
+ * Senza questo avviso il guasto e' invisibile: la riga resta in coda e riprova
+ * in silenzio, il paziente non sa che la sua ricetta e' pronta, e lo studio non
+ * sa che il paziente non lo sa. Se ne accorgerebbe solo quando lui telefona
+ * arrabbiato, o peggio quando non telefona affatto.
+ */
+export const emailConsegnaInDifficolta = ({ tipo, tentativi, errore, destinatario }) => componiEmail({
+  to: NOTIFY_EMAIL,
+  subject: 'Una notifica non riesce a partire',
+  titolo: 'Una notifica non riesce a partire',
+  intro: 'Il programma ci sta riprovando da solo e continuera' + '\' a farlo, ' +
+    'ma intanto il destinatario non ha ricevuto niente.',
+  righe: [
+    ['Tipo di notifica', tipo],
+    ['A chi doveva andare', destinatario || 'non indicato'],
+    ['Tentativi finora', String(tentativi)],
+    ['Errore', errore]
+  ],
+  chiusura: 'Se e\' una conferma o un annullamento, conviene avvisare la persona ' +
+    'per telefono senza aspettare. Lo stato della coda sta in "Stato del sistema".'
 });
 
 export const emailAnnullamentoAdmin = (p) => componiEmail({
@@ -383,3 +455,8 @@ export async function verificaConnessioneEmail() {
     return { ok: false, motivo: err.message };
   }
 }
+
+// La coda sa ritentare, non sa scrivere. Le si passa qui la funzione che compone
+// l'avviso, in fondo al file perche' i modelli devono esistere prima di essere
+// consegnati a qualcun altro.
+impostaAvvisoDifficolta(emailConsegnaInDifficolta);
