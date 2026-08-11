@@ -18,6 +18,8 @@
     <nav class="menu">
       <a href="#prenota" data-sezione="prenota">Prenota</a>
       <a href="#medicinali" data-sezione="medicinali">Medicinali</a>
+      <a href="#specialistiche" data-sezione="specialistiche">Visite specialistiche</a>
+      <a href="#esami" data-sezione="esami">Esami del sangue</a>
       <a href="#gestisci" data-sezione="gestisci">La mia richiesta</a>
       <a href="#ambulatori" data-sezione="ambulatori">Ambulatori</a>
     </nav>
@@ -180,6 +182,148 @@
         <div class="campo">
           <label for="med-note">Note <span class="tenue">(facoltative)</span></label>
           <textarea id="med-note" name="note" style="min-height:70px"></textarea>
+        </div>
+
+        <button type="submit" class="bottone largo">Invia la richiesta</button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- ---- Visite specialistiche ------------------------------------------- -->
+
+<section class="sezione" id="specialistiche">
+  <div class="contenitore">
+    <header>
+      <h2>Chiedi una visita specialistica</h2>
+      <p class="tenue">
+        Serve l'impegnativa del medico per prenotare una visita da uno specialista.
+        Scriva qui di cosa ha bisogno: le rispondiamo per email.
+      </p>
+    </header>
+
+    <div class="carta" style="max-width:640px">
+      <form id="form-specialistica" novalidate>
+        <div class="coppia">
+          <div class="campo">
+            <label for="spe-nome">Nome</label>
+            <input id="spe-nome" name="nome" autocomplete="given-name" required>
+            <span class="messaggio-errore"></span>
+          </div>
+          <div class="campo">
+            <label for="spe-cognome">Cognome</label>
+            <input id="spe-cognome" name="cognome" autocomplete="family-name" required>
+            <span class="messaggio-errore"></span>
+          </div>
+        </div>
+
+        <div class="coppia">
+          <div class="campo">
+            <label for="spe-telefono">Telefono</label>
+            <input id="spe-telefono" name="telefono" type="tel" autocomplete="tel" required>
+            <span class="messaggio-errore"></span>
+          </div>
+          <div class="campo">
+            <label for="spe-email">Email <span class="tenue">(qui le arriva la risposta)</span></label>
+            <input id="spe-email" name="email" type="email" autocomplete="email" required>
+            <span class="messaggio-errore"></span>
+          </div>
+        </div>
+
+        <div class="campo">
+          <label for="spe-farmaci">Di quale visita ha bisogno</label>
+          <textarea id="spe-farmaci" name="farmaci" required
+                    placeholder="Es. visita cardiologica di controllo, oppure ortopedica per il ginocchio destro."></textarea>
+          <span class="messaggio-errore"></span>
+        </div>
+
+        <div class="campo">
+          <label for="spe-file">Foto della prescrizione <span class="tenue">(se ce l'ha)</span></label>
+          <input id="spe-file" type="file" accept="image/*,application/pdf" multiple>
+          <p class="piccolo tenue" style="margin:.3rem 0 0">
+            Se lo specialista le ha gia' scritto qualcosa, la fotografi: e' piu' sicuro
+            che ricopiarla. Da telefono si apre direttamente la fotocamera.
+          </p>
+          <div class="anteprime" aria-live="polite"></div>
+        </div>
+
+        <div class="campo">
+          <label for="spe-note">Note <span class="tenue">(facoltative)</span></label>
+          <textarea id="spe-note" name="note" style="min-height:70px"></textarea>
+        </div>
+
+        <button type="submit" class="bottone largo">Invia la richiesta</button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- ---- Esami del sangue ------------------------------------------------ -->
+
+<section class="sezione" id="esami" style="background:var(--carta);border-block:1px solid var(--bordo)">
+  <div class="contenitore">
+    <header>
+      <h2>Chiedi gli esami del sangue</h2>
+      <p class="tenue">
+        Se ha gia' la richiesta dello specialista le basta fotografarla: non serve
+        ricopiare niente.
+      </p>
+    </header>
+
+    <div class="carta" style="max-width:640px">
+      <form id="form-esami" novalidate>
+        <div class="coppia">
+          <div class="campo">
+            <label for="esa-nome">Nome</label>
+            <input id="esa-nome" name="nome" autocomplete="given-name" required>
+            <span class="messaggio-errore"></span>
+          </div>
+          <div class="campo">
+            <label for="esa-cognome">Cognome</label>
+            <input id="esa-cognome" name="cognome" autocomplete="family-name" required>
+            <span class="messaggio-errore"></span>
+          </div>
+        </div>
+
+        <div class="coppia">
+          <div class="campo">
+            <label for="esa-telefono">Telefono</label>
+            <input id="esa-telefono" name="telefono" type="tel" autocomplete="tel" required>
+            <span class="messaggio-errore"></span>
+          </div>
+          <div class="campo">
+            <label for="esa-email">Email <span class="tenue">(qui le arriva la risposta)</span></label>
+            <input id="esa-email" name="email" type="email" autocomplete="email" required>
+            <span class="messaggio-errore"></span>
+          </div>
+        </div>
+
+        <!--
+          Qui il testo non e' obbligatorio, ed e' l'unica differenza vera fra
+          questo modulo e gli altri due: la prescrizione dello specialista *e'*
+          la richiesta, e farla ricopiare a mano vuol dire solo esporsi a un
+          errore di trascrizione su un dato clinico.
+        -->
+        <div class="campo">
+          <label for="esa-farmaci">Quali esami <span class="tenue">(se allega la foto puo' lasciarlo vuoto)</span></label>
+          <textarea id="esa-farmaci" name="farmaci"
+                    placeholder="Es. emocromo, glicemia, colesterolo."></textarea>
+          <span class="messaggio-errore"></span>
+        </div>
+
+        <div class="campo">
+          <label for="esa-file">Foto della richiesta dello specialista</label>
+          <input id="esa-file" type="file" accept="image/*,application/pdf" multiple>
+          <p class="piccolo tenue" style="margin:.3rem 0 0">
+            Da telefono si apre direttamente la fotocamera. Foto o PDF, fino a 10 MB
+            l'uno.
+          </p>
+          <div class="anteprime" aria-live="polite"></div>
+        </div>
+
+        <div class="campo">
+          <label for="esa-note">Note <span class="tenue">(facoltative)</span></label>
+          <textarea id="esa-note" name="note" style="min-height:70px"></textarea>
         </div>
 
         <button type="submit" class="bottone largo">Invia la richiesta</button>

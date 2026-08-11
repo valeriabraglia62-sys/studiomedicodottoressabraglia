@@ -87,13 +87,23 @@ function segnalaCampo(campo, errore) {
   if (messaggio) messaggio.textContent = errore;
 }
 
+/**
+ * Un campo facoltativo e vuoto non si controlla.
+ *
+ * Le regole sono per nome, quindi "farmaci" vale su tutti e tre i moduli. Ma
+ * negli esami quel campo puo' restare vuoto, perche' basta la foto della
+ * richiesta: senza questo, il modulo rifiutava un invio perfettamente valido
+ * chiedendo di indicare un medicinale, che li' non c'entra niente.
+ */
+const daControllare = (campo) => campo.required || campo.value.trim().length > 0;
+
 /** Valida i campi con una regola nota; restituisce true se il modulo è a posto. */
 function validaModulo(form) {
   let primoErrore = null;
 
   for (const campo of $$('input, textarea', form)) {
     const regola = REGOLE[campo.name];
-    if (!regola) continue;
+    if (!regola || !daControllare(campo)) continue;
     const errore = regola(campo.value);
     segnalaCampo(campo, errore);
     if (errore && !primoErrore) primoErrore = campo;
@@ -111,10 +121,11 @@ function validazioneDalVivo(form) {
   for (const campo of $$('input, textarea', form)) {
     const regola = REGOLE[campo.name];
     if (!regola) continue;
-    campo.addEventListener('blur', () => segnalaCampo(campo, regola(campo.value)));
+    const controlla = () => (daControllare(campo) ? regola(campo.value) : '');
+    campo.addEventListener('blur', () => segnalaCampo(campo, controlla()));
     campo.addEventListener('input', () => {
       if (campo.closest('.campo')?.classList.contains('errore')) {
-        segnalaCampo(campo, regola(campo.value));
+        segnalaCampo(campo, controlla());
       }
     });
   }
@@ -397,24 +408,124 @@ function mostraConferma(p) {
   box.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-// ---- Richiesta medicinali --------------------------------------------------
+// ---- Richieste: medicinali, visite specialistiche, esami -------------------
 
-function collegaFormMedicine() {
-  const form = $('#form-medicine');
+/**
+ * I tre moduli sono lo stesso modulo con parole diverse.
+ *
+ * Quello che cambia davvero e' uno solo: agli esami il testo puo' mancare, se
+ * c'e' la foto della richiesta dello specialista. Tutto il resto — i campi, i
+ * controlli, l'invio, il codice che torna indietro — e' identico, e tenerlo in
+ * una funzione sola vuol dire che una correzione vale per tutti e tre.
+ */
+const MODULI_RICHIESTA = [
+  {
+    tipo: 'medicina',
+    form: '#form-medicine',
+    file: null,
+    fatto: 'Ti avviseremo quando la ricetta sarà pronta. Conserva il codice per controllarne lo stato.'
+  },
+  {
+    tipo: 'specialistica',
+    form: '#form-specialistica',
+    file: '#spe-file',
+    fatto: 'Le rispondiamo per email appena il medico ha guardato la richiesta. Conserva il codice.'
+  },
+  {
+    tipo: 'esami',
+    form: '#form-esami',
+    file: '#esa-file',
+    fatto: 'Le rispondiamo per email appena il medico ha guardato la richiesta. Conserva il codice.'
+  }
+];
+
+/**
+ * Mostra cosa si sta per mandare.
+ *
+ * Serve piu' di quanto sembri: chi fotografa una prescrizione col telefono non
+ * sa se ha inquadrato tutto, e accorgersi che la foto e' storta o tagliata dopo
+ * che la richiesta e' partita vuol dire una telefonata in piu' per tutti.
+ */
+function mostraAnteprime(campoFile) {
+  const contenitore = campoFile.parentElement.querySelector('.anteprime');
+  if (!contenitore) return;
+  contenitore.replaceChildren();
+
+  for (const file of campoFile.files) {
+    const riquadro = nodo('div', 'anteprima');
+
+    if (file.type.startsWith('image/')) {
+      const img = nodo('img');
+      img.alt = file.name;
+      img.src = URL.createObjectURL(file);
+      // Liberare l'indirizzo temporaneo appena l'immagine e' a schermo: senza,
+      // ogni foto scelta resta in memoria finche' non si ricarica la pagina.
+      img.addEventListener('load', () => URL.revokeObjectURL(img.src), { once: true });
+      riquadro.append(img);
+    } else {
+      riquadro.append(nodo('span', 'piccolo', '📄'));
+    }
+
+    riquadro.append(nodo('span', 'piccolo tenue',
+      `${file.name} · ${Math.max(1, Math.round(file.size / 1024))} kB`));
+    contenitore.append(riquadro);
+  }
+}
+
+/** Manda i file uno per uno, dopo che la richiesta esiste e ha un codice. */
+async function inviaAllegati(codice, campoFile) {
+  if (!campoFile?.files?.length) return;
+
+  for (const file of campoFile.files) {
+    const risposta = await fetch(
+      `/api/medicine/${codice}/allegato?nome=${encodeURIComponent(file.name)}`,
+      { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file }
+    );
+
+    if (!risposta.ok) {
+      const dati = await risposta.json().catch(() => ({}));
+      // La richiesta e' gia' registrata: un allegato che non passa non deve
+      // farla sembrare persa, altrimenti il paziente la rimanda da capo.
+      throw new Error(`${dati.message || 'Non sono riuscito a caricare il file.'} `
+        + `La richiesta ${codice} è comunque registrata: ci mandi la foto per email.`);
+    }
+  }
+}
+
+function collegaFormRichiesta({ tipo, form: selettore, file: selettoreFile, fatto }) {
+  const form = $(selettore);
+  if (!form) return;
   validazioneDalVivo(form);
+
+  const campoFile = selettoreFile ? $(selettoreFile) : null;
+  if (campoFile) campoFile.addEventListener('change', () => mostraAnteprime(campoFile));
 
   form.addEventListener('submit', (evento) => {
     evento.preventDefault();
     if (!validaModulo(form)) return;
 
+    // Agli esami il testo puo' mancare, ma qualcosa deve pur arrivare: senza
+    // testo e senza foto non ci sarebbe nessuna richiesta da leggere.
+    if (tipo === 'esami' && !form.querySelector('[name=farmaci]').value.trim()
+      && !campoFile?.files?.length) {
+      avvisa('Scriva quali esami le servono, oppure alleghi la foto della richiesta.', 'errore');
+      return;
+    }
+
     inviaProtetto(form, async () => {
-      const { richiesta } = await api('/medicine', { method: 'POST', body: datiModulo(form) });
+      const { richiesta } = await api('/medicine', {
+        method: 'POST',
+        body: { ...datiModulo(form), tipo, conAllegato: Boolean(campoFile?.files?.length) }
+      });
+
+      await inviaAllegati(richiesta.codice, campoFile);
+
       form.reset();
+      if (campoFile) mostraAnteprime(campoFile);
 
       const box = nodo('div', 'avviso ok');
       box.append(nodo('strong', null, `Richiesta registrata — codice ${richiesta.codice}`));
-      box.append(nodo('p', 'piccolo',
-        'Ti avviseremo quando la ricetta sarà pronta per il ritiro. Conserva il codice per controllarne lo stato.'));
+      box.append(nodo('p', 'piccolo', fatto));
       form.parentElement.prepend(box);
       box.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
@@ -422,6 +533,8 @@ function collegaFormMedicine() {
     });
   });
 }
+
+const collegaFormMedicine = () => MODULI_RICHIESTA.forEach(collegaFormRichiesta);
 
 // ---- Ricerca e annullamento ------------------------------------------------
 

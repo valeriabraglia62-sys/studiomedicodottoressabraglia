@@ -55,7 +55,12 @@ app.use((req, res, next) => {
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data:",
+    // blob: serve alle anteprime delle foto che il paziente sta per allegare:
+    // sono immagini costruite dal nostro stesso codice a partire da un file che
+    // l'utente ha appena scelto, e non escono mai dal suo browser. Senza questo
+    // l'anteprima resta un riquadro rotto proprio mentre uno cerca di capire se
+    // ha inquadrato bene la prescrizione.
+    "img-src 'self' data: blob:",
     "connect-src 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",

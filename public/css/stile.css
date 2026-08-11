@@ -502,6 +502,32 @@ td.codice { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-si
 
 /* ---- Amministrazione --------------------------------------------------- */
 
+/* Anteprime dei file allegati, sia sul sito che nel pannello. Piccole apposta:
+   servono a capire se la foto e' venuta storta o tagliata, non a leggerla —
+   per leggerla si apre. */
+.anteprime {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .6rem;
+  margin-top: .6rem;
+}
+.anteprima {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .25rem;
+  max-width: 130px;
+  text-align: center;
+}
+.anteprima img {
+  width: 110px;
+  height: 110px;
+  object-fit: cover;
+  border-radius: var(--raggio-piccolo);
+  border: 1px solid var(--bordo);
+}
+.anteprima span { word-break: break-word; }
+
 .riquadro-numero { text-align: center; }
 .riquadro-numero .numero { font-size: 2rem; font-weight: 700; color: var(--verde); line-height: 1.1; }
 .riquadro-numero .didascalia { font-size: .8rem; color: var(--testo-tenue); }
