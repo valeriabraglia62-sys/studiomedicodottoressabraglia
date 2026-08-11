@@ -529,6 +529,11 @@ admin.get('/sistema', via(async (_req, res) => {
     foglio: await verificaFoglio(),
     casella: inbox.statoCasella(),
     moduli: moduli.statoModuli(),
+    // Gli indirizzi dei due moduli servono proprio quando il pannello non si
+    // apre, quindi averli solo qui non basterebbe: stanno anche nell'email che
+    // avvisa dell'assenza. Qui ci sono per poterli copiare con calma prima che
+    // servano, che e' l'unico momento in cui si puo' farlo.
+    moduli_link: config.moduli.link,
     backup: statoBackup()
   });
 }));

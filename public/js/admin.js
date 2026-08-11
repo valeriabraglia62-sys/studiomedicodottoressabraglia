@@ -1687,7 +1687,7 @@ function collegaCollaboratori() {
 // ---- Stato del sistema -----------------------------------------------------
 
 async function caricaSistema() {
-  const { coda, email, foglio, casella } = await api('/admin/sistema');
+  const { coda, email, foglio, casella, moduli_link: moduliLink } = await api('/admin/sistema');
   const contenitore = $('#stato-sistema');
 
   const servizio = (titolo, attivo, dettaglio) => {
@@ -1747,7 +1747,66 @@ async function caricaSistema() {
   });
   cartaCoda.append(riprova);
 
-  contenitore.replaceChildren(griglia, cartaCoda);
+  contenitore.replaceChildren(griglia, cartaCoda, cartaModuli(moduliLink));
+}
+
+/**
+ * Gli indirizzi dei due moduli Google, da dare ai pazienti quando il sito non
+ * risponde.
+ *
+ * Stanno qui perche' vanno copiati *prima* che servano: nel momento in cui
+ * servono davvero questo pannello non si apre, ed e' proprio quello il punto.
+ * Chi li tiene sul telefono, o incollati da qualche parte in ambulatorio, ha
+ * ancora una porta aperta durante un blackout; chi deve andarli a cercare no.
+ */
+function cartaModuli(link) {
+  const carta = nodo('div', 'carta');
+  carta.style.marginTop = '1.25rem';
+  carta.append(nodo('h3', null, 'Se il sito non risponde'));
+  carta.append(nodo('p', 'piccolo tenue',
+    'Questi due moduli stanno su Google e restano aperti anche a macchina spenta. '
+    + 'Tienili a portata di mano: sono da dare ai pazienti quando il sito è giù, '
+    + 'e le richieste che arrivano di lì le ritrovi in "Da confermare".'));
+
+  const voci = [
+    ['Prenotazione visita', link?.prenotazione],
+    ['Richiesta medicinali', link?.medicina]
+  ];
+
+  for (const [titolo, indirizzo] of voci) {
+    const riga = nodo('div');
+    riga.style.marginTop = '.75rem';
+    riga.append(nodo('div', 'piccolo tenue', titolo));
+
+    if (!indirizzo) {
+      riga.append(nodo('div', 'piccolo', 'non configurato nel .env'));
+      carta.append(riga);
+      continue;
+    }
+
+    const a = nodo('a', 'piccolo', indirizzo);
+    a.href = indirizzo;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.style.wordBreak = 'break-all';
+    riga.append(a);
+
+    const copia = nodo('button', 'bottone secondario piccolo', 'Copia');
+    copia.type = 'button';
+    copia.style.marginLeft = '.5rem';
+    copia.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(indirizzo);
+        avvisa('Indirizzo copiato.', 'ok');
+      } catch {
+        avvisa('Non riesco a copiarlo: selezionalo a mano.', 'errore');
+      }
+    });
+    riga.append(copia);
+    carta.append(riga);
+  }
+
+  return carta;
 }
 
 // ---- Avvio -----------------------------------------------------------------

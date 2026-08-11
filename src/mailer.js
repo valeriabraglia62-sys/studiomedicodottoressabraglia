@@ -201,7 +201,13 @@ export const emailSitoTornato = ({ spentoDa, tornatoIl, minuti }) => componiEmai
   righe: [
     ['Ultimo segno di vita', momentoLeggibile(spentoDa)],
     ['Tornato attivo', momentoLeggibile(tornatoIl)],
-    ['Quanto e\' durata', durataLeggibile(minuti)]
+    ['Quanto e\' durata', durataLeggibile(minuti)],
+    // I due moduli stanno su Google e restano aperti anche a macchina spenta:
+    // sono l'unica porta che regge durante un blackout. Vanno scritti qui perche'
+    // e' il momento in cui servono — se ricapita, questi indirizzi si girano ai
+    // pazienti per telefono o per messaggio, senza doverli andare a cercare.
+    ['Modulo prenotazioni', config.moduli.link.prenotazione],
+    ['Modulo medicinali', config.moduli.link.medicina]
   ],
   chiusura: 'Le richieste arrivate dai Moduli Google in quelle ore sono state raccolte ' +
     'e stanno in "Da confermare". Le notifiche rimaste in sospeso sono ripartite da sole.'
