@@ -155,6 +155,29 @@ CREATE TABLE IF NOT EXISTS medicine_abituali (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_abituali_unico
   ON medicine_abituali(paziente_id, lower(farmaco));
 
+-- Le foto delle prescrizioni degli specialisti, e qualsiasi altro documento che
+-- il paziente allega alla sua richiesta.
+--
+-- Il contenuto sta QUI DENTRO, non in una cartella accanto, ed e' una scelta
+-- deliberata: tutto quello che protegge questo archivio protegge un file solo.
+-- La copia di sicurezza usa l'API di backup di SQLite e finisce su OneDrive; i
+-- file su disco resterebbero fuori da entrambe, e ce ne accorgeremmo il giorno
+-- in cui servono. Un documento sanitario che esiste in una copia sola, su un
+-- disco solo, non e' archiviato: e' in prestito.
+--
+-- Il prezzo e' che l'archivio cresce. Con qualche foto a settimana resta
+-- comunque un file piccolo, e vale lo scambio.
+CREATE TABLE IF NOT EXISTS allegati (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  richiesta_id INTEGER NOT NULL REFERENCES richieste_medicine(id) ON DELETE CASCADE,
+  nome         TEXT NOT NULL,
+  tipo_mime    TEXT,
+  byte         INTEGER NOT NULL,
+  contenuto    BLOB NOT NULL,
+  caricato_il  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_allegati_richiesta ON allegati(richiesta_id);
+
 -- Coda di consegna: ogni effetto esterno (email, Foglio Google) viene prima
 -- scritto qui dentro nella stessa transazione del dato. Se il servizio esterno
 -- e' spento o irraggiungibile la riga resta in attesa e viene ritentata:
@@ -299,6 +322,18 @@ for (const [tabella, colonna, tipo] of [
   // niente. Lo scrive lo studio al momento della conferma e finisce nella sua
   // email, che e' l'unico posto dove poi va a cercarlo.
   ['richieste_medicine', 'numero_ricetta', 'TEXT'],
+  // Che cosa sta chiedendo il paziente: medicinali, una visita specialistica o
+  // degli esami del sangue.
+  //
+  // Sono tre cose diverse per lui e una sola per il programma: chiede, lo studio
+  // guarda e risponde, parte l'email con il numero. Tenerle in una tabella sola
+  // con un tipo, invece che in tre tabelle gemelle, vuol dire che una correzione
+  // al modo di confermare vale per tutte e tre — e che nessuno si dimentica di
+  // riportarla nelle altre due.
+  //
+  // Il valore predefinito e' 'medicina' perche' tutto quello che c'era prima di
+  // questa colonna era una richiesta di medicinali.
+  ['richieste_medicine', 'tipo', "TEXT NOT NULL DEFAULT 'medicina'"],
   // Chiudere una pratica manda il messaggio nel cestino di Gmail. Qui resta
   // scritto quando e' successo: serve a non rincorrere all'infinito un'email
   // gia' spostata, e a poter dire, guardando una riga, se di quel messaggio

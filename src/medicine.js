@@ -23,6 +23,39 @@ import {
  */
 export const STATI = ['nuova', 'confermata', 'rifiutata', 'consegnata'];
 
+/**
+ * I tre tipi di richiesta, che per il programma sono la stessa cosa.
+ *
+ * Cambiano le parole — al paziente si chiede "quali medicinali" o "quale visita"
+ * — e cambia il codice, cosi' guardando MED-, SPE- o ESA- si sa gia' di cosa si
+ * parla senza aprire niente. Il resto del giro e' identico, e deve restare tale:
+ * il giorno in cui si corregge il modo di confermare, la correzione vale per
+ * tutti e tre invece di essere riportata a mano in tre posti, dimenticandone
+ * uno.
+ */
+export const TIPI = {
+  medicina: {
+    prefisso: 'MED',
+    etichetta: 'Medicinali',
+    cosaChiede: 'medicinali',
+    vuoto: 'Indica quali medicinali ti servono.'
+  },
+  specialistica: {
+    prefisso: 'SPE',
+    etichetta: 'Visita specialistica',
+    cosaChiede: 'visita specialistica',
+    vuoto: 'Indica di quale visita specialistica hai bisogno.'
+  },
+  esami: {
+    prefisso: 'ESA',
+    etichetta: 'Esami del sangue',
+    cosaChiede: 'esami del sangue',
+    vuoto: 'Indica quali esami ti servono, o allega la richiesta dello specialista.'
+  }
+};
+
+const tipoValido = (t) => (Object.hasOwn(TIPI, String(t || '')) ? String(t) : 'medicina');
+
 export const ETICHETTE_STATO = {
   nuova: 'Da vedere',
   confermata: 'Confermata',
@@ -52,9 +85,19 @@ export function creaRichiesta(dati) {
   const email = dati.email ? String(dati.email).trim().toLowerCase() : null;
   const origine = dati.origine || 'sito';
 
+  const tipo = tipoValido(dati.tipo);
+
   if (nome.length < 2) throw new ErroreDominio('Inserisci un nome valido.');
   if (cognome.length < 2) throw new ErroreDominio('Inserisci un cognome valido.');
-  if (farmaci.length < 2) throw new ErroreDominio('Indica quali medicinali ti servono.');
+
+  // Per gli esami il testo puo' mancare, ma solo se c'e' un allegato: la
+  // prescrizione dello specialista *e'* la richiesta, e ricopiarla a mano
+  // sarebbe chiedere al paziente di trascrivere una cosa che ha gia' in mano,
+  // con il rischio di sbagliarla.
+  const conAllegato = Boolean(dati.conAllegato);
+  if (farmaci.length < 2 && !(tipo === 'esami' && conAllegato)) {
+    throw new ErroreDominio(TIPI[tipo].vuoto);
+  }
 
   /**
    * L'email adesso serve sempre, e non e' una formalita': conferma, rifiuto e
@@ -84,15 +127,15 @@ export function creaRichiesta(dati) {
   const transazione = db.transaction(() => {
     const paziente = telefonoValido(telefono)
       ? trovaOCreaPaziente({ nome, cognome, email, telefono },
-        { contesto: 'una richiesta di medicinali' })
+        { contesto: `una richiesta di ${TIPI[tipo].cosaChiede}` })
       : null;
 
-    const codice = generaCodice('MED');
+    const codice = generaCodice(TIPI[tipo].prefisso);
     const info = db.prepare(`
       INSERT INTO richieste_medicine
-        (codice, paziente_id, nome, cognome, telefono, email, farmaci, note, ambulatorio_id, origine, creata_il)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(codice, paziente?.id ?? null, nome, cognome, telefono || null, email,
+        (codice, tipo, paziente_id, nome, cognome, telefono, email, farmaci, note, ambulatorio_id, origine, creata_il)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(codice, tipo, paziente?.id ?? null, nome, cognome, telefono || null, email,
       farmaci, note, ambulatorio?.id ?? null, origine, new Date().toISOString());
 
     const richiesta = dettaglio(info.lastInsertRowid);
@@ -224,6 +267,66 @@ function aggiornaAbituali(richiesta) {
   }
 }
 
+// ---- Allegati --------------------------------------------------------------
+
+// Dieci mega bastano a una foto fatta col telefono, anche di quelle grandi, e
+// a un PDF di referto. Serve un tetto: senza, una richiesta con un video da
+// mezzo giga finirebbe dentro l'archivio, che e' lo stesso file che si copia su
+// OneDrive ogni giorno.
+export const MASSIMO_BYTE_ALLEGATO = 10 * 1024 * 1024;
+
+// Piu' di cosi' non e' una prescrizione, e' un album. Il tetto protegge anche
+// dal caricamento ripetuto per sbaglio, che con le foto capita spesso.
+const MASSIMO_ALLEGATI = 5;
+
+const NOME_PULITO = /[\\/:*?"<>|\u0000-\u001f]/g;
+
+/**
+ * Attacca un file a una richiesta.
+ *
+ * Si accetta qualunque tipo, come chiesto: il paziente fotografa la
+ * prescrizione con quello che ha, e discutere di formati con chi sta cercando
+ * di mandarci un documento e' il modo migliore per non riceverlo. Quello che
+ * NON si fa e' fidarsi di come si chiama o di cosa dice di essere: il nome
+ * viene ripulito dai caratteri che sui percorsi combinano guai, e il tipo
+ * dichiarato dal browser si tiene solo per sapere come mostrarlo.
+ */
+export function allegaFile(richiestaId, { nome, tipoMime, contenuto }) {
+  const richiesta = dettaglio(richiestaId);
+  if (!richiesta) throw new ErroreDominio('Richiesta non trovata.', 404);
+
+  if (!contenuto?.length) throw new ErroreDominio('Il file è vuoto.');
+  if (contenuto.length > MASSIMO_BYTE_ALLEGATO) {
+    throw new ErroreDominio(
+      `Il file è troppo grande: il limite è ${Math.round(MASSIMO_BYTE_ALLEGATO / 1024 / 1024)} MB.`
+    );
+  }
+
+  const quanti = db.prepare('SELECT COUNT(*) AS c FROM allegati WHERE richiesta_id = ?')
+    .get(richiestaId).c;
+  if (quanti >= MASSIMO_ALLEGATI) {
+    throw new ErroreDominio(`Hai già allegato ${MASSIMO_ALLEGATI} file a questa richiesta.`);
+  }
+
+  const nomePulito = testoPulito(String(nome || 'documento').replace(NOME_PULITO, '-'), 120)
+    || 'documento';
+
+  const info = db.prepare(`
+    INSERT INTO allegati (richiesta_id, nome, tipo_mime, byte, contenuto, caricato_il)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(richiestaId, nomePulito, testoPulito(tipoMime, 120) || null,
+    contenuto.length, contenuto, new Date().toISOString());
+
+  return { id: info.lastInsertRowid, nome: nomePulito, byte: contenuto.length };
+}
+
+/** L'elenco degli allegati, senza il contenuto: quello pesa e serve solo a chi lo apre. */
+export const allegatiDi = (richiestaId) => db.prepare(
+  'SELECT id, nome, tipo_mime, byte, caricato_il FROM allegati WHERE richiesta_id = ? ORDER BY id'
+).all(richiestaId);
+
+export const allegato = (id) => db.prepare('SELECT * FROM allegati WHERE id = ?').get(id);
+
 /** I medicinali che questo paziente prende di solito, i piu' recenti per primi. */
 export const abitualiDelPaziente = (pazienteId) => db.prepare(`
   SELECT farmaco, prima_volta, ultima_volta, volte, ultimo_codice
@@ -323,11 +426,15 @@ export function segnaConsegnata(codice, chi = null) {
   return db.transaction(() => applica(richiesta, { stato: 'consegnata' }, chi))();
 }
 
-export function elencoAdmin({ stato, cerca, pagina = 1, perPagina = 50 } = {}) {
+export function elencoAdmin({ stato, tipo, cerca, pagina = 1, perPagina = 50 } = {}) {
   const dove = [];
   const par = [];
 
   if (stato) { dove.push('r.stato = ?'); par.push(stato); }
+
+  // Senza tipo si vede tutto, ed e' voluto: chi apre la scheda al mattino vuole
+  // sapere cosa c'e' da fare, non da fare di che genere.
+  if (tipo && Object.hasOwn(TIPI, tipo)) { dove.push('r.tipo = ?'); par.push(tipo); }
   if (cerca) {
     dove.push('(r.nome LIKE ? OR r.cognome LIKE ? OR r.telefono LIKE ? OR r.email LIKE ? OR r.farmaci LIKE ? OR r.codice LIKE ?)');
     const q = `%${cerca}%`;

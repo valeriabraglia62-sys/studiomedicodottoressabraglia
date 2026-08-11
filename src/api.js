@@ -198,17 +198,53 @@ router.post('/medicine', limiteScrittura, (req, res) => {
   const r = medicine.creaRichiesta({ ...req.body, origine: 'sito' });
   res.status(201).json({
     success: true,
-    richiesta: { codice: r.codice, stato: r.stato, farmaci: r.farmaci, creata_il: r.creata_il }
+    richiesta: {
+      codice: r.codice, tipo: r.tipo, stato: r.stato, farmaci: r.farmaci, creata_il: r.creata_il
+    }
   });
 });
+
+/**
+ * Il file allegato a una richiesta, caricato dal paziente subito dopo averla
+ * mandata.
+ *
+ * Arriva come corpo grezzo e non come modulo a piu' parti: leggere un multipart
+ * vorrebbe dire aggiungere una libreria per fare una cosa che qui si fa con
+ * quello che c'e' gia'. Il browser manda il file cosi' com'e', il nome viaggia
+ * nell'indirizzo.
+ *
+ * Si accetta finche' la richiesta e' ancora da vedere: dopo che lo studio ha
+ * risposto, un documento che compare senza che nessuno se ne accorga sarebbe
+ * peggio che non riceverlo.
+ */
+router.post('/medicine/:codice/allegato', limiteScrittura,
+  express.raw({ type: '*/*', limit: medicine.MASSIMO_BYTE_ALLEGATO }),
+  (req, res) => {
+    const r = medicine.perCodice(req.params.codice);
+    if (!r) throw new ErroreDominio('Richiesta non trovata. Controlla il codice.', 404);
+    if (r.stato !== 'nuova') {
+      throw new ErroreDominio('Questa richiesta è già stata gestita: per aggiungere un documento ci contatti.');
+    }
+
+    const esito = medicine.allegaFile(r.id, {
+      nome: req.query.nome,
+      tipoMime: req.get('content-type'),
+      contenuto: req.body
+    });
+
+    res.status(201).json({ success: true, allegato: esito });
+  });
 
 router.get('/medicine/:codice', (req, res) => {
   const r = medicine.perCodice(req.params.codice);
   if (!r) throw new ErroreDominio('Richiesta non trovata. Controlla il codice.', 404);
   ok(res, {
     richiesta: {
-      codice: r.codice, stato: r.stato, etichetta: medicine.ETICHETTE_STATO[r.stato],
-      farmaci: r.farmaci, creata_il: r.creata_il, aggiornata_il: r.aggiornata_il
+      codice: r.codice, tipo: r.tipo, stato: r.stato, etichetta: medicine.ETICHETTE_STATO[r.stato],
+      farmaci: r.farmaci, creata_il: r.creata_il, aggiornata_il: r.aggiornata_il,
+      numero_ricetta: r.numero_ricetta,
+      // Solo quanti sono: al paziente basta sapere che il documento e' arrivato.
+      allegati: medicine.allegatiDi(r.id).length
     }
   });
 });
@@ -420,6 +456,30 @@ admin.post('/medicine/:codice/consegnata', (req, res) => {
   ok(res, { richiesta: medicine.segnaConsegnata(req.params.codice, req.utente.email) });
 });
 
+/**
+ * Scarica un allegato. Solo dal pannello: sono documenti sanitari.
+ *
+ * Due accorgimenti che sembrano dettagli e non lo sono. Il file esce sempre
+ * come allegato da scaricare, mai mostrato dentro la pagina: accettiamo
+ * qualunque tipo, e fra i tipi che un paziente puo' mandare ci sono HTML e SVG,
+ * che aperti dentro il pannello eseguirebbero il loro contenuto nella sessione
+ * di chi ha appena fatto il login. E il tipo dichiarato dal browser di chi ha
+ * caricato non si rimanda indietro cosi' com'e', perche' e' una cosa che diceva
+ * lui: si manda un tipo generico e ci pensa il sistema operativo ad aprirlo con
+ * quello che serve.
+ */
+admin.get('/allegati/:id', (req, res) => {
+  const a = medicine.allegato(Number(req.params.id));
+  if (!a) throw new ErroreDominio('Allegato non trovato.', 404);
+
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Length', a.byte);
+  res.setHeader('Content-Disposition',
+    `attachment; filename="${a.nome.replace(/"/g, '')}"`);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.send(a.contenuto);
+});
+
 admin.get('/email', (req, res) => ok(res, inbox.elencoEmail(req.query)));
 
 admin.patch('/email/:codice', (req, res) => {
@@ -588,6 +648,20 @@ router.use((err, _req, res, _next) => {
   if (err instanceof ErroreDominio) {
     return res.status(err.codiceHttp || 400).json({ success: false, message: err.message });
   }
+
+  // Un file oltre il limite lo ferma Express prima che il nostro codice lo veda,
+  // quindi non passa dai controlli di medicine.js e arriverebbe qui come guasto
+  // del server. Non lo e': e' una foto troppo grande, e chi la sta mandando deve
+  // sentirsi dire quello, non "problema tecnico, riprova" — che lo farebbe
+  // riprovare all'infinito con lo stesso file.
+  if (err?.type === 'entity.too.large' || err?.status === 413) {
+    return res.status(413).json({
+      success: false,
+      message: `Il file è troppo grande: il limite è ${Math.round(medicine.MASSIMO_BYTE_ALLEGATO / 1024 / 1024)} MB. `
+        + 'Se è una foto, rifalla a risoluzione più bassa.'
+    });
+  }
+
   console.error('[api] errore non previsto:', err);
   res.status(500).json({
     success: false,
