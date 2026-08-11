@@ -189,14 +189,58 @@ const avvisa = (richiesta, componi) => {
   if (richiesta.email) accoda('email', componi(richiesta));
 };
 
+/**
+ * Aggiorna l'elenco dei medicinali che il paziente prende di solito.
+ *
+ * Il campo dei farmaci e' testo libero, ma il modulo chiede "un medicinale per
+ * riga" e quella e' la regola che si segue qui. Non si prova a interpretare il
+ * dosaggio o a riconoscere il principio attivo: sarebbe indovinare su dati
+ * clinici, e una riga sbagliata in questo elenco vale meno di zero. Si prende
+ * la riga com'e' scritta.
+ *
+ * Un farmaco gia' presente non si duplica: si aggiorna la data e si conta una
+ * volta in piu'. Cosi' l'elenco dice anche quali sono quelli veri, che tornano
+ * ogni mese, e quali li ha chiesti una volta sola tre anni fa.
+ */
+function aggiornaAbituali(richiesta) {
+  if (!richiesta.paziente_id || !richiesta.farmaci) return;
+
+  const adesso = new Date().toISOString();
+  const righe = String(richiesta.farmaci)
+    .split('\n')
+    .map((r) => r.trim())
+    .filter((r) => r.length >= 2)
+    .slice(0, 30);
+
+  for (const farmaco of righe) {
+    db.prepare(`
+      INSERT INTO medicine_abituali (paziente_id, farmaco, prima_volta, ultima_volta, volte, ultimo_codice)
+      VALUES (?, ?, ?, ?, 1, ?)
+      ON CONFLICT(paziente_id, lower(farmaco)) DO UPDATE SET
+        ultima_volta = excluded.ultima_volta,
+        volte = volte + 1,
+        ultimo_codice = excluded.ultimo_codice
+    `).run(richiesta.paziente_id, farmaco, adesso, adesso, richiesta.codice);
+  }
+}
+
+/** I medicinali che questo paziente prende di solito, i piu' recenti per primi. */
+export const abitualiDelPaziente = (pazienteId) => db.prepare(`
+  SELECT farmaco, prima_volta, ultima_volta, volte, ultimo_codice
+    FROM medicine_abituali WHERE paziente_id = ?
+   ORDER BY ultima_volta DESC
+`).all(pazienteId);
+
 /** Va bene cosi' come l'ha chiesta il paziente. */
-export function conferma(codice, chi = null) {
+export function conferma(codice, chi = null, { numeroRicetta = null } = {}) {
   const richiesta = daGestire(codice, ['nuova']);
   return db.transaction(() => {
     const aggiornata = applica(richiesta, {
       stato: 'confermata',
+      numero_ricetta: testoPulito(numeroRicetta, 40) || null,
       paziente_id: collegaAlFascicolo(richiesta) ?? richiesta.paziente_id
     }, chi);
+    aggiornaAbituali(aggiornata);
     avvisa(aggiornata, emailMedicinaConfermata);
     return aggiornata;
   })();
@@ -239,7 +283,16 @@ export function modifica(codice, correzioni = {}, chi = null) {
     ? trovaAmbulatorio(correzioni.ambulatorio_id)
     : null;
 
-  if (farmaci === richiesta.farmaci && note === richiesta.note && !ambulatorio) {
+  const numeroRicetta = correzioni.numero_ricetta !== undefined
+    ? (testoPulito(correzioni.numero_ricetta, 40) || null)
+    : (richiesta.numero_ricetta ?? null);
+
+  // Aggiungere il numero della ricetta e' una modifica come le altre: capita di
+  // confermare prima e inserirla nel fascicolo dopo, e senza questo il pannello
+  // direbbe "non hai cambiato niente" proprio mentre si sta aggiungendo il
+  // pezzo che serve al paziente per ritirare.
+  if (farmaci === richiesta.farmaci && note === richiesta.note && !ambulatorio
+      && numeroRicetta === (richiesta.numero_ricetta ?? null)) {
     throw new ErroreDominio('Non hai cambiato niente: usa Conferma se la richiesta va bene così.');
   }
 
@@ -251,9 +304,11 @@ export function modifica(codice, correzioni = {}, chi = null) {
       farmaci_originali: richiesta.farmaci_originali ?? richiesta.farmaci,
       note_originali: richiesta.farmaci_originali ? richiesta.note_originali : richiesta.note,
       stato: 'confermata',
+      numero_ricetta: numeroRicetta,
       paziente_id: collegaAlFascicolo(richiesta) ?? richiesta.paziente_id
     }, chi);
 
+    aggiornaAbituali(aggiornata);
     avvisa(aggiornata, emailMedicinaModificata);
     return aggiornata;
   })();

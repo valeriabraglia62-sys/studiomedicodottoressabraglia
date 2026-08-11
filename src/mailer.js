@@ -322,9 +322,16 @@ export const emailMedicinaConfermata = (r) => componiEmail({
   righe: [
     ['Medicinali', r.farmaci],
     ['Dove ritirare', doveRitirare(r)],
+    // Il numero della ricetta elettronica sta prima del codice nostro apposta:
+    // il nostro serve a noi, questo serve a lui, ed e' quello che gli chiedono
+    // al banco della farmacia.
+    ['Numero della ricetta', r.numero_ricetta || null],
     ['Codice richiesta', r.codice]
   ],
-  chiusura: 'Se qualcosa non le torna, ci contatti prima di passare a ritirare.'
+  chiusura: r.numero_ricetta
+    ? 'In farmacia le basta il numero della ricetta qui sopra. ' +
+      'Se qualcosa non le torna, ci contatti prima di passare a ritirare.'
+    : 'Se qualcosa non le torna, ci contatti prima di passare a ritirare.'
 });
 
 export const emailMedicinaRifiutata = (r) => componiEmail({
@@ -361,6 +368,7 @@ export const emailMedicinaModificata = (r) => componiEmail({
     ['Note precedenti', r.note_originali !== r.note ? r.note_originali : null],
     ['Note', r.note],
     ['Dove ritirare', doveRitirare(r)],
+    ['Numero della ricetta', r.numero_ricetta || null],
     ['Codice richiesta', r.codice]
   ],
   chiusura: 'Se qualcosa non corrisponde a quanto ci siamo detti al telefono, ci ricontatti.'

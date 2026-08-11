@@ -130,6 +130,31 @@ CREATE TABLE IF NOT EXISTS richieste_medicine (
 CREATE INDEX IF NOT EXISTS idx_medicine_stato ON richieste_medicine(stato);
 CREATE INDEX IF NOT EXISTS idx_medicine_data  ON richieste_medicine(creata_il);
 
+-- I medicinali che un paziente prende di solito.
+--
+-- Non e' l'elenco delle richieste: quello e' la storia, riga per riga, e per
+-- sapere cosa prende oggi una persona bisognerebbe leggersela tutta e capire
+-- da soli cosa e' ancora in corso. Questa invece e' la risposta breve, quella
+-- che serve quando si ha la scheda aperta davanti e il paziente al telefono.
+--
+-- Si riempie da sola: ogni volta che una richiesta viene confermata, i farmaci
+-- che ci sono dentro finiscono qui. Se un farmaco c'era gia' non si duplica, si
+-- aggiorna la data, e cosi' l'elenco dice anche da quanto tempo uno non lo
+-- chiede piu'.
+CREATE TABLE IF NOT EXISTS medicine_abituali (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  paziente_id   INTEGER NOT NULL REFERENCES pazienti(id),
+  farmaco       TEXT NOT NULL,
+  prima_volta   TEXT NOT NULL,
+  ultima_volta  TEXT NOT NULL,
+  volte         INTEGER NOT NULL DEFAULT 1,
+  ultimo_codice TEXT
+);
+-- Un farmaco per paziente, scritto sempre allo stesso modo: senza questo
+-- vincolo "Cardioaspirin 100" e "cardioaspirin 100" diventerebbero due voci.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_abituali_unico
+  ON medicine_abituali(paziente_id, lower(farmaco));
+
 -- Coda di consegna: ogni effetto esterno (email, Foglio Google) viene prima
 -- scritto qui dentro nella stessa transazione del dato. Se il servizio esterno
 -- e' spento o irraggiungibile la riga resta in attesa e viene ritentata:
@@ -268,6 +293,12 @@ for (const [tabella, colonna, tipo] of [
   // della signora?" non aveva risposta da nessuna parte, mentre per gli
   // spostamenti l'aveva.
   ['prenotazioni', 'annullata_utente', 'TEXT'],
+  // Il numero della ricetta elettronica, quello che il fascicolo restituisce
+  // dopo che il medico l'ha inserita. Da quando il ritiro avviene in farmacia
+  // e' il pezzo che serve davvero al paziente: senza, al banco non gli danno
+  // niente. Lo scrive lo studio al momento della conferma e finisce nella sua
+  // email, che e' l'unico posto dove poi va a cercarlo.
+  ['richieste_medicine', 'numero_ricetta', 'TEXT'],
   // Chiudere una pratica manda il messaggio nel cestino di Gmail. Qui resta
   // scritto quando e' successo: serve a non rincorrere all'infinito un'email
   // gia' spostata, e a poter dire, guardando una riga, se di quel messaggio

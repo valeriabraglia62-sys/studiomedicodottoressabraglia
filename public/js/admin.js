@@ -912,12 +912,20 @@ function schedaMedicina(r) {
 
   campi.ambulatorio_id = scegliRitiro(r.ambulatorio_id);
 
+  // Il numero che il fascicolo restituisce dopo aver inserito la ricetta. Da
+  // quando il ritiro avviene in farmacia e' il pezzo che serve al paziente: e'
+  // quello che gli chiedono al banco, e finisce nella sua email. Si puo'
+  // scrivere subito o aggiungere dopo con "Salva modifiche", perche' capita di
+  // confermare qui e inserire nel fascicolo un momento piu' tardi.
+  campi.numero_ricetta = inputTesto(r.numero_ricetta || '', 'Numero della ricetta elettronica');
+
   const riga = nodo('div', 'filtri');
   riga.style.marginTop = '.85rem';
   riga.append(
     campoModulo('Medicinali', campi.farmaci),
     campoModulo('Note', campi.note),
-    campoModulo('Ritiro', campi.ambulatorio_id)
+    campoModulo('Ritiro', campi.ambulatorio_id),
+    campoModulo('N. ricetta', campi.numero_ricetta)
   );
   carta.append(riga);
 
@@ -953,7 +961,11 @@ function schedaMedicina(r) {
     : `${r.codice}: ${verbo}. Senza email: avvisalo tu.`);
 
   if (r.stato === 'nuova') {
-    bottone('Conferma così', '', () => ({ azione: 'conferma', fatto: avvisata('confermata') }));
+    bottone('Conferma così', '', () => ({
+      azione: 'conferma',
+      dati: { numero_ricetta: campi.numero_ricetta.value },
+      fatto: avvisata('confermata')
+    }));
   }
 
   bottone(r.stato === 'nuova' ? 'Conferma con modifiche' : 'Salva modifiche', 'secondario', () => ({
@@ -961,7 +973,8 @@ function schedaMedicina(r) {
     dati: {
       farmaci: campi.farmaci.value,
       note: campi.note.value,
-      ambulatorio_id: Number(campi.ambulatorio_id.value) || undefined
+      ambulatorio_id: Number(campi.ambulatorio_id.value) || undefined,
+      numero_ricetta: campi.numero_ricetta.value
     },
     fatto: avvisata('modificata')
   }));
@@ -1367,7 +1380,7 @@ function apriFascicoloBottone(p) {
  * sapere quali sono le seconde.
  */
 async function apriFascicolo(id) {
-  const { paziente, prenotazioni, medicine } = await api(`/admin/pazienti/${id}`);
+  const { paziente, prenotazioni, medicine, abituali } = await api(`/admin/pazienti/${id}`);
   const contenitore = $('#elenco-pazienti');
 
   const indietro = nodo('button', 'bottone secondario piccolo', '← Torna all\'elenco');
@@ -1390,12 +1403,35 @@ async function apriFascicolo(id) {
   contenitore.replaceChildren(
     barra,
     intestazione,
+    // In cima, prima della storia: e' la domanda che si fa piu' spesso con il
+    // paziente al telefono, "cosa prende?", e la risposta non deve costare la
+    // lettura di tutte le richieste degli ultimi due anni.
+    sezioneFascicolo('🔁 Prende di solito', (abituali || []).map((a) => rigaAbituale(a)),
+      'Ancora niente: l\'elenco si riempie da solo a ogni richiesta confermata.'),
     sezioneFascicolo('💊 Medicinali approvati', attive.map((m) => rigaMedicinaFascicolo(m)),
       'Nessun medicinale approvato per questo paziente.'),
     sezioneFascicolo('📋 Altre richieste di medicinali', altre.map((m) => rigaMedicinaFascicolo(m)), null),
     sezioneFascicolo('📅 Visite', prenotazioni.map((p) => rigaVisitaFascicolo(p)),
       'Nessuna visita registrata.')
   );
+}
+
+/**
+ * Una riga dell'elenco "prende di solito".
+ *
+ * Quante volte l'ha chiesto e quando l'ultima sono li' apposta: distinguono la
+ * terapia vera, quella che torna ogni mese, da un antibiotico chiesto una volta
+ * sola due anni fa. Senza quei due numeri l'elenco crescerebbe e basta, e dopo
+ * un po' non direbbe piu' niente.
+ */
+function rigaAbituale(a) {
+  const riga = nodo('div');
+  riga.style.cssText = 'display:flex;justify-content:space-between;gap:1rem;align-items:baseline;flex-wrap:wrap';
+  riga.append(nodo('strong', null, a.farmaco));
+
+  const quante = a.volte === 1 ? 'chiesto una volta' : `chiesto ${a.volte} volte`;
+  riga.append(nodo('span', 'piccolo tenue', `${quante} · ultima ${quando(a.ultima_volta)}`));
+  return riga;
 }
 
 /** Un blocco del fascicolo. Se non ha righe e non ha niente da dire, sparisce. */
@@ -1435,6 +1471,12 @@ function rigaMedicinaFascicolo(m) {
   riga.append(farmaci);
 
   if (m.note) riga.append(nodo('div', 'piccolo tenue', m.note));
+
+  // Il numero della ricetta va ritrovato anche mesi dopo: il paziente richiama
+  // dicendo "l'ho perso", e senza questo bisognerebbe ricercarlo nel fascicolo.
+  if (m.numero_ricetta) {
+    riga.append(nodo('div', 'piccolo', `Ricetta n. ${m.numero_ricetta}`));
+  }
 
   // Se l'elenco e' stato corretto al telefono, quello che il paziente aveva
   // chiesto resta scritto: e' la differenza fra i due che spiega la telefonata.

@@ -402,7 +402,10 @@ admin.get('/medicine', (req, res) => ok(res, medicine.elencoAdmin(req.query)));
  * farmaci corretti per la modifica.
  */
 admin.post('/medicine/:codice/conferma', (req, res) => {
-  ok(res, { richiesta: medicine.conferma(req.params.codice, req.utente.email) });
+  ok(res, {
+    richiesta: medicine.conferma(req.params.codice, req.utente.email,
+      { numeroRicetta: req.body?.numero_ricetta })
+  });
 });
 
 admin.post('/medicine/:codice/rifiuta', (req, res) => {
@@ -448,6 +451,10 @@ admin.get('/pazienti/:id', richiedeAdmin, (req, res) => {
   ok(res, {
     paziente,
     prenotazioni: prenotazioni.perPaziente(paziente.id),
+    // Cosa prende di solito. E' la risposta breve, quella che serve con il
+    // paziente al telefono: l'elenco qui sotto e' la storia completa, e per
+    // ricavarne la terapia in corso bisognerebbe leggersela tutta.
+    abituali: medicine.abitualiDelPaziente(paziente.id),
     // Il fascicolo deve dire anche *come* e' finita: cosa aveva chiesto il
     // paziente prima che lo richiamassimo, perche' un no e' stato un no, chi ha
     // firmato la risposta e quando. Senza queste colonne resterebbe un elenco di
@@ -455,6 +462,7 @@ admin.get('/pazienti/:id', richiedeAdmin, (req, res) => {
     medicine: db.prepare(`
       SELECT r.codice, r.farmaci, r.note, r.stato, r.creata_il, r.origine,
              r.farmaci_originali, r.motivo_rifiuto, r.gestita_il, r.gestita_da,
+             r.numero_ricetta,
              a.nome AS ambulatorio_nome
         FROM richieste_medicine r
         LEFT JOIN ambulatori a ON a.id = r.ambulatorio_id
