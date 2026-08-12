@@ -531,7 +531,7 @@ admin.get('/pazienti/:id', richiedeAdmin, (req, res) => {
     // firmato la risposta e quando. Senza queste colonne resterebbe un elenco di
     // nomi di farmaci, che al controllo dopo non spiega niente.
     medicine: db.prepare(`
-      SELECT r.codice, r.farmaci, r.note, r.stato, r.creata_il, r.origine,
+      SELECT r.id, r.codice, r.tipo, r.farmaci, r.note, r.stato, r.creata_il, r.origine,
              r.farmaci_originali, r.motivo_rifiuto, r.gestita_il, r.gestita_da,
              r.numero_ricetta,
              a.nome AS ambulatorio_nome
@@ -540,6 +540,10 @@ admin.get('/pazienti/:id', richiedeAdmin, (req, res) => {
        WHERE r.paziente_id = ? OR (lower(r.email) = lower(?) AND ? <> '')
        ORDER BY r.creata_il DESC
     `).all(paziente.id, paziente.email || '', paziente.email || '')
+      // Le prescrizioni allegate servono anche qui: e' nel fascicolo che si
+      // torna a cercarle mesi dopo, quando il paziente richiama e nessuno
+      // ricorda piu' cosa aveva portato.
+      .map((r) => ({ ...r, allegati: medicine.allegatiDi(r.id) }))
   });
 });
 

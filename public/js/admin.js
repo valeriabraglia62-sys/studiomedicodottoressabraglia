@@ -1520,8 +1520,14 @@ async function apriFascicolo(id) {
   intestazione.append(recapiti);
   intestazione.append(nodo('div', 'piccolo tenue', `In archivio dal ${quando(paziente.creato_il)}`));
 
-  const attive = medicine.filter((m) => m.stato === 'confermata' || m.stato === 'consegnata');
-  const altre = medicine.filter((m) => !attive.includes(m));
+  // Le richieste vecchie non hanno il tipo scritto: sono tutte medicinali,
+  // perche' prima esistevano solo quelle.
+  const diTipo = (t) => medicine.filter((m) => (m.tipo || 'medicina') === t);
+  const accolta = (m) => m.stato === 'confermata' || m.stato === 'consegnata';
+
+  const medicinali = diTipo('medicina');
+  const specialistiche = diTipo('specialistica');
+  const esami = diTipo('esami');
 
   contenitore.replaceChildren(
     barra,
@@ -1531,9 +1537,24 @@ async function apriFascicolo(id) {
     // lettura di tutte le richieste degli ultimi due anni.
     sezioneFascicolo('🔁 Prende di solito', (abituali || []).map((a) => rigaAbituale(a)),
       'Ancora niente: l\'elenco si riempie da solo a ogni richiesta confermata.'),
-    sezioneFascicolo('💊 Medicinali approvati', attive.map((m) => rigaMedicinaFascicolo(m)),
+
+    sezioneFascicolo('💊 Medicinali approvati',
+      medicinali.filter(accolta).map((m) => rigaMedicinaFascicolo(m)),
       'Nessun medicinale approvato per questo paziente.'),
-    sezioneFascicolo('📋 Altre richieste di medicinali', altre.map((m) => rigaMedicinaFascicolo(m)), null),
+    sezioneFascicolo('📋 Altre richieste di medicinali',
+      medicinali.filter((m) => !accolta(m)).map((m) => rigaMedicinaFascicolo(m)), null),
+
+    // Le specialistiche e gli esami restano interi, accolti e non, senza
+    // dividerli in due: sono pochi per paziente, e per capire un percorso conta
+    // vederli in fila nell'ordine in cui sono successi — compreso un rifiuto,
+    // che spesso e' il motivo per cui subito dopo ne e' arrivata un'altra.
+    sezioneFascicolo('🩺 Visite specialistiche',
+      specialistiche.map((m) => rigaMedicinaFascicolo(m)),
+      'Nessuna visita specialistica richiesta.'),
+    sezioneFascicolo('🧪 Esami del sangue',
+      esami.map((m) => rigaMedicinaFascicolo(m)),
+      'Nessun esame richiesto.'),
+
     sezioneFascicolo('📅 Visite', prenotazioni.map((p) => rigaVisitaFascicolo(p)),
       'Nessuna visita registrata.')
   );
@@ -1600,6 +1621,11 @@ function rigaMedicinaFascicolo(m) {
   if (m.numero_ricetta) {
     riga.append(nodo('div', 'piccolo', `Ricetta n. ${m.numero_ricetta}`));
   }
+
+  // La prescrizione che il paziente aveva portato resta nel fascicolo, e si
+  // guarda da qui: e' il posto dove si torna a cercarla mesi dopo, quando lui
+  // richiama e nessuno ricorda piu' cosa avesse allegato.
+  if (m.allegati?.length) riga.append(riquadroAllegati(m.allegati));
 
   // Se l'elenco e' stato corretto al telefono, quello che il paziente aveva
   // chiesto resta scritto: e' la differenza fra i due che spiega la telefonata.
