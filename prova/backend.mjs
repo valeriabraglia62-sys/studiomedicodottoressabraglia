@@ -734,6 +734,38 @@ console.log('\nModuli Google (richieste arrivate a sito spento)');
   verifica('la conferma crea la richiesta di medicinali',
     ricetta.dati.generata?.codice?.startsWith('MED-'), JSON.stringify(ricetta.dati));
 
+  // Specialistiche ed esami: le intestazioni sono quelle vere dei due moduli
+  // creati dallo studio, copiate dal foglio delle risposte. Se un domani
+  // qualcuno riscrive una domanda e la colonna smette di essere riconosciuta,
+  // la richiesta arriverebbe vuota senza che nessuno se ne accorga: e' il
+  // motivo per cui qui si prova il testo esatto e non una versione semplificata.
+  for (const [tipoModulo, testata, risposta, prefisso] of [
+    ['specialistica', 'Specialistiche  Di quale visita specialistica ha bisogno? ',
+      'Visita cardiologica di controllo', 'SPE-'],
+    ['esami', 'Esami  Quali esami del sangue le servono? ',
+      'Emocromo, glicemia, colesterolo', 'ESA-']
+  ]) {
+    const arrivate = moduli.importaRighe(tipoModulo, [
+      ['Informazioni cronologiche', 'Nome', 'Cognome', 'Telefono', 'Email',
+        '\nFarmacia/ Ambulatorio\n', testata, 'Note'],
+      ['09/08/2026 23:30:00', 'Elsa', 'Grandi', '3337778899', 'elsa@example.com',
+        'Farmavi', risposta, 'Ha fretta']
+    ]);
+    verifica(`il modulo ${tipoModulo} viene raccolto`, arrivate.nuove === 1, JSON.stringify(arrivate));
+
+    const elsa = (await chiama('GET', '/api/admin/moduli', null, token)).dati.richieste[0];
+    verifica(`e si legge cosa ha chiesto (${tipoModulo})`, elsa?.testo === risposta,
+      `letto: ${JSON.stringify(elsa?.testo)}`);
+    // "Farmavi" non e' un ambulatorio nostro: deve restare vuoto, non farsi
+    // scambiare per uno dei due studi.
+    verifica(`il ritiro in farmacia non diventa un ambulatorio (${tipoModulo})`,
+      elsa?.ambulatorio_id === null, `letto ${elsa?.ambulatorio_id}`);
+
+    const nata = await chiama('POST', `/api/admin/moduli/${elsa.codice}/conferma`, {}, token);
+    verifica(`la conferma la fa nascere del tipo giusto (${tipoModulo})`,
+      nata.dati.generata?.codice?.startsWith(prefisso), JSON.stringify(nata.dati).slice(0, 160));
+  }
+
   const riepilogo = await chiama('GET', '/api/admin/riepilogo', null, token);
   verifica('il riepilogo conta le richieste ancora da confermare',
     riepilogo.dati.riepilogo.moduli_da_confermare === 0,

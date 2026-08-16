@@ -1251,15 +1251,30 @@ function inputTesto(valore, segnaposto) {
   return el;
 }
 
+/**
+ * Come si presenta una riga arrivata dai Moduli, secondo il modulo da cui viene.
+ *
+ * Il titolo non e' un vezzo: chi apre "Da confermare" al mattino trova quattro
+ * moduli mescolati, e deve capire a colpo d'occhio se quella riga diventera' un
+ * appuntamento in agenda o una richiesta di esami.
+ */
+const MODULI_NOTI = {
+  prenotazione: { titolo: '📅 Richiesta di visita', campo: 'Motivo' },
+  medicina: { titolo: '💊 Richiesta di medicinali', campo: 'Medicinali', segnaposto: 'Medicinali richiesti' },
+  specialistica: { titolo: '🩺 Richiesta di visita specialistica', campo: 'Quale visita', segnaposto: 'Visita richiesta' },
+  esami: { titolo: '🧪 Richiesta di esami del sangue', campo: 'Quali esami', segnaposto: 'Esami richiesti' }
+};
+
 function schedaModulo(m) {
   const carta = nodo('div', 'carta');
   const prenotazione = m.tipo === 'prenotazione';
+  const parole = MODULI_NOTI[m.tipo] || MODULI_NOTI.medicina;
 
   const testata = nodo('div');
   testata.style.cssText = 'display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;justify-content:space-between';
   const sinistra = nodo('div');
   sinistra.append(
-    nodo('strong', null, prenotazione ? '📅 Richiesta di visita' : '💊 Richiesta di medicinali'),
+    nodo('strong', null, parole.titolo),
     nodo('div', 'piccolo tenue', `Arrivata il ${quando(m.ricevuta_il)} · ${m.codice}`)
   );
   testata.append(sinistra, etichetta(m.stato, {
@@ -1351,9 +1366,9 @@ function schedaModulo(m) {
     );
     carta.append(riga2, avviso);
   } else {
-    campi.farmaci = inputTesto(m.testo, 'Medicinali richiesti');
+    campi.farmaci = inputTesto(m.testo, parole.segnaposto);
     campi.note = inputTesto(m.note, 'Note');
-    riga2.append(campoModulo('Medicinali', campi.farmaci), campoModulo('Note', campi.note));
+    riga2.append(campoModulo(parole.campo, campi.farmaci), campoModulo('Note', campi.note));
     carta.append(riga2);
   }
 
@@ -1894,7 +1909,7 @@ async function caricaSistema() {
 }
 
 /**
- * Gli indirizzi dei due moduli Google, da dare ai pazienti quando il sito non
+ * Gli indirizzi dei moduli Google, da dare ai pazienti quando il sito non
  * risponde.
  *
  * Stanno qui perche' vanno copiati *prima* che servano: nel momento in cui
@@ -1907,13 +1922,15 @@ function cartaModuli(link) {
   carta.style.marginTop = '1.25rem';
   carta.append(nodo('h3', null, 'Se il sito non risponde'));
   carta.append(nodo('p', 'piccolo tenue',
-    'Questi due moduli stanno su Google e restano aperti anche a macchina spenta. '
+    'Questi moduli stanno su Google e restano aperti anche a macchina spenta. '
     + 'Tienili a portata di mano: sono da dare ai pazienti quando il sito è giù, '
     + 'e le richieste che arrivano di lì le ritrovi in "Da confermare".'));
 
   const voci = [
     ['Prenotazione visita', link?.prenotazione],
-    ['Richiesta medicinali', link?.medicina]
+    ['Richiesta medicinali', link?.medicina],
+    ['Visita specialistica', link?.specialistica],
+    ['Esami del sangue', link?.esami]
   ];
 
   for (const [titolo, indirizzo] of voci) {

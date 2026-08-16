@@ -41,8 +41,28 @@ const CAMPI = {
   ora: ['ora', 'orario'],
   ambulatorio: ['ambulatorio', 'studio', 'sede', 'dove'],
   motivo: ['motivo', 'problema', 'disturbo', 'sintomo', 'ragione'],
-  farmaci: ['medicin', 'farmac', 'ricett', 'prescriz'],
+  // Un campo solo per tutti e tre i tipi di richiesta, perche' nel foglio e'
+  // sempre "la casella dove il paziente ha scritto cosa gli serve". Le parole
+  // sono quelle dei tre moduli: "Quali esami del sangue le servono",
+  // "Di quale visita specialistica ha bisogno", "Quali medicinali".
+  // "visita" da sola resta fuori di proposito: comparirebbe anche nel modulo
+  // delle prenotazioni e si mangerebbe la colonna del motivo.
+  farmaci: ['medicin', 'farmac', 'ricett', 'prescriz', 'esami', 'esame', 'analisi', 'specialist'],
   note: ['note', 'aggiungere', 'altro']
+};
+
+/**
+ * I tipi di modulo, e cosa diventa una riga quando la si conferma.
+ *
+ * Le prenotazioni fanno storia a se': portano giorno e ora e diventano una
+ * visita in agenda. Gli altri tre sono la stessa richiesta con parole diverse,
+ * e il tipo si porta dietro solo il nome giusto da dare a cio' che nasce.
+ */
+export const TIPI_MODULO = {
+  prenotazione: { richiesta: null },
+  medicina: { richiesta: 'medicina' },
+  specialistica: { richiesta: 'specialistica' },
+  esami: { richiesta: 'esami' }
 };
 
 /**
@@ -133,7 +153,7 @@ const stmtGiaVista = db.prepare('SELECT 1 FROM richieste_modulo WHERE chiave = ?
  * il comportamento senza collegarsi a internet.
  */
 export function importaRighe(tipo, righe) {
-  if (!['prenotazione', 'medicina'].includes(tipo)) throw new ErroreDominio('Tipo di modulo non valido.');
+  if (!Object.hasOwn(TIPI_MODULO, tipo)) throw new ErroreDominio('Tipo di modulo non valido.');
   if (!righe?.length) return { nuove: 0, gia_viste: 0 };
 
   const [intestazioni, ...risposte] = righe;
@@ -183,7 +203,7 @@ export function importaRighe(tipo, righe) {
         leggiData(prendi('data')),
         leggiOra(prendi('ora')),
         leggiAmbulatorio(prendi('ambulatorio')),
-        testo(tipo === 'medicina' ? prendi('farmaci') : prendi('motivo'), 1500),
+        testo(tipo === 'prenotazione' ? prendi('motivo') : prendi('farmaci'), 1500),
         testo(prendi('note'), 500),
         // La riga originale si conserva sempre: se la lettura delle colonne
         // sbaglia, il dato vero e' ancora qui e si recupera a mano.
@@ -267,6 +287,10 @@ export function conferma(codice, correzioni = {}, chiConferma = null) {
     })
     : creaRichiesta({
       ...d,
+      // Senza questo il modulo degli esami genererebbe una richiesta di
+      // medicinali: stessa riga, ma finita nella scheda sbagliata e con
+      // l'email sbagliata addosso.
+      tipo: TIPI_MODULO[m.tipo]?.richiesta || 'medicina',
       farmaci: correzioni.farmaci ?? m.testo,
       note: correzioni.note ?? m.note,
       ambulatorio_id: correzioni.ambulatorio_id ?? m.ambulatorio_id
@@ -335,7 +359,7 @@ export async function controllaModuli() {
   try {
     const lavoro = (async () => {
       let nuove = 0;
-      for (const tipo of ['prenotazione', 'medicina']) {
+      for (const tipo of Object.keys(TIPI_MODULO)) {
         const esito = await leggiFoglio(tipo);
         nuove += esito.nuove || 0;
       }

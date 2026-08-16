@@ -152,6 +152,14 @@ export const config = {
       medicina: {
         id: (process.env.GOOGLE_MODULO_MEDICINE_ID || '').trim(),
         scheda: (process.env.GOOGLE_MODULO_MEDICINE_SCHEDA || 'Risposte del modulo 1').trim()
+      },
+      specialistica: {
+        id: (process.env.GOOGLE_MODULO_SPECIALISTICHE_ID || '').trim(),
+        scheda: (process.env.GOOGLE_MODULO_SPECIALISTICHE_SCHEDA || 'Risposte del modulo 1').trim()
+      },
+      esami: {
+        id: (process.env.GOOGLE_MODULO_ESAMI_ID || '').trim(),
+        scheda: (process.env.GOOGLE_MODULO_ESAMI_SCHEDA || 'Risposte del modulo 1').trim()
       }
     },
 
@@ -165,12 +173,17 @@ export const config = {
     // va mai dato in mano a un paziente.
     link: {
       prenotazione: linkModulo(process.env.MODULO_PRENOTAZIONI_LINK),
-      medicina: linkModulo(process.env.MODULO_MEDICINE_LINK)
+      medicina: linkModulo(process.env.MODULO_MEDICINE_LINK),
+      specialistica: linkModulo(process.env.MODULO_SPECIALISTICHE_LINK),
+      esami: linkModulo(process.env.MODULO_ESAMI_LINK)
     },
 
     get ready() {
+      // Basta un foglio configurato: i moduli si aggiungono uno alla volta, e
+      // pretenderli tutti e quattro spegnerebbe anche quelli gia' funzionanti
+      // il giorno in cui se ne aggiunge uno nuovo.
       return this.enabled
-        && Boolean(this.fogli.prenotazione.id || this.fogli.medicina.id)
+        && Object.values(this.fogli).some((f) => f.id)
         && fs.existsSync(path.resolve(ROOT, process.env.GOOGLE_SERVICE_ACCOUNT_FILE || './google-credentials.json'));
     }
   },
