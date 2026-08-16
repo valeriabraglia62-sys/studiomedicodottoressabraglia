@@ -119,9 +119,53 @@ const MENU = {
   azioni: [
     { id: 'prenota', etichetta: '📅 Prenota una visita' },
     { id: 'medicine', etichetta: '💊 Richiedi medicinali' },
+    { id: 'specialistica', etichetta: '🩺 Visita specialistica' },
+    { id: 'esami', etichetta: '🧪 Esami del sangue' },
     { id: 'stato', etichetta: '🔍 Controlla o annulla' },
     { id: 'info', etichetta: 'ℹ️ Orari e contatti' }
   ]
+};
+
+/**
+ * Le tre richieste che il chatbot sa raccogliere.
+ *
+ * Il giro di domande e' lo stesso — cosa ti serve, come ti chiami, telefono,
+ * email, conferma — e cambiano solo le parole. Tenerlo in un posto solo evita
+ * che fra sei mesi il flusso dei medicinali chieda l'email e quello degli esami
+ * se la dimentichi.
+ *
+ * Dove c'e' allegati: true, alla fine del giro si offre di caricare la foto
+ * della prescrizione. Sono gli stessi due tipi che hanno il campo file sul
+ * sito: chi parla col chatbot non deve uscire, cercare il modulo giusto e
+ * ridigitare tutto solo perche' ha una foto da mandare.
+ */
+const RICHIESTE_CHAT = {
+  medicine: {
+    tipo: 'medicina',
+    icona: '💊',
+    parole: ['medicin', 'farmac', 'ricett', 'pastigl'],
+    domanda: 'Quali medicinali ti servono? Elencali pure tutti in un messaggio.',
+    riChiedi: 'Scrivi il nome dei medicinali che ti servono.',
+    chiusura: 'Lo studio la prenderà in carico e ti avviseremo quando la ricetta è pronta.'
+  },
+  specialistica: {
+    tipo: 'specialistica',
+    icona: '🩺',
+    parole: ['specialist', 'cardiolog', 'ortoped', 'dermatolog', 'oculist', 'impegnativ'],
+    domanda: 'Di quale visita specialistica hai bisogno? Scrivimi pure con parole tue.',
+    riChiedi: 'Scrivi di quale visita hai bisogno.',
+    chiusura: 'Il medico la guarderà e ti risponderemo per email.',
+    allegati: true
+  },
+  esami: {
+    tipo: 'esami',
+    icona: '🧪',
+    parole: ['esami', 'esame', 'sangue', 'analisi', 'prelievo', 'emocromo'],
+    domanda: 'Quali esami ti servono? Elencali pure tutti in un messaggio.',
+    riChiedi: 'Scrivi quali esami ti servono.',
+    chiusura: 'Il medico la guarderà e ti risponderemo per email.',
+    allegati: true
+  }
 };
 
 const risposta = (testo, azioni = [], extra = {}) => ({ testo, azioni, ...extra });
@@ -161,14 +205,19 @@ function gestisci(stato, testo) {
   }
   if (contiene(t, 'aiuto', 'help')) {
     return risposta(
-      'Posso aiutarti a prenotare una visita, richiedere medicinali, o controllare una prenotazione esistente.\n\n' +
+      'Posso aiutarti a prenotare una visita, richiedere medicinali, una visita specialistica ' +
+      'o gli esami del sangue, oppure a controllare una prenotazione che hai già.\n\n' +
+      'Per specialistiche ed esami, alla fine puoi allegare la foto della richiesta dello specialista.\n\n' +
       'Scrivi "menu" in qualunque momento per ricominciare.', MENU.azioni);
   }
 
   switch (stato.flusso) {
     case 'menu': return gestisciMenu(stato, t);
     case 'prenota': return gestisciPrenota(stato, t);
-    case 'medicine': return gestisciMedicine(stato, t);
+    case 'medicine':
+    case 'specialistica':
+    case 'esami':
+      return gestisciRichiesta(stato, t, RICHIESTE_CHAT[stato.flusso]);
     case 'stato': return gestisciStato(stato, t);
     default:
       Object.assign(stato, { ...STATO_INIZIALE });
@@ -186,11 +235,15 @@ function gestisciMenu(stato, t) {
       listaAmbulatori().map((a) => ({ id: `amb:${a.id}`, etichetta: a.nome.replace('Ambulatorio di ', '') }))
     );
   }
-  if (t === 'medicine' || contiene(t, 'medicin', 'farmac', 'ricett', 'pastigl')) {
-    stato.flusso = 'medicine';
-    stato.passo = 'farmaci';
-    stato.dati = {};
-    return risposta('Quali medicinali ti servono? Elencali pure tutti in un messaggio.');
+  // Le tre richieste si riconoscono allo stesso modo: il nome del bottone
+  // oppure una parola che il paziente ha scritto di suo.
+  for (const [chiave, c] of Object.entries(RICHIESTE_CHAT)) {
+    if (t === chiave || contiene(t, ...c.parole)) {
+      stato.flusso = chiave;
+      stato.passo = 'farmaci';
+      stato.dati = {};
+      return risposta(c.domanda);
+    }
   }
   if (t === 'stato' || contiene(t, 'stato', 'controll', 'verific', 'disdet', 'annull', 'codice')) {
     stato.flusso = 'stato';
@@ -322,12 +375,12 @@ function gestisciPrenota(stato, t) {
   }
 }
 
-function gestisciMedicine(stato, t) {
+function gestisciRichiesta(stato, t, c) {
   const d = stato.dati;
 
   switch (stato.passo) {
     case 'farmaci':
-      if (t.length < 2) return risposta('Scrivi il nome dei medicinali che ti servono.');
+      if (t.length < 2) return risposta(c.riChiedi);
       d.farmaci = t;
       stato.passo = 'nome';
       return risposta('Come ti chiami? (nome e cognome)');
@@ -357,7 +410,7 @@ function gestisciMedicine(stato, t) {
       stato.passo = 'conferma';
       return risposta(
         `Controlla che sia tutto giusto:\n\n👤 ${d.nome} ${d.cognome}\n📞 ${d.telefono}\n` +
-        `✉️ ${d.email}\n💊 ${d.farmaci}\n\nConfermo?`,
+        `✉️ ${d.email}\n${c.icona} ${d.farmaci}\n\nConfermo?`,
         [{ id: 'conferma', etichetta: '✅ Confermo' }, { id: 'ricomincia', etichetta: '✏️ Ricomincia' }]);
     }
 
@@ -366,17 +419,26 @@ function gestisciMedicine(stato, t) {
         return risposta('Dimmi "confermo" per inviare, oppure "ricomincia".',
           [{ id: 'conferma', etichetta: '✅ Confermo' }, { id: 'ricomincia', etichetta: '✏️ Ricomincia' }]);
       }
-      const r = creaRichiesta({ ...d, origine: 'chatbot' });
+      const r = creaRichiesta({ ...d, tipo: c.tipo, origine: 'chatbot' });
       Object.assign(stato, { flusso: 'menu', passo: null, dati: {} });
+
+      // La foto si chiede dopo, non prima: a questo punto la richiesta esiste e
+      // ha un codice, quindi l'allegato ha dove attaccarsi. Chiederla prima
+      // avrebbe voluto dire tenersi un file in mano senza sapere ancora se la
+      // richiesta sarebbe andata a buon fine.
+      const extra = { richiesta: r.codice };
+      if (c.allegati) extra.allegaA = r.codice;
+
       return risposta(
-        `✅ Richiesta registrata!\n\n**Codice: ${r.codice}**\n💊 ${r.farmaci}\n\n` +
-        `Lo studio la prenderà in carico e ti avviseremo quando la ricetta è pronta.`,
-        MENU.azioni, { richiesta: r.codice });
+        `✅ Richiesta registrata!\n\n**Codice: ${r.codice}**\n${c.icona} ${r.farmaci}\n\n` +
+        `${c.chiusura}` +
+        (c.allegati ? '\n\nSe hai la richiesta dello specialista, allegane la foto qui sotto.' : ''),
+        MENU.azioni, extra);
     }
 
     default:
       stato.passo = 'farmaci';
-      return risposta('Quali medicinali ti servono?');
+      return risposta(c.domanda);
   }
 }
 

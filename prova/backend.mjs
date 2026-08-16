@@ -224,6 +224,95 @@ console.log('\nChatbot');
   verifica('un messaggio incomprensibile non rompe la chat', sconosciuto.stato === 200 && Boolean(sconosciuto.dati.testo));
 }
 
+console.log('\nEsami dal chatbot, con la prescrizione allegata');
+{
+  // Un PNG vero da un pixel: il formato si riconosce dai byte, quindi un
+  // finto file di zeri verrebbe rifiutato e la prova non direbbe niente.
+  const PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64');
+
+  const carica = (codice, nome) => fetch(
+    `${BASE}/api/medicine/${codice}/allegato?nome=${encodeURIComponent(nome)}`,
+    { method: 'POST', headers: { 'Content-Type': 'image/png' }, body: PNG });
+
+  const apertura = await chiama('GET', '/api/chat');
+  const sessione = apertura.dati.sessioneId;
+  const passo = (testo) => chiama('POST', '/api/chat', { sessione, testo });
+
+  await passo('esami del sangue');
+  await passo('Emocromo e glicemia');
+  await passo('Marco Verdi');
+  await passo('3331112223');
+  await passo('marco.verdi@example.com');
+  const fine = await passo('confermo');
+
+  const codice = fine.dati.richiesta;
+  verifica('il chatbot registra una richiesta di esami', String(codice || '').startsWith('ESA-'),
+    JSON.stringify(fine.dati).slice(0, 160));
+  verifica('e offre subito di allegare la prescrizione', fine.dati.allegaA === codice);
+
+  const inCoda = db.prepare(`
+    SELECT payload, prossimo_tentativo, creato_il FROM outbox
+     WHERE tipo = 'email' AND json_extract(payload, '$.allegatiDi') IS NOT NULL
+     ORDER BY id DESC LIMIT 1
+  `).get();
+  verifica('l\'avviso allo studio andrà a prendersi gli allegati da solo',
+    Boolean(inCoda), 'nessuna email con allegatiDi in coda');
+  // Il ritardo e' la sola cosa che fa arrivare la foto dentro la stessa email:
+  // senza, l'avviso parte prima che il paziente abbia finito di caricarla.
+  verifica('e aspetta qualche minuto prima di partire',
+    inCoda && inCoda.prossimo_tentativo > inCoda.creato_il,
+    `${inCoda?.creato_il} -> ${inCoda?.prossimo_tentativo}`);
+
+  const messo = await carica(codice, 'prescrizione.png');
+  verifica('la foto si allega alla richiesta nata in chat', messo.status === 201,
+    `stato ${messo.status}`);
+
+  const richiestaId = db.prepare('SELECT id FROM richieste_medicine WHERE codice = ?').get(codice)?.id;
+  const quantiPrima = db.prepare('SELECT COUNT(*) AS c FROM outbox WHERE tipo = \'email\'').get().c;
+
+  // Finche' l'avviso e' fermo in coda, un secondo file non deve generare una
+  // seconda email: se la manda quella, li porta tutti e due.
+  await carica(codice, 'seconda.png');
+  const quantiDopo = db.prepare('SELECT COUNT(*) AS c FROM outbox WHERE tipo = \'email\'').get().c;
+  verifica('un secondo file non moltiplica le email', quantiDopo === quantiPrima,
+    `${quantiPrima} -> ${quantiDopo}`);
+
+  // Ora si finge che l'avviso sia gia' partito: chi carica adesso arriverebbe
+  // tardi, e la prescrizione resterebbe solo dentro il pannello.
+  db.prepare(`
+    UPDATE outbox SET stato = 'completato'
+     WHERE tipo = 'email' AND json_extract(payload, '$.allegatiDi') = ?
+  `).run(richiestaId);
+
+  await carica(codice, 'ritardataria.png');
+  const tardiva = db.prepare(`
+    SELECT payload FROM outbox
+     WHERE tipo = 'email' AND stato = 'in_attesa'
+       AND json_extract(payload, '$.allegatiDi') = ?
+  `).get(richiestaId);
+  verifica('una foto arrivata tardi viene comunque mandata allo studio', Boolean(tardiva));
+  verifica('e il messaggio dice di quale richiesta si tratta',
+    tardiva && JSON.parse(tardiva.payload).subject.includes(codice));
+
+  const allegati = db.prepare('SELECT nome, tipo_mime, length(contenuto) AS byte FROM allegati WHERE richiesta_id = ?')
+    .all(richiestaId);
+  verifica('i tre file sono nell\'archivio col loro contenuto',
+    allegati.length === 3 && allegati.every((a) => a.tipo_mime === 'image/png' && a.byte === PNG.length),
+    JSON.stringify(allegati));
+
+  // Il punto di tutta la storia: quello che parte verso Gmail ha davvero i file
+  // dentro, non solo il numero della richiesta.
+  const { allegatiPerEmail } = await import('../src/mailer.js');
+  const inPartenza = allegatiPerEmail(JSON.parse(tardiva.payload));
+  verifica('l\'email che parte si porta dietro le foto',
+    inPartenza.length === 3
+    && inPartenza.every((a) => Buffer.isBuffer(a.content) && a.content.equals(PNG))
+    && inPartenza.every((a) => a.contentType === 'image/png'),
+    JSON.stringify(inPartenza.map((a) => [a.filename, a.contentType, a.content?.length])));
+}
+
 console.log('\nAccesso amministratore');
 let token = null;
 {
@@ -424,6 +513,39 @@ console.log('\nEmail in arrivo (rete di sicurezza)');
 
   const inCoda = await chiama('GET', '/api/admin/email', null, token);
   verifica('le email compaiono nell\'area admin', inCoda.dati.totale === 2, `totale ${inCoda.dati.totale}`);
+
+  // Chi fotografa la ricetta e la manda per email fa lo stesso gesto di chi la
+  // carica dal sito: il file deve finire dentro la richiesta, non restare in
+  // casella dove nessuno lo ricollega.
+  {
+    const PNG = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64');
+
+    const conFoto = registraEmail({
+      messageId: '<prova-foto@example.com>',
+      mittente: 'fotografo@example.com', mittenteNome: 'Ugo Rossi',
+      oggetto: 'Ricetta', corpo: 'Le mando la prescrizione dello specialista in foto.',
+      allegati: [
+        { filename: 'prescrizione.jpg', content: PNG },
+        // Il logo in fondo alla firma: richiamato dall'HTML, non e' un documento.
+        { filename: 'logo.png', content: PNG, related: true },
+        // Un formato che non si puo' mostrare nel pannello senza rischi.
+        { filename: 'appunti.docx', content: Buffer.from('PK finto docx') }
+      ]
+    });
+    verifica('l\'email con la foto diventa comunque una richiesta',
+      conFoto.collegata?.startsWith('MED-'), JSON.stringify(conFoto));
+
+    const id = db.prepare('SELECT id, note FROM richieste_medicine WHERE codice = ?').get(conFoto.collegata);
+    const files = db.prepare('SELECT nome, tipo_mime FROM allegati WHERE richiesta_id = ?').all(id.id);
+    verifica('la foto arrivata per email si trova dentro la richiesta',
+      files.length === 1 && files[0].tipo_mime === 'image/png', JSON.stringify(files));
+    verifica('il logo della firma non finisce fra gli allegati',
+      !files.some((f) => f.nome.includes('logo')));
+    verifica('e di quello che non si e\' potuto tenere resta scritto dove cercarlo',
+      id.note.includes('appunti.docx'), id.note);
+  }
 
   // La posta che ci siamo mandati da soli non deve rientrare come richiesta:
   // e' cosi' che le notifiche di spostamento avevano invaso le email da leggere.

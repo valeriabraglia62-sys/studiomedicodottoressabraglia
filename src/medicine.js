@@ -1,12 +1,13 @@
 import { db } from './db.js';
-import { accoda } from './outbox.js';
+import { accoda, avvisoAncoraInCoda } from './outbox.js';
 import { trovaAmbulatorio } from './orari.js';
 import {
   ErroreDominio, generaCodice, trovaOCreaPaziente, telefonoValido, emailValida
 } from './prenotazioni.js';
 import {
   emailNuovaMedicinaAdmin, emailRicevutaMedicinaPaziente,
-  emailMedicinaConfermata, emailMedicinaRifiutata, emailMedicinaModificata
+  emailMedicinaConfermata, emailMedicinaRifiutata, emailMedicinaModificata,
+  emailAllegatoTardivo, impostaLettoreAllegati
 } from './mailer.js';
 
 /**
@@ -44,15 +45,30 @@ export const TIPI = {
     prefisso: 'SPE',
     etichetta: 'Visita specialistica',
     cosaChiede: 'visita specialistica',
-    vuoto: 'Indica di quale visita specialistica hai bisogno.'
+    vuoto: 'Indica di quale visita specialistica hai bisogno.',
+    allegati: true
   },
   esami: {
     prefisso: 'ESA',
     etichetta: 'Esami del sangue',
     cosaChiede: 'esami del sangue',
-    vuoto: 'Indica quali esami ti servono, o allega la richiesta dello specialista.'
+    vuoto: 'Indica quali esami ti servono, o allega la richiesta dello specialista.',
+    allegati: true
   }
 };
+
+/**
+ * Quanto aspettare prima di avvisare lo studio, quando la richiesta puo' avere
+ * una foto attaccata.
+ *
+ * La foto arriva sempre DOPO la richiesta: prima deve esistere qualcosa a cui
+ * attaccarla. Se l'avviso partisse subito, in casella arriverebbe una richiesta
+ * di esami senza la prescrizione, e qualcuno dovrebbe aprire il pannello per
+ * vedere se nel frattempo la foto e' arrivata — cioe' esattamente il lavoro che
+ * l'email dovrebbe risparmiare. Qualche minuto di ritardo non cambia niente per
+ * chi legge; una prescrizione mancante sì.
+ */
+const ATTESA_ALLEGATI_MINUTI = 4;
 
 const tipoValido = (t) => (Object.hasOwn(TIPI, String(t || '')) ? String(t) : 'medicina');
 
@@ -141,7 +157,11 @@ export function creaRichiesta(dati) {
     const richiesta = dettaglio(info.lastInsertRowid);
 
     accoda('sheet_medicina', richiesta);
-    accoda('email', emailNuovaMedicinaAdmin(richiesta));
+    // allegatiDi dice al mailer di andare a prendere i file al momento
+    // dell'invio, non adesso: adesso non ce n'e' ancora nessuno.
+    accoda('email',
+      { ...emailNuovaMedicinaAdmin(richiesta), allegatiDi: richiesta.id },
+      { fraMinuti: TIPI[tipo].allegati ? ATTESA_ALLEGATI_MINUTI : 0 });
     // Chi scrive via email ha gia' il proprio messaggio: evitiamo il rimbalzo.
     if (richiesta.email && origine !== 'email') {
       accoda('email', emailRicevutaMedicinaPaziente(richiesta));
@@ -369,6 +389,14 @@ export function allegaFile(richiestaId, { nome, contenuto }) {
   `).run(richiestaId, nomePulito, formato.mime,
     contenuto.length, contenuto, new Date().toISOString());
 
+  // L'avviso allo studio aspetta qualche minuto proprio per raccogliere questo
+  // file. Se pero' e' gia' partito — perche' il paziente ci ha messo di piu' a
+  // trovare la foto — la prescrizione resterebbe solo dentro il pannello, e chi
+  // legge la casella non saprebbe nemmeno di doverla andare a cercare.
+  if (!avvisoAncoraInCoda(richiestaId)) {
+    accoda('email', { ...emailAllegatoTardivo(richiesta), allegatiDi: richiestaId });
+  }
+
   return { id: info.lastInsertRowid, nome: nomePulito, byte: contenuto.length, tipo: formato.mime };
 }
 
@@ -376,6 +404,13 @@ export function allegaFile(richiestaId, { nome, contenuto }) {
 export const allegatiDi = (richiestaId) => db.prepare(
   'SELECT id, nome, tipo_mime, byte, caricato_il FROM allegati WHERE richiesta_id = ? ORDER BY id'
 ).all(richiestaId);
+
+/** Gli allegati col contenuto dentro, per attaccarli a una email. */
+const allegatiCompleti = (richiestaId) => db.prepare(
+  'SELECT nome, tipo_mime, contenuto FROM allegati WHERE richiesta_id = ? ORDER BY id'
+).all(richiestaId);
+
+impostaLettoreAllegati(allegatiCompleti);
 
 export const allegato = (id) => db.prepare('SELECT * FROM allegati WHERE id = ?').get(id);
 

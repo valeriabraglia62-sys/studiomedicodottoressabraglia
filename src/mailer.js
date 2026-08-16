@@ -1,4 +1,4 @@
-import nodemailer from 'nodemailer';
+﻿import nodemailer from 'nodemailer';
 import { config, NOTIFY_EMAIL } from './config.js';
 import { registraGestore, impostaAvvisoDifficolta } from './outbox.js';
 import { formattaDataEstesa } from './orari.js';
@@ -67,9 +67,43 @@ export function componiEmail({ to, subject, titolo, intro, righe, azione, chiusu
   return { to, subject, html: guscioHtml(titolo || subject, corpo), text: testo };
 }
 
+/**
+ * Come si recuperano gli allegati di una richiesta.
+ *
+ * Lo passa medicine.js, che e' il modulo padrone di quella tabella, invece di
+ * essere importato da qui: medicine.js importa gia' questo file per comporre i
+ * messaggi, e importarlo all'indietro chiuderebbe il giro.
+ */
+let leggiAllegati = null;
+export function impostaLettoreAllegati(fn) {
+  leggiAllegati = fn;
+}
+
+/**
+ * I file da attaccare a questa email, letti adesso.
+ *
+ * Adesso e non quando l'email e' stata messa in coda: la foto della prescrizione
+ * arriva sempre qualche secondo dopo la richiesta, perche' prima deve esistere
+ * la richiesta a cui attaccarla. Portandosi dietro solo il numero della
+ * richiesta, l'email raccoglie quello che c'e' nel momento in cui parte — e la
+ * coda resta leggera, invece di tenere dieci megabyte di foto dentro una riga
+ * di database.
+ */
+export function allegatiPerEmail(payload) {
+  if (!payload?.allegatiDi || !leggiAllegati) return [];
+  return leggiAllegati(payload.allegatiDi).map((a) => ({
+    filename: a.nome,
+    content: a.contenuto,
+    contentType: a.tipo_mime || 'application/octet-stream'
+  }));
+}
+
 registraGestore('email', async (payload) => {
+  const allegati = allegatiPerEmail(payload);
+
   if (!transporter) {
-    console.log(`[email] non configurata, simulo invio a ${payload.to}: ${payload.subject}`);
+    console.log(`[email] non configurata, simulo invio a ${payload.to}: ${payload.subject}`
+      + (allegati.length ? ` (${allegati.length} allegati)` : ''));
     return;
   }
   await transporter.sendMail({
@@ -77,7 +111,8 @@ registraGestore('email', async (payload) => {
     to: payload.to,
     subject: payload.subject,
     text: payload.text,
-    html: payload.html
+    html: payload.html,
+    attachments: allegati
   });
 });
 
@@ -342,36 +377,104 @@ export const emailPostoLibero = (v, slot) => componiEmail({
   chiusura: 'Prenoti dal sito appena può: il posto resta di chi lo prende per primo.'
 });
 
+/**
+ * Come si chiama, nell'email, quello che il paziente ha chiesto.
+ *
+ * Serve perche' le stesse cinque email valgono per tutti e tre i tipi: una sola
+ * versione scritta in "medicinalese" direbbe a chi ha chiesto gli esami del
+ * sangue di passare in farmacia a ritirare la ricetta. Il paziente ci andrebbe,
+ * e non troverebbe niente.
+ *
+ * Le parole sono ricopiate da TIPI in medicine.js invece che importate: questo
+ * file compone testi e basta, e farlo dipendere del modulo che a sua volta lo
+ * importa per comporre chiuderebbe il giro.
+ */
+const PAROLE_TIPO = {
+  medicina: {
+    corta: 'medicinali',
+    titoloAdmin: 'Nuova richiesta di medicinali',
+    riga: 'Medicinali',
+    documento: 'ricetta',
+    etichettaNumero: 'Numero della ricetta',
+    quandoPronta: 'La avviseremo quando la ricetta sarà pronta per il ritiro.',
+    dovePronta: 'In farmacia: la ricetta e\' gia\' stata inviata',
+    conNumero: 'In farmacia le basta il numero della ricetta qui sopra.'
+  },
+  specialistica: {
+    corta: 'visita specialistica',
+    titoloAdmin: 'Nuova richiesta di visita specialistica',
+    riga: 'Visita richiesta',
+    documento: 'impegnativa',
+    etichettaNumero: 'Numero dell\'impegnativa',
+    quandoPronta: 'La avviseremo quando l\'impegnativa sarà pronta.',
+    dovePronta: 'L\'impegnativa e\' gia\' stata inviata: puo\' prenotare la visita',
+    conNumero: 'Per prenotare al CUP le basta il numero qui sopra.'
+  },
+  esami: {
+    corta: 'esami del sangue',
+    titoloAdmin: 'Nuova richiesta di esami del sangue',
+    riga: 'Esami richiesti',
+    documento: 'impegnativa',
+    etichettaNumero: 'Numero dell\'impegnativa',
+    quandoPronta: 'La avviseremo quando l\'impegnativa sarà pronta.',
+    dovePronta: 'L\'impegnativa e\' gia\' stata inviata: puo\' presentarsi al prelievo',
+    conNumero: 'Al laboratorio le basta il numero qui sopra.'
+  }
+};
+const paroleDi = (r) => PAROLE_TIPO[r?.tipo] || PAROLE_TIPO.medicina;
+
 export const emailRicevutaMedicinaPaziente = (r) => componiEmail({
   to: r.email,
-  subject: `Richiesta medicinali ricevuta — codice ${r.codice}`,
+  subject: `Richiesta ${paroleDi(r).corta} ricevuta — codice ${r.codice}`,
   titolo: 'Richiesta ricevuta',
-  intro: `Gentile ${esc(r.nome)}, abbiamo registrato la sua richiesta di medicinali.`,
+  intro: `Gentile ${esc(r.nome)}, abbiamo registrato la sua richiesta di ${paroleDi(r).corta}.`,
   righe: [
-    ['Medicinali', r.farmaci],
+    [paroleDi(r).riga, r.farmaci],
     ['Note', r.note],
     ['Codice richiesta', r.codice]
   ],
-  chiusura: 'La avviseremo quando la ricetta sarà pronta per il ritiro.'
+  chiusura: paroleDi(r).quandoPronta
 });
 
 export const emailNuovaMedicinaAdmin = (r) => componiEmail({
   to: NOTIFY_EMAIL,
-  subject: `Richiesta medicinali: ${r.nome} ${r.cognome}`,
-  titolo: 'Nuova richiesta di medicinali',
+  subject: `Richiesta ${paroleDi(r).corta}: ${r.nome} ${r.cognome}`,
+  titolo: paroleDi(r).titoloAdmin,
   righe: [
     ['Paziente', `${r.nome} ${r.cognome}`],
     ['Telefono', r.telefono],
     ['Email', r.email],
-    ['Medicinali', r.farmaci],
+    [paroleDi(r).riga, r.farmaci],
     ['Note', r.note],
     ['Codice', r.codice],
     ['Origine', r.origine]
+  ],
+  chiusura: 'Se il paziente ha allegato la prescrizione, la trovi in fondo a questo messaggio.'
+});
+
+/**
+ * La foto arrivata dopo che l'avviso era gia' partito.
+ *
+ * Succede a chi si perde a cercare il documento o a rifare la foto storta: la
+ * richiesta era gia' finita in casella senza niente attaccato. Mandare un
+ * secondo messaggio e' l'unico modo perche' quella prescrizione si veda in
+ * Gmail invece di restare solo dentro il pannello, dove nessuno la va a
+ * cercare non sapendo che c'e'.
+ */
+export const emailAllegatoTardivo = (r) => componiEmail({
+  to: NOTIFY_EMAIL,
+  subject: `Allegato per la richiesta ${r.codice} — ${r.nome} ${r.cognome}`,
+  titolo: 'È arrivata la prescrizione',
+  intro: 'Il paziente ha caricato la prescrizione dopo l\'avviso di poco fa. La trovi qui allegata.',
+  righe: [
+    ['Paziente', `${r.nome} ${r.cognome}`],
+    [paroleDi(r).riga, r.farmaci],
+    ['Codice', r.codice]
   ]
 });
 
 /**
- * Le tre risposte a una richiesta di medicinali.
+ * Le tre risposte a una richiesta.
  *
  * Sono le uniche email che il paziente riceve dopo aver chiesto una ricetta,
  * quindi devono bastare da sole: chi le legge non ha davanti il sito ne'
@@ -390,35 +493,34 @@ export const emailNuovaMedicinaAdmin = (r) => componiEmail({
  */
 const doveRitirare = (r) => (r.ambulatorio_nome
   ? `${r.ambulatorio_nome} — glielo abbiamo messo da parte li'`
-  : 'In farmacia: la ricetta e\' gia\' stata inviata');
+  : paroleDi(r).dovePronta);
 
 export const emailMedicinaConfermata = (r) => componiEmail({
   to: r.email,
-  subject: `Ricetta pronta per il ritiro — codice ${r.codice}`,
+  subject: `${paroleDi(r).documento[0].toUpperCase()}${paroleDi(r).documento.slice(1)} pronta — codice ${r.codice}`,
   titolo: 'Richiesta confermata',
-  intro: `Gentile ${esc(r.nome)}, la sua richiesta è stata approvata dal medico ed è pronta per il ritiro.`,
+  intro: `Gentile ${esc(r.nome)}, la sua richiesta è stata approvata dal medico.`,
   righe: [
-    ['Medicinali', r.farmaci],
-    ['Dove ritirare', doveRitirare(r)],
+    [paroleDi(r).riga, r.farmaci],
+    ['Come procedere', doveRitirare(r)],
     // Il numero della ricetta elettronica sta prima del codice nostro apposta:
     // il nostro serve a noi, questo serve a lui, ed e' quello che gli chiedono
-    // al banco della farmacia.
-    ['Numero della ricetta', r.numero_ricetta || null],
+    // al banco della farmacia o allo sportello.
+    [paroleDi(r).etichettaNumero, r.numero_ricetta || null],
     ['Codice richiesta', r.codice]
   ],
   chiusura: r.numero_ricetta
-    ? 'In farmacia le basta il numero della ricetta qui sopra. ' +
-      'Se qualcosa non le torna, ci contatti prima di passare a ritirare.'
-    : 'Se qualcosa non le torna, ci contatti prima di passare a ritirare.'
+    ? `${paroleDi(r).conNumero} Se qualcosa non le torna, ci contatti prima di muoversi.`
+    : 'Se qualcosa non le torna, ci contatti prima di muoversi.'
 });
 
 export const emailMedicinaRifiutata = (r) => componiEmail({
   to: r.email,
-  subject: `Richiesta medicinali non accolta — codice ${r.codice}`,
+  subject: `Richiesta ${paroleDi(r).corta} non accolta — codice ${r.codice}`,
   titolo: 'Richiesta non accolta',
-  intro: `Gentile ${esc(r.nome)}, purtroppo la sua richiesta di medicinali non può essere accolta.`,
+  intro: `Gentile ${esc(r.nome)}, purtroppo la sua richiesta di ${paroleDi(r).corta} non può essere accolta.`,
   righe: [
-    ['Medicinali richiesti', r.farmaci],
+    [paroleDi(r).riga, r.farmaci],
     // Senza il perche' il paziente richiama per forza, e la telefonata la
     // riceve lo studio: scriverlo qui fa risparmiare tempo a tutti e due.
     ['Motivo', r.motivo_rifiuto],
@@ -437,7 +539,7 @@ export const emailMedicinaRifiutata = (r) => componiEmail({
  */
 export const emailMedicinaModificata = (r) => componiEmail({
   to: r.email,
-  subject: `Richiesta medicinali aggiornata — codice ${r.codice}`,
+  subject: `Richiesta ${paroleDi(r).corta} aggiornata — codice ${r.codice}`,
   titolo: 'Richiesta confermata con modifiche',
   intro: `Gentile ${esc(r.nome)}, come d'accordo la sua richiesta è stata approvata con qualche cambiamento.`,
   righe: [
@@ -445,8 +547,8 @@ export const emailMedicinaModificata = (r) => componiEmail({
     ['Le abbiamo preparato', r.farmaci],
     ['Note precedenti', r.note_originali !== r.note ? r.note_originali : null],
     ['Note', r.note],
-    ['Dove ritirare', doveRitirare(r)],
-    ['Numero della ricetta', r.numero_ricetta || null],
+    ['Come procedere', doveRitirare(r)],
+    [paroleDi(r).etichettaNumero, r.numero_ricetta || null],
     ['Codice richiesta', r.codice]
   ],
   chiusura: 'Se qualcosa non corrisponde a quanto ci siamo detti al telefono, ci ricontatti.'

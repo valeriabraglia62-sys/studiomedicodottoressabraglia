@@ -392,17 +392,22 @@ function scegliAmbulatorio(selezionato) {
 }
 
 /**
- * Dove si ritira una ricetta. Quasi sempre in farmacia, ed e' il valore
- * predefinito: al paziente non lo si chiede nemmeno piu'. Resta la possibilita'
- * di indicare un ambulatorio per i casi particolari, ma la sceglie lo studio
- * quando conferma, non il paziente quando chiede.
+ * Dove si ritira. Quasi sempre da nessuna parte, ed e' il valore predefinito:
+ * ricette e impegnative sono elettroniche e al paziente basta il numero. Resta
+ * la possibilita' di indicare un ambulatorio per i casi particolari, ma la
+ * sceglie lo studio quando conferma, non il paziente quando chiede.
+ *
+ * La prima voce cambia col tipo perche' mandare in farmacia chi ha chiesto gli
+ * esami del sangue e' un'indicazione sbagliata, e da qui finisce dritta
+ * nell'email al paziente.
  */
-function scegliRitiro(selezionato) {
+function scegliRitiro(selezionato, tipo = 'medicina') {
   const el = nodo('select');
-  const farmacia = nodo('option', null, 'In farmacia');
-  farmacia.value = '';
-  if (!selezionato) farmacia.selected = true;
-  el.append(farmacia);
+  const parole = PAROLE_TIPO[tipo] || PAROLE_TIPO.medicina;
+  const senzaRitiro = nodo('option', null, parole.ritiro);
+  senzaRitiro.value = '';
+  if (!selezionato) senzaRitiro.selected = true;
+  el.append(senzaRitiro);
 
   for (const a of ambulatoriNoti) {
     const opzione = nodo('option', null, `Ritiro in ${a.nome}`);
@@ -827,9 +832,18 @@ function riquadroAllegati(allegati) {
 }
 
 const PAROLE_TIPO = {
-  medicina: { icona: '💊', titolo: 'Nuova richiesta di medicinali', campo: 'Medicinali' },
-  specialistica: { icona: '🩺', titolo: 'Nuova visita specialistica', campo: 'Quale visita' },
-  esami: { icona: '🧪', titolo: 'Nuovi esami del sangue', campo: 'Quali esami' }
+  medicina: {
+    icona: '💊', titolo: 'Nuova richiesta di medicinali', campo: 'Medicinali',
+    ritiro: 'In farmacia', numero: 'Numero della ricetta elettronica'
+  },
+  specialistica: {
+    icona: '🩺', titolo: 'Nuova visita specialistica', campo: 'Quale visita',
+    ritiro: 'Niente da ritirare: impegnativa elettronica', numero: 'Numero dell\'impegnativa (NRE)'
+  },
+  esami: {
+    icona: '🧪', titolo: 'Nuovi esami del sangue', campo: 'Quali esami',
+    ritiro: 'Niente da ritirare: impegnativa elettronica', numero: 'Numero dell\'impegnativa (NRE)'
+  }
 };
 
 function moduloNuovaMedicina(chiudi, tipo = 'medicina') {
@@ -842,7 +856,7 @@ function moduloNuovaMedicina(chiudi, tipo = 'medicina') {
   const { campi, riga } = campiPaziente();
   const farmaci = areaTesto('', 4);
   const note = areaTesto('', 2);
-  const ambulatorio = scegliRitiro();
+  const ambulatorio = scegliRitiro(null, tipo);
 
   const riga2 = nodo('div', 'filtri');
   riga2.append(
@@ -1006,14 +1020,16 @@ function schedaMedicina(r) {
 
   const campi = { farmaci: areaTesto(r.farmaci, 4), note: areaTesto(r.note, 2) };
 
-  campi.ambulatorio_id = scegliRitiro(r.ambulatorio_id);
+  campi.ambulatorio_id = scegliRitiro(r.ambulatorio_id, r.tipo);
 
-  // Il numero che il fascicolo restituisce dopo aver inserito la ricetta. Da
-  // quando il ritiro avviene in farmacia e' il pezzo che serve al paziente: e'
-  // quello che gli chiedono al banco, e finisce nella sua email. Si puo'
-  // scrivere subito o aggiungere dopo con "Salva modifiche", perche' capita di
-  // confermare qui e inserire nel fascicolo un momento piu' tardi.
-  campi.numero_ricetta = inputTesto(r.numero_ricetta || '', 'Numero della ricetta elettronica');
+  // Il numero che il fascicolo restituisce dopo aver inserito la richiesta. Da
+  // quando ricette e impegnative sono elettroniche e' il pezzo che serve al
+  // paziente: e' quello che gli chiedono al banco della farmacia o allo
+  // sportello, e finisce nella sua email. Si puo' scrivere subito o aggiungere
+  // dopo con "Salva modifiche", perche' capita di confermare qui e inserire nel
+  // fascicolo un momento piu' tardi.
+  campi.numero_ricetta = inputTesto(r.numero_ricetta || '',
+    (PAROLE_TIPO[r.tipo] || PAROLE_TIPO.medicina).numero);
 
   const riga = nodo('div', 'filtri');
   riga.style.marginTop = '.85rem';

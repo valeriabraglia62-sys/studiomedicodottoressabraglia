@@ -2,7 +2,7 @@ import { db } from './db.js';
 import { config, NOTIFY_EMAIL } from './config.js';
 import { accoda, registraGestore } from './outbox.js';
 import { generaCodice, ErroreDominio } from './prenotazioni.js';
-import { creaRichiesta } from './medicine.js';
+import { creaRichiesta, allegaFile } from './medicine.js';
 
 /**
  * Rete di sicurezza sulla casella in arrivo.
@@ -89,6 +89,42 @@ const estraiTelefono = (testo) => {
   return m ? m[0].replace(/[\s.\-]/g, '') : null;
 };
 
+/**
+ * I file arrivati insieme all'email, ridotti a quelli che sono davvero documenti.
+ *
+ * In fondo a mezza posta italiana c'e' il logo dello studio, la firma con la
+ * faccia e l'informativa privacy in PNG: sono immagini richiamate dall'HTML del
+ * messaggio, e mailparser le segna come "related". Attaccarle alla richiesta
+ * vorrebbe dire riempire il pannello di stemmi, e chi cerca la prescrizione fra
+ * cinque anteprime uguali finisce per non guardarne nessuna.
+ */
+const documentiVeri = (allegati) => (allegati || []).filter(
+  (a) => !a.related && a.contentDisposition !== 'inline' && a.content?.length
+);
+
+/**
+ * Attacca alla richiesta i file arrivati per email.
+ *
+ * Un allegato che non passa non deve far fallire l'importazione: il messaggio e'
+ * gia' arrivato e la richiesta esiste. Peggio ancora, un'eccezione qui
+ * annullerebbe la transazione e l'email verrebbe riscaricata al giro dopo, per
+ * sempre. Quindi si prende quello che si riesce a prendere; il testo del
+ * messaggio resta comunque sulla scrivania, con dentro il nome di cio' che e'
+ * stato scartato.
+ */
+function attaccaAllaRichiesta(richiestaId, allegati) {
+  const scartati = [];
+  for (const a of documentiVeri(allegati)) {
+    try {
+      allegaFile(richiestaId, { nome: a.filename || 'allegato', contenuto: a.content });
+    } catch (err) {
+      if (!(err instanceof ErroreDominio)) throw err;
+      scartati.push(a.filename || 'senza nome');
+    }
+  }
+  return scartati;
+}
+
 const stmtGiaVista = db.prepare('SELECT 1 FROM email_processate WHERE message_id = ?');
 
 const stmtSegnaVista = db.prepare(
@@ -99,7 +135,7 @@ const stmtSegnaVista = db.prepare(
 export const giaVista = (messageId) => Boolean(messageId && stmtGiaVista.get(messageId));
 
 /** Salva l'email e, se e' una richiesta di medicinali, la converte subito. */
-export function registraEmail({ messageId, mittente, mittenteNome, oggetto, corpo, ricevutaIl }) {
+export function registraEmail({ messageId, mittente, mittenteNome, oggetto, corpo, ricevutaIl, allegati }) {
   if (messageId && stmtGiaVista.get(messageId)) return { saltata: true };
 
   // Il controllo sta qui, non nel giro di lettura: e' questa la funzione che
@@ -145,6 +181,18 @@ export function registraEmail({ messageId, mittente, mittenteNome, oggetto, corp
           origine: 'email'
         });
         collegata = richiesta.codice;
+
+        // Chi fotografa la ricetta e la manda per email fa lo stesso gesto di
+        // chi la carica dal sito, e il file deve finire nello stesso posto:
+        // dentro la richiesta, dove chi risponde lo trova senza dover tornare
+        // in casella a cercare il messaggio originale.
+        const scartati = attaccaAllaRichiesta(richiesta.id, allegati);
+        if (scartati.length) {
+          db.prepare('UPDATE richieste_medicine SET note = ? WHERE id = ?').run(
+            'Richiesta ricevuta via email, da verificare. '
+            + `Allegati non leggibili, guardali in casella: ${scartati.join(', ')}`.slice(0, 400),
+            richiesta.id);
+        }
       } catch (err) {
         // Se la conversione automatica non riesce, l'email resta comunque
         // salvata qui sotto e finisce sulla scrivania dell'amministratore.
@@ -498,7 +546,8 @@ async function leggiCasella() {
           mittenteNome: mail.from?.value?.[0]?.name || '',
           oggetto,
           corpo: (mail.text || mail.html?.replace(/<[^>]+>/g, ' ') || '').trim(),
-          ricevutaIl: (mail.date || new Date()).toISOString()
+          ricevutaIl: (mail.date || new Date()).toISOString(),
+          allegati: mail.attachments
         });
 
         if (!esito.saltata && !esito.ignorata) nuove++;

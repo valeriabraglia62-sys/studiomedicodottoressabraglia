@@ -647,6 +647,51 @@ function bolla(ruolo, contenuto) {
   return el;
 }
 
+/**
+ * Il riquadro per allegare la prescrizione, dentro la conversazione.
+ *
+ * Non e' un modulo: e' un bottone e basta. Chi arriva qui ha appena finito di
+ * scrivere e ha il telefono in mano, quindi la strada piu' corta e' scattare la
+ * foto sul posto. Se qualcosa va storto la richiesta resta comunque valida e il
+ * messaggio lo dice, altrimenti uno pensa di aver perso tutto e ricomincia.
+ */
+function mostraAllegaInChat(codice) {
+  const riquadro = nodo('div', 'bolla bot allega-chat');
+  riquadro.append(nodo('span', 'piccolo tenue', '📎 Allega la richiesta dello specialista (foto o PDF)'));
+
+  const campo = nodo('input');
+  campo.type = 'file';
+  campo.accept = 'image/*,application/pdf';
+  campo.multiple = true;
+  campo.className = 'piccolo';
+  riquadro.append(campo);
+
+  const esito = nodo('p', 'piccolo tenue');
+  riquadro.append(esito);
+
+  campo.addEventListener('change', async () => {
+    if (!campo.files.length) return;
+    campo.disabled = true;
+    esito.className = 'piccolo tenue';
+    esito.textContent = 'Sto caricando…';
+    try {
+      await inviaAllegati(codice, campo);
+      esito.textContent = campo.files.length === 1
+        ? '✅ Allegato caricato: lo studio lo vedrà insieme alla richiesta.'
+        : `✅ ${campo.files.length} allegati caricati: lo studio li vedrà insieme alla richiesta.`;
+      campo.remove();
+    } catch (err) {
+      esito.className = 'piccolo errore';
+      esito.textContent = err.message;
+      campo.disabled = false;
+    }
+    $('#chat-corpo').scrollTop = $('#chat-corpo').scrollHeight;
+  });
+
+  $('#chat-corpo').append(riquadro);
+  $('#chat-corpo').scrollTop = $('#chat-corpo').scrollHeight;
+}
+
 function disegnaAzioniChat(azioni = []) {
   const contenitore = $('#chat-azioni');
   contenitore.replaceChildren(...azioni.map((a) => {
@@ -703,6 +748,12 @@ async function inviaChat(testoMessaggio, etichettaVisibile) {
     attesa.remove();
     bolla('bot', dati.testo);
     disegnaAzioniChat(dati.azioni);
+
+    // Solo per gli esami: la richiesta e' appena nata e ha un codice, quindi la
+    // foto della prescrizione ha dove attaccarsi. Il bottone compare dentro la
+    // conversazione perche' chi sta parlando col chatbot non deve uscire, andare
+    // a cercare il modulo sul sito e ricominciare da capo.
+    if (dati.allegaA) mostraAllegaInChat(dati.allegaA);
 
     // Una prenotazione nata in chat cambia le disponibilità mostrate nella pagina.
     if (dati.prenotazione) {

@@ -66,11 +66,35 @@ const stmtAccoda = db.prepare(`
   VALUES (?, ?, ?, ?)
 `);
 
-/** Da chiamare dentro una transazione, insieme alla scrittura del dato. */
-export function accoda(tipo, payload) {
+/**
+ * Da chiamare dentro una transazione, insieme alla scrittura del dato.
+ *
+ * fraMinuti serve a chi deve aspettare qualcosa che arriva subito dopo — una
+ * foto che il paziente sta caricando in quel momento. La riga e' comunque
+ * scritta ora, insieme al dato: il ritardo riguarda solo quando parte, quindi
+ * la garanzia "o si salvano entrambi o nessuno dei due" resta intatta.
+ */
+export function accoda(tipo, payload, { fraMinuti = 0 } = {}) {
   const ora = new Date().toISOString();
-  return stmtAccoda.run(tipo, JSON.stringify(payload), ora, ora).lastInsertRowid;
+  const quando = fraMinuti > 0
+    ? new Date(Date.now() + fraMinuti * 60000).toISOString()
+    : ora;
+  return stmtAccoda.run(tipo, JSON.stringify(payload), quando, ora).lastInsertRowid;
 }
+
+/**
+ * C'e' ancora un'email ferma in coda che porterà gli allegati di questa richiesta?
+ *
+ * Se sì, chi carica un file adesso non deve fare niente: quella email li
+ * raccoglierà da sola quando parte. Se no, l'avviso e' gia' arrivato allo studio
+ * senza la foto, e va mandato un secondo messaggio.
+ */
+export const avvisoAncoraInCoda = (richiestaId) => !!db.prepare(`
+  SELECT 1 FROM outbox
+   WHERE tipo = 'email' AND stato = 'in_attesa'
+     AND json_extract(payload, '$.allegatiDi') = ?
+   LIMIT 1
+`).get(richiestaId);
 
 const stmtDaLavorare = db.prepare(`
   SELECT id, tipo, payload, tentativi FROM outbox
