@@ -224,6 +224,116 @@ console.log('\nChatbot');
   verifica('un messaggio incomprensibile non rompe la chat', sconosciuto.stato === 200 && Boolean(sconosciuto.dati.testo));
 }
 
+console.log('\nNel chatbot si torna indietro senza perdere tutto');
+{
+  const apri = async () => {
+    const a = await chiama('GET', '/api/chat');
+    const s = a.dati.sessioneId;
+    return { s, passo: (testo) => chiama('POST', '/api/chat', { sessione: s, testo }) };
+  };
+
+  // Un passo indietro: si rifa' solo l'ultima risposta.
+  {
+    const { passo } = await apri();
+    await passo('medicine');
+    await passo('Tachipirina');
+    await passo('Luca Ferri');
+    const dietro = await passo('indietro');
+    verifica('"indietro" riporta alla domanda precedente',
+      dietro.dati.testo.includes('Come ti chiami'), dietro.dati.testo.slice(0, 90));
+
+    await passo('Luca Ferrari');
+    await passo('3331234567');
+    // L'email e' l'ultima domanda: la sua risposta e' gia' il riepilogo.
+    const riepilogo = await passo('luca@example.com');
+    verifica('la risposta corretta sostituisce quella sbagliata',
+      riepilogo.dati.testo.includes('Luca Ferrari') && !riepilogo.dati.testo.includes('Luca Ferri'),
+      riepilogo.dati.testo.slice(0, 120));
+    verifica('e quello scritto prima dell\'errore e\' ancora li\'',
+      riepilogo.dati.testo.includes('Tachipirina'));
+  }
+
+  // Dal riepilogo si corregge un dato solo e si torna dritti al riepilogo:
+  // chi sbaglia il telefono non deve ridettare anche email e medicinali.
+  {
+    const { passo } = await apri();
+    await passo('medicine');
+    await passo('Cardioaspirin');
+    await passo('Rosa Neri');
+    await passo('3339990000');
+    await passo('rosa@example.com');
+
+    const scelta = await passo('correggi');
+    verifica('dal riepilogo si sceglie quale dato cambiare',
+      scelta.dati.azioni?.some((a) => a.id === 'campo:telefono'), JSON.stringify(scelta.dati.azioni));
+
+    const chiede = await passo('campo:telefono');
+    verifica('e il chatbot richiede solo quello',
+      chiede.dati.testo.includes('numero di telefono'), chiede.dati.testo.slice(0, 80));
+
+    const tornato = await passo('3337778888');
+    verifica('dopo la correzione si torna al riepilogo, non alla domanda dopo',
+      tornato.dati.testo.includes('Controlla che sia tutto giusto')
+      && tornato.dati.testo.includes('3337778888'), tornato.dati.testo.slice(0, 160));
+    verifica('gli altri dati non sono stati toccati',
+      tornato.dati.testo.includes('rosa@example.com') && tornato.dati.testo.includes('Cardioaspirin'));
+
+    const fatta = await passo('confermo');
+    verifica('e la richiesta parte col dato corretto', String(fatta.dati.richiesta || '').startsWith('MED-'));
+    const salvata = db.prepare('SELECT telefono FROM richieste_medicine WHERE codice = ?').get(fatta.dati.richiesta);
+    verifica('nel database finisce il numero nuovo', salvata?.telefono === '3337778888', salvata?.telefono);
+  }
+
+  // Cambiare l'ambulatorio non puo' lasciare in piedi il giorno gia' scelto:
+  // un orario libero ad Arceto non lo e' per forza a Casalgrande.
+  {
+    const { passo } = await apri();
+    await passo('prenota');
+    await passo('amb:1');
+    const giorni = await passo('');
+    const primoGiorno = giorni.dati.azioni?.find((a) => a.id.startsWith('data:'));
+    verifica('la prenotazione propone dei giorni', Boolean(primoGiorno));
+
+    await passo(primoGiorno.id);
+    const orari = await passo('');
+    const primaOra = orari.dati.azioni?.find((a) => a.id.startsWith('ora:'));
+    await passo(primaOra.id);
+    await passo('Ida Conti');
+    await passo('3335554444');
+    await passo('ida@example.com');
+    await passo('Controllo');
+
+    await passo('correggi');
+    const dopoAmbulatorio = await passo('campo:ambulatorio');
+    verifica('correggendo l\'ambulatorio si torna a scegliere l\'ambulatorio',
+      dopoAmbulatorio.dati.azioni?.some((a) => a.id.startsWith('amb:')));
+
+    const dopoScelta = await passo('amb:2');
+    verifica('e il giorno va riscelto invece di restare quello vecchio',
+      dopoScelta.dati.azioni?.some((a) => a.id.startsWith('data:'))
+      && !dopoScelta.dati.testo.includes('Controlla che sia tutto giusto'),
+      dopoScelta.dati.testo.slice(0, 90));
+  }
+
+  // Il motivo della visita e' testo libero: una frase che contiene la parola
+  // "indietro" e' una risposta, non un comando.
+  {
+    const { passo } = await apri();
+    await passo('prenota');
+    await passo('amb:1');
+    const giorni = await passo('');
+    await passo(giorni.dati.azioni.find((a) => a.id.startsWith('data:')).id);
+    const orari = await passo('');
+    await passo(orari.dati.azioni.find((a) => a.id.startsWith('ora:')).id);
+    await passo('Ugo Bassi');
+    await passo('3332221111');
+    await passo('ugo.bassi@example.com');
+    const scritto = await passo('Non riesco a piegarmi indietro');
+    verifica('una frase che contiene "indietro" resta una risposta',
+      scritto.dati.testo.includes('Non riesco a piegarmi indietro'), scritto.dati.testo.slice(0, 140));
+  }
+}
+
 console.log('\nEsami dal chatbot, con la prescrizione allegata');
 {
   // Un PNG vero da un pixel: il formato si riconosce dai byte, quindi un

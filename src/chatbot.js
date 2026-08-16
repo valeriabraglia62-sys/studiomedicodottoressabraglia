@@ -146,6 +146,7 @@ const RICHIESTE_CHAT = {
     parole: ['medicin', 'farmac', 'ricett', 'pastigl'],
     domanda: 'Quali medicinali ti servono? Elencali pure tutti in un messaggio.',
     riChiedi: 'Scrivi il nome dei medicinali che ti servono.',
+    etichettaCampo: 'Medicinali',
     chiusura: 'Lo studio la prenderà in carico e ti avviseremo quando la ricetta è pronta.'
   },
   specialistica: {
@@ -154,6 +155,7 @@ const RICHIESTE_CHAT = {
     parole: ['specialist', 'cardiolog', 'ortoped', 'dermatolog', 'oculist', 'impegnativ'],
     domanda: 'Di quale visita specialistica hai bisogno? Scrivimi pure con parole tue.',
     riChiedi: 'Scrivi di quale visita hai bisogno.',
+    etichettaCampo: 'Visita',
     chiusura: 'Il medico la guarderà e ti risponderemo per email.',
     allegati: true
   },
@@ -163,10 +165,160 @@ const RICHIESTE_CHAT = {
     parole: ['esami', 'esame', 'sangue', 'analisi', 'prelievo', 'emocromo'],
     domanda: 'Quali esami ti servono? Elencali pure tutti in un messaggio.',
     riChiedi: 'Scrivi quali esami ti servono.',
+    etichettaCampo: 'Esami',
     chiusura: 'Il medico la guarderà e ti risponderemo per email.',
     allegati: true
   }
 };
+
+/**
+ * L'ordine delle domande, e cosa resta valido quando si torna su una risposta.
+ *
+ * Serve perche' sbagliare a scrivere il telefono alla quinta domanda non deve
+ * costare tutta la conversazione da capo: prima l'unica via d'uscita era
+ * "ricomincia", che butta via anche le sette risposte giuste.
+ *
+ * "dipende" e' la parte che non si puo' indovinare a occhio: cambiare
+ * ambulatorio rende senza senso il giorno gia' scelto, e cambiare giorno rende
+ * senza senso l'orario. Quelle risposte vanno rifatte, non conservate — un
+ * orario libero ad Arceto non lo e' per forza a Casalgrande, e confermare su
+ * quello vecchio vorrebbe dire scrivere in agenda un appuntamento che non
+ * esiste. Il nome e il telefono invece non dipendono da niente.
+ */
+const FLUSSI = {
+  prenota: {
+    passi: ['ambulatorio', 'data', 'ora', 'nome', 'telefono', 'email', 'problema', 'conferma'],
+    campi: {
+      ambulatorio: ['ambulatorio_id'], data: ['data'], ora: ['ora_inizio'],
+      nome: ['nome', 'cognome'], telefono: ['telefono'], email: ['email'], problema: ['problema']
+    },
+    dipende: { ambulatorio: ['data', 'ora'], data: ['ora'] },
+    etichette: {
+      ambulatorio: 'Ambulatorio', data: 'Giorno', ora: 'Orario', nome: 'Nome',
+      telefono: 'Telefono', email: 'Email', problema: 'Motivo'
+    }
+  },
+  richiesta: {
+    passi: ['farmaci', 'nome', 'telefono', 'email', 'conferma'],
+    campi: {
+      farmaci: ['farmaci'], nome: ['nome', 'cognome'], telefono: ['telefono'], email: ['email']
+    },
+    dipende: {},
+    // "farmaci" cambia nome secondo il tipo di richiesta: lo mette c.etichettaCampo.
+    etichette: { nome: 'Nome', telefono: 'Telefono', email: 'Email' }
+  }
+};
+
+const INDIETRO = { id: 'indietro', etichetta: '⬅️ Indietro' };
+
+/** I modi in cui si chiede di tornare alla domanda precedente, scritti per intero. */
+const COMANDI_INDIETRO = new Set([
+  'indietro', 'torna indietro', 'precedente', 'domanda precedente', 'un passo indietro'
+]);
+
+const BOTTONI_CONFERMA = [
+  { id: 'conferma', etichetta: '✅ Confermo' },
+  { id: 'correggi', etichetta: '✏️ Correggi un dato' },
+  { id: 'ricomincia', etichetta: '🔄 Ricomincia' }
+];
+
+/** Il nome dello schema per questo flusso: le tre richieste ne condividono uno. */
+const schemaDi = (flusso) => (flusso === 'prenota' ? 'prenota' : 'richiesta');
+
+/** Il bottone per tornare indietro, tranne che sulla prima domanda. */
+const navigazione = (stato) =>
+  (FLUSSI[schemaDi(stato.flusso)].passi.indexOf(stato.passo) > 0 ? [INDIETRO] : []);
+
+/**
+ * Cancella la risposta a un passo e quelle che da lei dipendevano.
+ *
+ * Restituisce i passi dipendenti che aveva senso azzerare: chi chiama lo usa
+ * per sapere se puo' riportare il paziente dritto al riepilogo o se deve
+ * rifargli qualche domanda.
+ */
+function azzera(stato, passo) {
+  const schema = FLUSSI[schemaDi(stato.flusso)];
+  const travolti = (schema.dipende[passo] || []).filter(
+    (p) => (schema.campi[p] || []).some((campo) => stato.dati[campo] !== undefined)
+  );
+
+  for (const p of [passo, ...(schema.dipende[passo] || [])]) {
+    for (const campo of schema.campi[p] || []) delete stato.dati[campo];
+  }
+  return travolti;
+}
+
+/** La domanda del passo in cui ci si trova adesso, per il flusso in corso. */
+const domanda = (stato, c) =>
+  (stato.flusso === 'prenota' ? domandaPrenota(stato) : domandaRichiesta(stato, c));
+
+/**
+ * Va alla domanda successiva — o torna al riepilogo, se si stava correggendo.
+ *
+ * Chi si accorge di aver sbagliato il telefono vuole cambiare il telefono, non
+ * ridettare anche email e motivo della visita.
+ */
+function prosegui(stato, c) {
+  const { passi } = FLUSSI[schemaDi(stato.flusso)];
+  if (stato.correzione) {
+    delete stato.correzione;
+    stato.passo = 'conferma';
+  } else {
+    stato.passo = passi[passi.indexOf(stato.passo) + 1];
+  }
+  return domanda(stato, c);
+}
+
+/** L'elenco dei dati correggibili, uno per bottone. */
+function bottoniCorreggi(stato, c) {
+  const schema = FLUSSI[schemaDi(stato.flusso)];
+  return schema.passi
+    .filter((p) => p !== 'conferma')
+    .map((p) => ({ id: `campo:${p}`, etichetta: `✏️ ${schema.etichette[p] || c?.etichettaCampo || 'Richiesta'}` }));
+}
+
+/**
+ * I comandi di navigazione, validi dentro qualunque flusso.
+ *
+ * Restituisce null quando il messaggio non e' uno di questi: il flusso continua
+ * per la sua strada.
+ */
+function navigaSePossibile(stato, t, c) {
+  const schema = FLUSSI[schemaDi(stato.flusso)];
+
+  // Confronto esatto, non "contiene": il motivo della visita e' testo libero, e
+  // "non riesco a piegarmi indietro" e' una frase che un paziente scrive
+  // davvero. Interpretarla come un comando gli cancellerebbe la risposta.
+  if (COMANDI_INDIETRO.has(norm(t))) {
+    const i = schema.passi.indexOf(stato.passo);
+    if (i <= 0) {
+      Object.assign(stato, { flusso: 'menu', passo: null, dati: {} });
+      return risposta(MENU.testo, MENU.azioni);
+    }
+    delete stato.correzione;
+    stato.passo = schema.passi[i - 1];
+    azzera(stato, stato.passo);
+    return domanda(stato, c);
+  }
+
+  if (stato.passo === 'conferma' && (t === 'correggi' || contiene(t, 'correg', 'modific', 'cambia'))) {
+    return risposta('Quale dato vuoi cambiare?', [...bottoniCorreggi(stato, c), INDIETRO]);
+  }
+
+  if (t.startsWith('campo:')) {
+    const passo = t.slice(6);
+    if (!schema.campi[passo]) return domanda(stato, c);
+    stato.passo = passo;
+    // Se cambiando questo dato ne saltano altri non si puo' tornare dritti al
+    // riepilogo: quelle domande vanno rifatte per forza.
+    const travolti = azzera(stato, passo);
+    if (travolti.length) delete stato.correzione;
+    else stato.correzione = true;
+    return domanda(stato, c);
+  }
+
+  return null;
+}
 
 const risposta = (testo, azioni = [], extra = {}) => ({ testo, azioni, ...extra });
 
@@ -199,7 +351,11 @@ function gestisci(stato, testo) {
   const t = String(testo || '').trim();
 
   // Comandi sempre disponibili, in qualunque punto della conversazione.
-  if (contiene(t, 'ricomincia', 'menu', 'annulla tutto', 'torna indietro')) {
+  //
+  // "torna indietro" stava qui e voleva dire ricomincia: chi lo scriveva per
+  // correggere l'ultima risposta si ritrovava da capo. Adesso e' un passo solo
+  // all'indietro, e lo gestisce il flusso che sa a che punto e' arrivato.
+  if (contiene(t, 'ricomincia', 'menu', 'annulla tutto')) {
     Object.assign(stato, { flusso: 'menu', passo: null, dati: {} });
     return risposta('Ricominciamo da capo. ' + MENU.testo, MENU.azioni);
   }
@@ -208,7 +364,8 @@ function gestisci(stato, testo) {
       'Posso aiutarti a prenotare una visita, richiedere medicinali, una visita specialistica ' +
       'o gli esami del sangue, oppure a controllare una prenotazione che hai già.\n\n' +
       'Per specialistiche ed esami, alla fine puoi allegare la foto della richiesta dello specialista.\n\n' +
-      'Scrivi "menu" in qualunque momento per ricominciare.', MENU.azioni);
+      'Se sbagli una risposta puoi scrivere "indietro" per rifarla, senza ricominciare tutto. ' +
+      'Scrivi "menu" per tornare al punto di partenza.', MENU.azioni);
   }
 
   switch (stato.flusso) {
@@ -227,22 +384,15 @@ function gestisci(stato, testo) {
 
 function gestisciMenu(stato, t) {
   if (t === 'prenota' || contiene(t, 'prenot', 'visita', 'appuntamento')) {
-    stato.flusso = 'prenota';
-    stato.passo = 'ambulatorio';
-    stato.dati = {};
-    return risposta(
-      'Bene. In quale ambulatorio? Ricorda: **puoi prenotare solo in quello di residenza**.',
-      listaAmbulatori().map((a) => ({ id: `amb:${a.id}`, etichetta: a.nome.replace('Ambulatorio di ', '') }))
-    );
+    Object.assign(stato, { flusso: 'prenota', passo: 'ambulatorio', dati: {} });
+    return domandaPrenota(stato);
   }
   // Le tre richieste si riconoscono allo stesso modo: il nome del bottone
   // oppure una parola che il paziente ha scritto di suo.
   for (const [chiave, c] of Object.entries(RICHIESTE_CHAT)) {
     if (t === chiave || contiene(t, ...c.parole)) {
-      stato.flusso = chiave;
-      stato.passo = 'farmaci';
-      stato.dati = {};
-      return risposta(c.domanda);
+      Object.assign(stato, { flusso: chiave, passo: 'farmaci', dati: {} });
+      return domandaRichiesta(stato, c);
     }
   }
   if (t === 'stato' || contiene(t, 'stato', 'controll', 'verific', 'disdet', 'annull', 'codice')) {
@@ -256,100 +406,160 @@ function gestisciMenu(stato, t) {
   return risposta(`Non sono sicuro di aver capito. ${MENU.testo}`, MENU.azioni);
 }
 
+const scegliAmbulatorio = () => listaAmbulatori().map(
+  (a) => ({ id: `amb:${a.id}`, etichetta: a.nome.replace('Ambulatorio di ', '') })
+);
+
+/**
+ * Cosa chiede il chatbot a ogni passo della prenotazione.
+ *
+ * Scritta una volta sola e usata sia andando avanti sia tornando indietro: se
+ * la domanda vivesse dentro il passo che la precede, correggere una risposta
+ * vorrebbe dire riscriverla una seconda volta qui, e prima o poi le due
+ * versioni direbbero cose diverse.
+ */
+function domandaPrenota(stato) {
+  const d = stato.dati;
+  const nav = navigazione(stato);
+
+  switch (stato.passo) {
+    case 'ambulatorio':
+      return risposta(
+        'In quale ambulatorio? Ricorda: **puoi prenotare solo in quello di residenza**.',
+        [...scegliAmbulatorio(), ...nav]);
+
+    case 'data': {
+      const amb = trovaAmbulatorio(d.ambulatorio_id);
+      const giorni = proponiGiorni(d.ambulatorio_id);
+      if (!giorni.length) {
+        return risposta(
+          `Al momento non ci sono posti liberi presso ${amb.nome} nei prossimi ${GIORNI_PRENOTABILI} giorni. `
+          + `Prova con l'altro ambulatorio o chiama lo ${amb.telefono}.`,
+          [...nav, ...MENU.azioni]);
+      }
+      return risposta(`${amb.nome}. Per quale giorno?`, [...giorni, ...nav]);
+    }
+
+    case 'ora': {
+      const liberi = slotDisponibili(d.data, d.ambulatorio_id).filter((s) => s.disponibile);
+      // Il giorno puo' essersi riempito mentre il paziente rispondeva alle
+      // domande successive: si torna a sceglierlo invece di mostrare il vuoto.
+      if (!liberi.length) {
+        stato.passo = 'data';
+        azzera(stato, 'data');
+        return domandaPrenota(stato);
+      }
+      return risposta(`Orari liberi per ${formattaDataEstesa(d.data)}:`, [
+        ...liberi.slice(0, 12).map((s) => ({ id: `ora:${s.ora_inizio}`, etichetta: s.ora_inizio })),
+        ...nav
+      ]);
+    }
+
+    case 'nome': return risposta('Come ti chiami? (nome e cognome)', nav);
+    case 'telefono': return risposta('Qual è il tuo numero di telefono?', nav);
+
+    // L'email non si puo' saltare: la conferma, l'eventuale spostamento e
+    // l'annullamento viaggiano tutti di li'.
+    case 'email': return risposta('Qual è la tua email? Ti mandiamo lì la conferma con il codice.', nav);
+    case 'problema': return risposta('Qual è il motivo della visita?', nav);
+
+    case 'conferma': {
+      const amb = trovaAmbulatorio(d.ambulatorio_id);
+      return risposta(
+        'Controlla che sia tutto giusto:\n\n' +
+        `👤 ${d.nome} ${d.cognome}\n📞 ${d.telefono}\n✉️ ${d.email}\n` +
+        `🏥 ${amb.nome}\n📅 ${formattaDataEstesa(d.data)}\n🕐 ${d.ora_inizio}\n📝 ${d.problema}\n\nConfermo?`,
+        BOTTONI_CONFERMA);
+    }
+
+    default:
+      stato.passo = 'ambulatorio';
+      return domandaPrenota(stato);
+  }
+}
+
 function gestisciPrenota(stato, t) {
   const d = stato.dati;
+
+  const navigato = navigaSePossibile(stato, t);
+  if (navigato) return navigato;
 
   switch (stato.passo) {
     case 'ambulatorio': {
       const id = t.startsWith('amb:') ? Number(t.slice(4)) : interpretaAmbulatorio(t);
       const amb = id ? trovaAmbulatorio(id) : null;
       if (!amb) {
-        return risposta('Scegli uno dei due ambulatori:',
-          listaAmbulatori().map((a) => ({ id: `amb:${a.id}`, etichetta: a.nome.replace('Ambulatorio di ', '') })));
+        return risposta('Scegli uno dei due ambulatori:', [...scegliAmbulatorio(), ...navigazione(stato)]);
       }
       d.ambulatorio_id = amb.id;
-      stato.passo = 'data';
-      const giorni = proponiGiorni(amb.id);
-      return risposta(
-        giorni.length
-          ? `${amb.nome}. Per quale giorno?`
-          : `Al momento non ci sono posti liberi presso ${amb.nome} nei prossimi ${GIORNI_PRENOTABILI} giorni. Prova con l'altro ambulatorio o chiama lo ${amb.telefono}.`,
-        giorni.length ? giorni : MENU.azioni);
+      return prosegui(stato);
     }
 
     case 'data': {
       const data = t.startsWith('data:') ? t.slice(5) : interpretaData(t);
       if (!data || !dataValida(data)) {
         return risposta('Non ho capito la data. Puoi scrivere "domani", "15/09" oppure sceglierne una:',
-          proponiGiorni(d.ambulatorio_id));
+          [...proponiGiorni(d.ambulatorio_id), ...navigazione(stato)]);
       }
       const liberi = slotDisponibili(data, d.ambulatorio_id).filter((s) => s.disponibile);
       if (!liberi.length) {
         return risposta(`Nessun posto libero ${formattaDataEstesa(data)}. Scegli un altro giorno:`,
-          proponiGiorni(d.ambulatorio_id));
+          [...proponiGiorni(d.ambulatorio_id), ...navigazione(stato)]);
       }
       d.data = data;
-      stato.passo = 'ora';
-      return risposta(`Orari liberi per ${formattaDataEstesa(data)}:`,
-        liberi.slice(0, 12).map((s) => ({ id: `ora:${s.ora_inizio}`, etichetta: s.ora_inizio })));
+      return prosegui(stato);
     }
 
     case 'ora': {
       const ora = t.startsWith('ora:') ? t.slice(4) : interpretaOra(t);
       const liberi = slotDisponibili(d.data, d.ambulatorio_id).filter((s) => s.disponibile);
       if (!ora || !liberi.some((s) => s.ora_inizio === ora)) {
-        return risposta('Quell\'orario non è disponibile. Scegline uno tra questi:',
-          liberi.slice(0, 12).map((s) => ({ id: `ora:${s.ora_inizio}`, etichetta: s.ora_inizio })));
+        return risposta('Quell\'orario non è disponibile. Scegline uno tra questi:', [
+          ...liberi.slice(0, 12).map((s) => ({ id: `ora:${s.ora_inizio}`, etichetta: s.ora_inizio })),
+          ...navigazione(stato)
+        ]);
       }
       d.ora_inizio = ora;
-      stato.passo = 'nome';
-      return risposta('Perfetto. Come ti chiami? (nome e cognome)');
+      return prosegui(stato);
     }
 
     case 'nome': {
       const parti = t.split(/\s+/).filter(Boolean);
-      if (parti.length < 2) return risposta('Scrivi sia il nome che il cognome, per favore.');
+      if (parti.length < 2) {
+        return risposta('Scrivi sia il nome che il cognome, per favore.', navigazione(stato));
+      }
       d.nome = parti[0];
       d.cognome = parti.slice(1).join(' ');
-      stato.passo = 'telefono';
-      return risposta(`Grazie ${d.nome}. Qual è il tuo numero di telefono?`);
+      return prosegui(stato);
     }
 
     case 'telefono': {
-      if (!telefonoValido(t)) return risposta('Il numero non sembra valido. Riprova (esempio: 3331234567).');
+      if (!telefonoValido(t)) {
+        return risposta('Il numero non sembra valido. Riprova (esempio: 3331234567).', navigazione(stato));
+      }
       d.telefono = t.replace(/[\s.\-()]/g, '');
-      stato.passo = 'email';
-      // Non si puo' piu' saltare: la conferma, l'eventuale spostamento e
-      // l'annullamento viaggiano per email. Chiederla qui, e non lasciare che
-      // il rifiuto arrivi alla fine, evita di far compilare tutto per niente.
-      return risposta('Qual è la tua email? Ti mandiamo lì la conferma con il codice.');
+      return prosegui(stato);
     }
 
     case 'email': {
       if (!emailValida(t)) {
-        return risposta('L\'email non sembra valida: riprova (esempio: nome@esempio.it).');
+        return risposta('L\'email non sembra valida: riprova (esempio: nome@esempio.it).', navigazione(stato));
       }
       d.email = t.trim().toLowerCase();
-      stato.passo = 'problema';
-      return risposta('Ultima cosa: qual è il motivo della visita?');
+      return prosegui(stato);
     }
 
     case 'problema': {
-      if (t.length < 3) return risposta('Descrivi brevemente il motivo, anche poche parole vanno bene.');
+      if (t.length < 3) {
+        return risposta('Descrivi brevemente il motivo, anche poche parole vanno bene.', navigazione(stato));
+      }
       d.problema = t;
-      stato.passo = 'conferma';
-      const amb = trovaAmbulatorio(d.ambulatorio_id);
-      return risposta(
-        `Controlla che sia tutto giusto:\n\n` +
-        `👤 ${d.nome} ${d.cognome}\n📞 ${d.telefono}\n✉️ ${d.email}\n` +
-        `🏥 ${amb.nome}\n📅 ${formattaDataEstesa(d.data)}\n🕐 ${d.ora_inizio}\n📝 ${d.problema}\n\nConfermo?`,
-        [{ id: 'conferma', etichetta: '✅ Confermo' }, { id: 'ricomincia', etichetta: '✏️ Ricomincia' }]);
+      return prosegui(stato);
     }
 
     case 'conferma': {
       if (!affermativo(t) && t !== 'conferma') {
-        return risposta('Dimmi "confermo" per completare, oppure "ricomincia" per rifare da capo.',
-          [{ id: 'conferma', etichetta: '✅ Confermo' }, { id: 'ricomincia', etichetta: '✏️ Ricomincia' }]);
+        return risposta('Dimmi "confermo" per completare, oppure correggi un dato.', BOTTONI_CONFERMA);
       }
       try {
         const p = creaPrenotazione({ ...d, origine: 'chatbot' });
@@ -361,63 +571,88 @@ function gestisciPrenota(stato, t) {
           MENU.azioni, { prenotazione: p.codice });
       } catch (err) {
         if (err instanceof ErroreDominio) {
+          // Qualcun altro ha preso l'orario nel frattempo: si riparte dal
+          // giorno, non da capo, cosi' nome e telefono restano scritti.
           stato.passo = 'data';
-          return risposta(`${err.message}\n\nScegliamo un altro giorno:`, proponiGiorni(d.ambulatorio_id));
+          azzera(stato, 'data');
+          const richiesta = domandaPrenota(stato);
+          return { ...richiesta, testo: `${err.message}\n\n${richiesta.testo}` };
         }
         throw err;
       }
     }
 
     default:
-      stato.passo = 'ambulatorio';
-      return risposta('In quale ambulatorio?',
-        listaAmbulatori().map((a) => ({ id: `amb:${a.id}`, etichetta: a.nome.replace('Ambulatorio di ', '') })));
+      return domandaPrenota(stato);
+  }
+}
+
+/** Le domande delle tre richieste: cambiano le parole, non l'ordine. */
+function domandaRichiesta(stato, c) {
+  const d = stato.dati;
+  const nav = navigazione(stato);
+
+  switch (stato.passo) {
+    case 'farmaci': return risposta(c.domanda, nav);
+    case 'nome': return risposta('Come ti chiami? (nome e cognome)', nav);
+    case 'telefono': return risposta('Qual è il tuo numero di telefono?', nav);
+
+    // Il medico risponde sempre per iscritto — confermata, rifiutata o
+    // cambiata — quindi l'indirizzo serve per forza.
+    case 'email': return risposta('Qual è la tua email? Ti scriviamo lì la risposta del medico.', nav);
+
+    case 'conferma':
+      return risposta(
+        `Controlla che sia tutto giusto:\n\n👤 ${d.nome} ${d.cognome}\n📞 ${d.telefono}\n` +
+        `✉️ ${d.email}\n${c.icona} ${d.farmaci}\n\nConfermo?`,
+        BOTTONI_CONFERMA);
+
+    default:
+      stato.passo = 'farmaci';
+      return domandaRichiesta(stato, c);
   }
 }
 
 function gestisciRichiesta(stato, t, c) {
   const d = stato.dati;
 
+  const navigato = navigaSePossibile(stato, t, c);
+  if (navigato) return navigato;
+
   switch (stato.passo) {
     case 'farmaci':
-      if (t.length < 2) return risposta(c.riChiedi);
+      if (t.length < 2) return risposta(c.riChiedi, navigazione(stato));
       d.farmaci = t;
-      stato.passo = 'nome';
-      return risposta('Come ti chiami? (nome e cognome)');
+      return prosegui(stato, c);
 
     case 'nome': {
       const parti = t.split(/\s+/).filter(Boolean);
-      if (parti.length < 2) return risposta('Scrivi sia il nome che il cognome, per favore.');
+      if (parti.length < 2) {
+        return risposta('Scrivi sia il nome che il cognome, per favore.', navigazione(stato));
+      }
       d.nome = parti[0];
       d.cognome = parti.slice(1).join(' ');
-      stato.passo = 'telefono';
-      return risposta('Qual è il tuo numero di telefono?');
+      return prosegui(stato, c);
     }
 
     case 'telefono':
-      if (!telefonoValido(t)) return risposta('Il numero non sembra valido. Riprova (esempio: 3331234567).');
+      if (!telefonoValido(t)) {
+        return risposta('Il numero non sembra valido. Riprova (esempio: 3331234567).', navigazione(stato));
+      }
       d.telefono = t.replace(/[\s.\-()]/g, '');
-      stato.passo = 'email';
-      // Il medico risponde sempre per iscritto — confermata, rifiutata o
-      // cambiata — quindi l'indirizzo serve per forza.
-      return risposta('Qual è la tua email? Ti scriviamo lì la risposta del medico.');
+      return prosegui(stato, c);
 
     case 'email': {
       if (!emailValida(t)) {
-        return risposta('L\'email non sembra valida: riprova (esempio: nome@esempio.it).');
+        return risposta('L\'email non sembra valida: riprova (esempio: nome@esempio.it).', navigazione(stato));
       }
       d.email = t.trim().toLowerCase();
-      stato.passo = 'conferma';
-      return risposta(
-        `Controlla che sia tutto giusto:\n\n👤 ${d.nome} ${d.cognome}\n📞 ${d.telefono}\n` +
-        `✉️ ${d.email}\n${c.icona} ${d.farmaci}\n\nConfermo?`,
-        [{ id: 'conferma', etichetta: '✅ Confermo' }, { id: 'ricomincia', etichetta: '✏️ Ricomincia' }]);
+      return prosegui(stato, c);
     }
 
     case 'conferma': {
       if (!affermativo(t) && t !== 'conferma') {
-        return risposta('Dimmi "confermo" per inviare, oppure "ricomincia".',
-          [{ id: 'conferma', etichetta: '✅ Confermo' }, { id: 'ricomincia', etichetta: '✏️ Ricomincia' }]);
+        return risposta('Dimmi "confermo" per inviare, oppure correggi un dato.', BOTTONI_CONFERMA);
       }
       const r = creaRichiesta({ ...d, tipo: c.tipo, origine: 'chatbot' });
       Object.assign(stato, { flusso: 'menu', passo: null, dati: {} });
@@ -437,8 +672,7 @@ function gestisciRichiesta(stato, t, c) {
     }
 
     default:
-      stato.passo = 'farmaci';
-      return risposta(c.domanda);
+      return domandaRichiesta(stato, c);
   }
 }
 
