@@ -224,6 +224,40 @@ console.log('\nChatbot');
   verifica('un messaggio incomprensibile non rompe la chat', sconosciuto.stato === 200 && Boolean(sconosciuto.dati.testo));
 }
 
+// Le parole del menu si sovrappongono: "visita dal cardiologo" contiene sia
+// "visita" (prenotazione) sia "cardiolog" (specialistica). Se l'ordine dei
+// controlli in gestisciMenu tornasse quello di prima, chi chiede uno
+// specialista finirebbe a prenotare un appuntamento dalla dottoressa senza
+// accorgersene: la chat risponderebbe, sarebbe solo la chat sbagliata.
+console.log('\nIl chatbot non confonde una specialistica con un appuntamento');
+{
+  // Queste quattro prove chiamano il chatbot direttamente invece che via HTTP.
+  // Passando dalla rete aprivano quattro sessioni in pochi millisecondi e
+  // facevano scattare il freno anti-abuso (60 chiamate al minuto per IP), che
+  // poi faceva fallire le prove degli esami piu' sotto: un guasto inventato
+  // dalle prove stesse. Qui interessa solo lo smistamento del menu, e quello
+  // sta tutto dentro messaggio().
+  const { creaSessione, messaggio } = await import('../src/chatbot.js');
+  const dove = async (testo) => messaggio(creaSessione(), testo).testo || '';
+
+  const cardiologo = await dove('avrei bisogno di una visita dal cardiologo');
+  verifica('"visita dal cardiologo" apre le specialistiche',
+    cardiologo.includes('visita specialistica'), cardiologo.slice(0, 90));
+
+  const prelievo = await dove('devo fare il prelievo del sangue');
+  verifica('"prelievo del sangue" apre gli esami',
+    prelievo.includes('esami'), prelievo.slice(0, 90));
+
+  const ricetta = await dove('mi serve la ricetta per la pressione');
+  verifica('"ricetta" apre ancora i medicinali',
+    ricetta.toLowerCase().includes('medicinali') || ricetta.toLowerCase().includes('farmac'),
+    ricetta.slice(0, 90));
+
+  const appuntamento = await dove('vorrei prenotare una visita');
+  verifica('"prenotare una visita" resta la prenotazione',
+    appuntamento.toLowerCase().includes('ambulatorio'), appuntamento.slice(0, 90));
+}
+
 console.log('\nNel chatbot si torna indietro senza perdere tutto');
 {
   const apri = async () => {

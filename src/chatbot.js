@@ -383,17 +383,33 @@ function gestisci(stato, testo) {
 }
 
 function gestisciMenu(stato, t) {
-  if (t === 'prenota' || contiene(t, 'prenot', 'visita', 'appuntamento')) {
+  // Un bottone premuto vale piu' di qualunque parola: l'ha scelto lui.
+  if (t === 'prenota') {
     Object.assign(stato, { flusso: 'prenota', passo: 'ambulatorio', dati: {} });
     return domandaPrenota(stato);
   }
-  // Le tre richieste si riconoscono allo stesso modo: il nome del bottone
-  // oppure una parola che il paziente ha scritto di suo.
+
+  /**
+   * Le richieste si riconoscono PRIMA della prenotazione, e l'ordine e' la
+   * cosa importante di questa funzione.
+   *
+   * Prima veniva controllata per prima la parola "visita", e si portava via
+   * tutto: chi scriveva "avrei bisogno di una visita dal cardiologo" finiva a
+   * scegliere l'ambulatorio per un appuntamento dalla dottoressa, che non e'
+   * quello che aveva chiesto. Le parole delle richieste sono piu' specifiche —
+   * cardiologo, esami, ricetta — quindi vanno guardate prima di quelle
+   * generiche.
+   */
   for (const [chiave, c] of Object.entries(RICHIESTE_CHAT)) {
     if (t === chiave || contiene(t, ...c.parole)) {
       Object.assign(stato, { flusso: chiave, passo: 'farmaci', dati: {} });
       return domandaRichiesta(stato, c);
     }
+  }
+
+  if (contiene(t, 'prenot', 'visita', 'appuntamento')) {
+    Object.assign(stato, { flusso: 'prenota', passo: 'ambulatorio', dati: {} });
+    return domandaPrenota(stato);
   }
   if (t === 'stato' || contiene(t, 'stato', 'controll', 'verific', 'disdet', 'annull', 'codice')) {
     stato.flusso = 'stato';

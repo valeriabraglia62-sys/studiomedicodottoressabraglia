@@ -555,7 +555,12 @@ function collegaFormRicerca() {
 
     inviaProtetto(form, async () => {
       esito.replaceChildren(nodo('p', 'tenue piccolo', 'Cerco…'));
-      if (codice.startsWith('MED')) {
+      // PRE e' l'appuntamento; MED, SPE ed ESA sono tutte richieste, e stanno
+      // insieme. L'elenco va tenuto allineato ai prefissi in medicine.js: se
+      // domani nascesse un quarto tipo e ci si dimenticasse di aggiungerlo qui,
+      // il paziente cercherebbe il suo codice fra le prenotazioni e si
+      // sentirebbe dire che non esiste.
+      if (['MED', 'SPE', 'ESA'].some((p) => codice.startsWith(p))) {
         const { richiesta } = await api(`/medicine/${codice}`);
         esito.replaceChildren(schedaRichiesta(richiesta));
       } else {
@@ -612,15 +617,42 @@ function schedaPrenotazione(p, annullabile) {
   return box;
 }
 
+const NOME_TIPO = {
+  medicina: 'Medicinali',
+  specialistica: 'Visita specialistica',
+  esami: 'Esami del sangue'
+};
+
 function schedaRichiesta(r) {
   const box = nodo('div', 'carta');
   const testata = nodo('div');
   testata.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:1rem';
   testata.append(nodo('strong', null, r.codice), nodo('span', `etichetta ${r.stato}`, r.etichetta || r.stato));
   box.append(testata);
-  const elenco = nodo('p', null, r.farmaci);
-  elenco.style.whiteSpace = 'pre-line';
-  box.append(elenco);
+
+  // Di che richiesta si tratta: chi ne ha mandate tre in una settimana, dal
+  // solo codice non lo distingue.
+  box.append(nodo('p', 'piccolo tenue', NOME_TIPO[r.tipo] || NOME_TIPO.medicina));
+
+  if (r.farmaci) {
+    const elenco = nodo('p', null, r.farmaci);
+    elenco.style.whiteSpace = 'pre-line';
+    box.append(elenco);
+  }
+
+  // Se aveva mandato una foto lo diciamo: e' la conferma che il documento e'
+  // arrivato, che altrimenti dovrebbe chiedere per telefono.
+  if (r.allegati) {
+    box.append(nodo('p', 'piccolo', r.allegati === 1
+      ? 'Abbiamo ricevuto il documento che hai allegato.'
+      : `Abbiamo ricevuto i ${r.allegati} documenti che hai allegato.`));
+  }
+
+  // Il numero della ricetta e' quello che serve in farmacia.
+  if (r.numero_ricetta) {
+    box.append(nodo('p', null, `Numero della ricetta: ${r.numero_ricetta}`));
+  }
+
   box.append(nodo('p', 'piccolo tenue', `Richiesta del ${new Date(r.creata_il).toLocaleDateString('it-IT')}`));
   return box;
 }
