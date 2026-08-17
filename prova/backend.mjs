@@ -504,11 +504,18 @@ console.log('\nL\'assistente del pannello');
 
   const situazione = await chiedi('come va oggi');
   verifica('"come va oggi" mette in fila tutti i conteggi',
-    ['Oggi', 'Medicinali', 'specialistiche', 'Esami', 'Email'].every((p) => situazione.testo.includes(p)),
+    ['Oggi', 'Medicinali', 'specialistiche', 'Esami', 'confermare'].every((p) => situazione.testo.includes(p)),
     situazione.testo.slice(0, 120));
 
   const sospeso = await chiedi('cosa devo vedere');
   verifica('"cosa devo vedere" risponde senza rompersi', Boolean(sospeso.testo));
+
+  // I tre posti dove si lavora tutti i giorni devono avere il loro bottone
+  // anche a coda vuota: e' da li' che si apre l'agenda la mattina.
+  const sempre = ['apri moduli', 'apri prenotazioni', 'apri medicine'];
+  verifica('"cosa devo vedere" apre sempre da confermare, prenotazioni e medicinali',
+    sempre.every((id) => sospeso.azioni?.some((a) => a.id === id)),
+    JSON.stringify(sospeso.azioni?.map((a) => a.id)));
 
   const agenda = await chiedi('chi viene oggi');
   verifica('l\'agenda di oggi risponde', Boolean(agenda.testo));
@@ -621,6 +628,143 @@ console.log('\nGli annullamenti vecchi non ingombrano l\'elenco');
 
   const dalPaziente = await chiama('GET', `/api/prenotazioni/${codice}`);
   verifica('e il paziente col suo codice la vede sempre', dalPaziente.stato === 200);
+}
+
+console.log('\nUna visita gia\' fatta sgombera l\'elenco');
+{
+  // L'elenco serve a sapere chi deve ancora venire. Una visita di marzo, ad
+  // agosto, e' solo una riga fra cui scorrere per arrivare a quelle di domani.
+  const giorno = aggiungiGiorni(oggiISO(), 4);
+  const disponibili = await chiama('GET', `/api/disponibilita?data=${giorno}&ambulatorio_id=1`);
+  const slot = (disponibili.dati.slot || []).find((s) => s.disponibile);
+
+  const creata = await chiama('POST', '/api/prenotazioni', {
+    ambulatorio_id: 1, data: giorno, ora_inizio: slot.ora_inizio,
+    nome: 'Visita', cognome: 'Passata', telefono: '3335550000',
+    email: 'visita.passata@example.com', problema: 'Verifica sparizione dopo il giorno'
+  });
+  const codice = creata.dati.prenotazione?.codice;
+
+  const prima = await chiama('GET', '/api/admin/prenotazioni', null, token);
+  verifica('una visita futura sta nell\'elenco',
+    prima.dati.prenotazioni.some((p) => p.codice === codice));
+
+  // La si sposta indietro nel tempo invece di aspettare che passi.
+  db.prepare('UPDATE prenotazioni SET data = ? WHERE codice = ?')
+    .run(aggiungiGiorni(oggiISO(), -3), codice);
+
+  const dopo = await chiama('GET', '/api/admin/prenotazioni', null, token);
+  verifica('passato il giorno della visita sparisce',
+    !dopo.dati.prenotazioni.some((p) => p.codice === codice));
+
+  // Ma solo dall'elenco di partenza: chi mette le date o cerca un nome la vuole.
+  const conDate = await chiama('GET',
+    `/api/admin/prenotazioni?dal=${aggiungiGiorni(oggiISO(), -10)}&al=${oggiISO()}`, null, token);
+  verifica('mettendo le date si rivede', conDate.dati.prenotazioni.some((p) => p.codice === codice));
+
+  const cercandola = await chiama('GET', '/api/admin/prenotazioni?cerca=Passata', null, token);
+  verifica('e cercando il cognome pure',
+    cercandola.dati.prenotazioni.some((p) => p.codice === codice));
+}
+
+console.log('\nUna richiesta chiusa resta in vista un giorno, poi va nella scheda');
+{
+  const creata = await chiama('POST', '/api/medicine', {
+    nome: 'Richiesta', cognome: 'Chiusa', telefono: '3335551111',
+    email: 'richiesta.chiusa@example.com', farmaci: 'Tachipirina', tipo: 'medicina'
+  });
+  const codice = creata.dati.richiesta?.codice;
+  await chiama('POST', `/api/admin/medicine/${codice}/conferma`, {}, token);
+
+  const appena = await chiama('GET', '/api/admin/medicine', null, token);
+  verifica('appena confermata si vede ancora',
+    appena.dati.richieste.some((r) => r.codice === codice));
+
+  db.prepare('UPDATE richieste_medicine SET gestita_il = ?, aggiornata_il = ? WHERE codice = ?')
+    .run(...Array(2).fill(new Date(Date.now() - 3 * 86400000).toISOString()), codice);
+
+  const dopo = await chiama('GET', '/api/admin/medicine', null, token);
+  verifica('dopo ventiquattro ore sparisce dalla scheda',
+    !dopo.dati.richieste.some((r) => r.codice === codice));
+
+  const perStato = await chiama('GET', '/api/admin/medicine?stato=confermata', null, token);
+  verifica('col filtro sullo stato si ritrova', perStato.dati.richieste.some((r) => r.codice === codice));
+
+  const cercandola = await chiama('GET', '/api/admin/medicine?cerca=Chiusa', null, token);
+  verifica('e cercando il cognome pure', cercandola.dati.richieste.some((r) => r.codice === codice));
+
+  // Il punto di tutta la faccenda: sparisce dalla scrivania, non dalla storia.
+  const paziente = (await chiama('GET', '/api/admin/pazienti?cerca=Chiusa', null, token))
+    .dati.pazienti[0];
+  const fascicolo = await chiama('GET', `/api/admin/pazienti/${paziente.id}`, null, token);
+  verifica('ma nella scheda del paziente c\'e\' sempre',
+    fascicolo.dati.medicine.some((m) => m.codice === codice));
+}
+
+console.log('\nChi non e\' piu\' nostro paziente');
+{
+  const nato = await chiama('POST', '/api/medicine', {
+    nome: 'Cambiato', cognome: 'Medico', telefono: '3335552222',
+    email: 'cambiato.medico@example.com', farmaci: 'Nulla', tipo: 'medicina'
+  });
+  verifica('la persona di prova esiste', nato.stato === 201);
+
+  const trova = async (dimessi = false) => (await chiama('GET',
+    `/api/admin/pazienti?cerca=Medico${dimessi ? '&dimessi=1' : ''}`, null, token))
+    .dati.pazienti.find((p) => p.cognome === 'Medico');
+
+  const paziente = await trova();
+  verifica('sta negli elenchi', Boolean(paziente));
+
+  const dimesso = await chiama('POST', `/api/admin/pazienti/${paziente.id}/dimetti`,
+    { dimesso: true }, token);
+  verifica('il medico lo dimette', dimesso.stato === 200 && Boolean(dimesso.dati.paziente.dimesso_il));
+
+  verifica('sparisce dagli elenchi', !(await trova()));
+  verifica('ma si ritrova chiedendo anche i dimessi', Boolean(await trova(true)));
+
+  // Il punto della dimissione: si nasconde, non si cancella.
+  const suo = await chiama('GET', `/api/admin/pazienti/${paziente.id}`, null, token);
+  verifica('la sua storia e\' ancora tutta li\'',
+    suo.stato === 200 && suo.dati.medicine.length > 0);
+
+  const tornato = await chiama('POST', `/api/admin/pazienti/${paziente.id}/dimetti`,
+    { dimesso: false }, token);
+  verifica('e se torna si riammette', tornato.stato === 200 && !tornato.dati.paziente.dimesso_il);
+  verifica('e ricompare negli elenchi', Boolean(await trova()));
+}
+
+console.log('\nCancellare un paziente porta via tutto');
+{
+  const nato = await chiama('POST', '/api/medicine', {
+    nome: 'Da', cognome: 'Cancellare', telefono: '3335553333',
+    email: 'da.cancellare@example.com', farmaci: 'Prova', tipo: 'medicina'
+  });
+  const codiceRichiesta = nato.dati.richiesta.codice;
+
+  const paziente = (await chiama('GET', '/api/admin/pazienti?cerca=Cancellare', null, token))
+    .dati.pazienti[0];
+
+  const conteggi = await chiama('GET', `/api/admin/pazienti/${paziente.id}/conteggi`, null, token);
+  verifica('prima si dice cosa sparirebbe',
+    conteggi.stato === 200 && conteggi.dati.conteggi.richieste >= 1,
+    JSON.stringify(conteggi.dati.conteggi));
+
+  const rimosso = await chiama('DELETE', `/api/admin/pazienti/${paziente.id}`, null, token);
+  verifica('il medico lo cancella', rimosso.stato === 200 && rimosso.dati.rimosso.richieste >= 1);
+
+  const cercato = await chiama('GET', '/api/admin/pazienti?cerca=Cancellare&dimessi=1', null, token);
+  verifica('non c\'e\' piu\' nemmeno fra i dimessi',
+    !cercato.dati.pazienti.some((p) => p.cognome === 'Cancellare'));
+
+  const suo = await chiama('GET', `/api/admin/pazienti/${paziente.id}`, null, token);
+  verifica('la sua scheda non esiste piu\'', suo.stato === 404);
+
+  // Le righe che lo riguardavano non devono restare orfane: una richiesta che
+  // punta a un paziente inesistente e' una riga che fa saltare la schermata.
+  const orfane = db.prepare(
+    'SELECT COUNT(*) n FROM richieste_medicine WHERE codice = ?').get(codiceRichiesta).n;
+  verifica('e nemmeno le sue richieste', orfane === 0);
 }
 
 console.log('\nAccessi personali dei collaboratori');
@@ -759,6 +903,28 @@ console.log('\nEmail in arrivo (rete di sicurezza)');
   const inCoda = await chiama('GET', '/api/admin/email', null, token);
   verifica('le email compaiono nell\'area admin', inCoda.dati.totale === 2, `totale ${inCoda.dati.totale}`);
 
+  // Un'email di prenotazione non diventa niente da sola: nel testo non c'e' un
+  // giorno di cui fidarsi. Deve finire in "Da confermare", dove una persona la
+  // legge e prenota. Da quando la scheda "Email ricevute" non esiste piu', e'
+  // l'unico posto dove qualcuno la vedra': se questa prova cade, quelle email
+  // spariscono senza che nessuno se ne accorga.
+  const parcheggiata = (await chiama('GET', '/api/admin/moduli?stato=nuova', null, token))
+    .dati.richieste.find((r) => r.email === 'altro@example.com');
+  verifica('la prenotazione arrivata per email finisce in "Da confermare"',
+    Boolean(parcheggiata), 'nessuna riga parcheggiata per quell\'indirizzo');
+  verifica('e porta con se\' il testo di cosa chiedeva',
+    parcheggiata?.testo?.includes('prenotare'), parcheggiata?.testo?.slice(0, 80));
+
+  // Rileggere la casella non deve sdoppiarla.
+  registraEmail({
+    messageId: '<prova-3-bis@example.com>',
+    mittente: 'altro@example.com', mittenteNome: 'Maria Neri',
+    oggetto: 'Prenotazione visita', corpo: 'Vorrei prenotare un appuntamento la settimana prossima.'
+  });
+  const quante = (await chiama('GET', '/api/admin/moduli?stato=nuova', null, token))
+    .dati.richieste.filter((r) => r.email === 'altro@example.com').length;
+  verifica('due email diverse fanno due righe, non una sola', quante === 2, `righe: ${quante}`);
+
   // Chi fotografa la ricetta e la manda per email fa lo stesso gesto di chi la
   // carica dal sito: il file deve finire dentro la richiesta, non restare in
   // casella dove nessuno lo ricollega.
@@ -819,6 +985,65 @@ console.log('\nEmail in arrivo (rete di sicurezza)');
   await chiama('PATCH', `/api/admin/email/${visita.codice}`, { stato: 'nuova' }, token);
   await chiama('PATCH', `/api/admin/email/${visita.codice}`, { stato: 'gestita' }, token);
   verifica('e non lo riordina a ogni click', inCestino() === 1, `ordini ${inCestino()}`);
+}
+
+console.log('\nLa casella si svuota da sola');
+{
+  // Non c'e' piu' una scheda dove sgombrare la posta a mano: le email si
+  // cestinano quando la pratica che riguardano e' chiusa, con la stessa
+  // scadenza con cui la pratica sparisce dalle schermate di lavoro.
+  const { registraEmail, pulisciEmailVecchie } = await import('../src/inbox.js');
+
+  const inCestino = (codice) => db.prepare(
+    `SELECT COUNT(*) n FROM outbox WHERE tipo = 'cestina_email' AND payload LIKE ?`
+  ).get(`%${codice}%`).n;
+
+  const arrivata = registraEmail({
+    messageId: '<pulizia-1@example.com>',
+    mittente: 'pulizia@example.com', mittenteNome: 'Rosa Gialli',
+    oggetto: 'Richiesta ricetta', corpo: 'Avrei bisogno della ricetta per il Coumadin.'
+  });
+  verifica('l\'email di prova e\' diventata una richiesta',
+    arrivata.collegata?.startsWith('MED-'), JSON.stringify(arrivata));
+
+  pulisciEmailVecchie();
+  verifica('finche\' la richiesta e\' da vedere non si tocca niente',
+    inCestino(arrivata.codice) === 0);
+
+  await chiama('POST', `/api/admin/medicine/${arrivata.collegata}/conferma`, {}, token);
+  pulisciEmailVecchie();
+  verifica('e nemmeno il giorno stesso che viene evasa',
+    inCestino(arrivata.codice) === 0, 'cestinata troppo presto');
+
+  // Passa il giorno, senza aspettarlo.
+  db.prepare('UPDATE richieste_medicine SET gestita_il = ? WHERE codice = ?')
+    .run(new Date(Date.now() - 3 * 86400000).toISOString(), arrivata.collegata);
+
+  pulisciEmailVecchie();
+  verifica('passate ventiquattro ore il messaggio va nel cestino',
+    inCestino(arrivata.codice) === 1, 'ordine di cestinamento non partito');
+
+  pulisciEmailVecchie();
+  verifica('e non ci va due volte', inCestino(arrivata.codice) === 1);
+
+  // Il testo dell'email resta: e' l'unica copia che non scade, perche' Gmail
+  // svuota il cestino dopo trenta giorni.
+  const salvata = db.prepare('SELECT corpo, stato FROM richieste_email WHERE codice = ?')
+    .get(arrivata.codice);
+  verifica('ma il testo resta nell\'archivio',
+    salvata.corpo.includes('Coumadin') && salvata.stato === 'gestita', JSON.stringify(salvata));
+
+  // Una prenotazione arrivata per email aspetta una persona: finche' e' in "Da
+  // confermare" non si cestina, altrimenti si butterebbe l'unica cosa da cui si
+  // capisce cosa voleva il paziente.
+  const daFare = registraEmail({
+    messageId: '<pulizia-2@example.com>',
+    mittente: 'aspetta@example.com', mittenteNome: 'Nino Blu',
+    oggetto: 'Prenotazione', corpo: 'Vorrei prenotare una visita, grazie.'
+  });
+  pulisciEmailVecchie();
+  verifica('una prenotazione ancora da confermare non si cestina',
+    inCestino(daFare.codice) === 0);
 }
 
 console.log('\nIl fascicolo del paziente');
@@ -900,8 +1125,16 @@ console.log('\nModuli Google (richieste arrivate a sito spento)');
   verifica('rileggere il foglio non duplica niente', secondoGiro.nuove === 0 && secondoGiro.gia_viste === 2,
     JSON.stringify(secondoGiro));
 
+  // In "Da confermare" non ci sono piu' solo i Moduli Google: da quando la
+  // scheda "Email ricevute" e' sparita ci finiscono anche le prenotazioni
+  // arrivate per email. Queste prove contano le proprie righe, non tutta la
+  // scrivania, altrimenti basta che un'altra prova ne lasci una li' sopra per
+  // farle fallire tutte insieme senza che il programma abbia niente che non va.
+  const dalFoglio = (elenco) => elenco.filter((r) => JSON.parse(r.riga_json || '{}').riga);
+
   const inAttesa = await chiama('GET', '/api/admin/moduli', null, token);
-  verifica('le richieste compaiono nel pannello', inAttesa.dati.totale === 2, `totale ${inAttesa.dati.totale}`);
+  verifica('le richieste compaiono nel pannello', dalFoglio(inAttesa.dati.richieste).length === 2,
+    `dal foglio: ${dalFoglio(inAttesa.dati.richieste).length}`);
 
   const marta = inAttesa.dati.richieste.find((r) => r.nome === 'Marta');
   verifica('nome, cognome e telefono vengono letti bene',
@@ -961,7 +1194,8 @@ console.log('\nModuli Google (richieste arrivate a sito spento)');
     rifiutata.dati.richiesta?.motivo_rifiuto?.includes('vaga'));
 
   const scrivania = await chiama('GET', '/api/admin/moduli', null, token);
-  verifica('la scrivania resta pulita', scrivania.dati.totale === 0, `restano ${scrivania.dati.totale}`);
+  verifica('la scrivania resta pulita', dalFoglio(scrivania.dati.richieste).length === 0,
+    `restano ${dalFoglio(scrivania.dati.richieste).length}`);
 
   // Modulo dei medicinali: stessa strada, arrivo diverso.
   const med = moduli.importaRighe('medicina', [
@@ -971,7 +1205,8 @@ console.log('\nModuli Google (richieste arrivate a sito spento)');
   ]);
   verifica('anche il modulo dei medicinali viene raccolto', med.nuove === 1);
 
-  const carla = (await chiama('GET', '/api/admin/moduli', null, token)).dati.richieste[0];
+  const carla = dalFoglio((await chiama('GET', '/api/admin/moduli', null, token)).dati.richieste)
+    .find((r) => r.nome === 'Carla');
   verifica('nome e cognome scritti insieme vengono divisi',
     carla.nome === 'Carla' && carla.cognome === 'Rossi', `${carla.nome}/${carla.cognome}`);
 
@@ -998,7 +1233,8 @@ console.log('\nModuli Google (richieste arrivate a sito spento)');
     ]);
     verifica(`il modulo ${tipoModulo} viene raccolto`, arrivate.nuove === 1, JSON.stringify(arrivate));
 
-    const elsa = (await chiama('GET', '/api/admin/moduli', null, token)).dati.richieste[0];
+    const elsa = dalFoglio((await chiama('GET', '/api/admin/moduli', null, token)).dati.richieste)
+      .find((r) => r.nome === 'Elsa' && r.stato === 'nuova');
     verifica(`e si legge cosa ha chiesto (${tipoModulo})`, elsa?.testo === risposta,
       `letto: ${JSON.stringify(elsa?.testo)}`);
     // "Farmavi" non e' un ambulatorio nostro: deve restare vuoto, non farsi
@@ -1011,10 +1247,18 @@ console.log('\nModuli Google (richieste arrivate a sito spento)');
       nata.dati.generata?.codice?.startsWith(prefisso), JSON.stringify(nata.dati).slice(0, 160));
   }
 
+  // Restano solo le prenotazioni arrivate per email delle prove piu' sopra:
+  // quelle aspettano davvero una persona, ed e' giusto che il riepilogo le conti.
+  const restano = dalFoglio((await chiama('GET', '/api/admin/moduli', null, token)).dati.richieste);
+  verifica('nessuna riga del foglio resta da confermare', restano.length === 0,
+    JSON.stringify(restano.map((r) => r.nome)));
+
   const riepilogo = await chiama('GET', '/api/admin/riepilogo', null, token);
+  const daEmail = db.prepare(
+    "SELECT COUNT(*) n FROM richieste_modulo WHERE stato = 'nuova' AND chiave LIKE 'email:%'").get().n;
   verifica('il riepilogo conta le richieste ancora da confermare',
-    riepilogo.dati.riepilogo.moduli_da_confermare === 0,
-    `contate ${riepilogo.dati.riepilogo.moduli_da_confermare}`);
+    riepilogo.dati.riepilogo.moduli_da_confermare === daEmail,
+    `contate ${riepilogo.dati.riepilogo.moduli_da_confermare}, da email ${daEmail}`);
 }
 
 console.log('\nNulla va perso quando i servizi esterni sono spenti');

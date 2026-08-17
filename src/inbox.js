@@ -207,6 +207,42 @@ export function registraEmail({ messageId, mittente, mittenteNome, oggetto, corp
     `).run(codice, messageId || null, mittente, mittenteNome || null,
       oggetto || null, corpo.slice(0, 20000), tipo, collegata, ricevutaIl || adesso);
 
+    /**
+     * Un'email di prenotazione va messa in mano a una persona.
+     *
+     * Le richieste di medicinali qui sopra diventano richieste da sole. Una
+     * prenotazione no: nell'email non c'e' un giorno e un'ora in un formato di
+     * cui ci si possa fidare, e sceglierli al posto del paziente sarebbe peggio
+     * che non farlo. Serve qualcuno che legga e prenoti.
+     *
+     * Finisce quindi in "Da confermare", nella stessa fila delle richieste
+     * arrivate dai Moduli Google mentre il sito era spento: e' esattamente la
+     * stessa situazione — qualcosa che aspetta una mano — e mettercela dentro
+     * significa che c'e' un posto solo da guardare invece di due. E' anche il
+     * motivo per cui la scheda "Email ricevute" ha potuto sparire senza che si
+     * perdesse niente: senza questa riga, quelle email non le vedrebbe piu'
+     * nessuno.
+     *
+     * La chiave e' il codice dell'email: rileggendo la casella lo stesso
+     * messaggio non si sdoppia.
+     */
+    if (tipo === 'prenotazione') {
+      const { nome, cognome } = estraiNome(mittenteNome, mittente);
+      db.prepare(`
+        INSERT OR IGNORE INTO richieste_modulo
+          (codice, chiave, tipo, nome, cognome, telefono, email, testo, note,
+           riga_json, ricevuta_il)
+        VALUES (?, ?, 'prenotazione', ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        generaCodice('MOD'), `email:${codice}`,
+        nome, cognome,
+        estraiTelefono(corpo) || '', mittente,
+        (oggetto ? `${oggetto}\n\n` : '') + corpo.slice(0, 1200),
+        'Arrivata per email: giorno e ora vanno scelti a mano.',
+        JSON.stringify({ da: 'email', codice, oggetto, corpo: corpo.slice(0, 2000) }),
+        ricevutaIl || adesso);
+    }
+
     if (messageId) {
       db.prepare('INSERT INTO email_processate (message_id, ricevuta_il, esito, riferimento) VALUES (?, ?, ?, ?)')
         .run(messageId, adesso, collegata ? 'convertita' : 'archiviata', collegata || codice);
@@ -574,9 +610,98 @@ async function leggiCasella() {
 
 export const statoCasella = () => ({ ...ultimoEsito, attivo: Boolean(timer) });
 
+// ---- La casella si svuota da sola -----------------------------------------
+
+/**
+ * Manda nel cestino di Gmail le email di cui non c'e' piu' niente da fare.
+ *
+ * Prima la posta in arrivo la sgombrava una persona, messaggio per messaggio,
+ * dalla scheda "Email ricevute". Quella scheda non c'e' piu': un'email che il
+ * programma ha gia' trasformato in una richiesta non ha bisogno di essere letta
+ * due volte, e tenerla li' voleva dire solo dare a qualcuno il compito di
+ * cancellarla.
+ *
+ * La scadenza e' la stessa con cui la pratica sparisce dalle schermate di
+ * lavoro, e non e' un caso: sono la stessa cosa vista da due parti.
+ *
+ *   prenotazione   il giorno dopo la visita (o dopo l'annullamento)
+ *   medicinali     ventiquattro ore dopo che e' stata evasa
+ *   specialistiche
+ *   esami
+ *
+ * Cestino, non cancellazione: Gmail lo svuota dopo trenta giorni, e nel
+ * frattempo un messaggio spostato per errore si riprende. Il testo dell'email
+ * resta comunque salvato qui nell'archivio, che e' l'unica copia che non scade.
+ */
+export function pulisciEmailVecchie() {
+  // Solo quelle ancora in casella e ancora "da leggere": una gia' gestita ha
+  // gia' avuto il suo ordine di cestinamento quando e' stata segnata.
+  const candidate = db.prepare(`
+    SELECT codice, tipo, collegata_a
+      FROM richieste_email
+     WHERE stato = 'nuova' AND message_id IS NOT NULL AND cestinata_il IS NULL
+  `).all();
+
+  let cestinate = 0;
+
+  for (const e of candidate) {
+    if (!scaduta(e)) continue;
+    try {
+      // segnaEmail fa gia' tutto: segna gestita, scrive la data e mette in coda
+      // lo spostamento nel cestino, una volta sola anche se questo giro
+      // ripassasse due volte sullo stesso messaggio.
+      segnaEmail(e.codice, 'gestita');
+      cestinate++;
+    } catch (err) {
+      console.error('[inbox] pulizia', e.codice, err.message);
+    }
+  }
+
+  if (cestinate) console.log(`[inbox] ${cestinate} email non piu' utili spostate nel cestino`);
+  return cestinate;
+}
+
+/** Di questa email c'e' ancora qualcosa da fare, o e' storia? */
+function scaduta(email) {
+  const codice = email.collegata_a;
+
+  // Nessuna richiesta collegata: e' un'email di prenotazione che aspetta una
+  // persona. Sta in "Da confermare" e finche' e' li' non si tocca — cestinarla
+  // vorrebbe dire buttare via l'unica cosa da cui si capisce cosa voleva.
+  if (!codice) {
+    const parcheggiata = db.prepare(
+      "SELECT stato, gestita_il FROM richieste_modulo WHERE chiave = ?").get(`email:${email.codice}`);
+    if (!parcheggiata || parcheggiata.stato === 'nuova') return false;
+    return oltreUnGiorno(parcheggiata.gestita_il);
+  }
+
+  if (codice.startsWith('PRE')) {
+    const p = db.prepare('SELECT data, stato, annullata_il FROM prenotazioni WHERE codice = ?')
+      .get(codice);
+    if (!p) return false;
+    if (p.stato === 'annullata') return oltreUnGiorno(p.annullata_il);
+    // Il giorno della visita si resta: si sgombera dal giorno dopo.
+    return db.prepare("SELECT date(?) < date('now', '-1 day') AS si").get(p.data).si === 1;
+  }
+
+  const r = db.prepare(
+    'SELECT stato, gestita_il, aggiornata_il FROM richieste_medicine WHERE codice = ?').get(codice);
+  if (!r || r.stato === 'nuova') return false;
+  return oltreUnGiorno(r.gestita_il || r.aggiornata_il);
+}
+
+const oltreUnGiorno = (quando) => Boolean(quando)
+  && db.prepare("SELECT datetime(?) < datetime('now', '-1 day') AS si").get(quando).si === 1;
+
 export function avviaPolling() {
   if (timer || !config.inbox.enabled) return;
-  const tick = () => controllaCasella().catch((e) => console.error('[inbox]', e));
+
+  // La pulizia viaggia insieme alla lettura invece di avere un suo orologio:
+  // sono due facce dello stesso giro, e un timer in meno e' un timer in meno da
+  // ricordarsi di fermare quando il server si chiude.
+  const tick = () => controllaCasella()
+    .then(() => { try { pulisciEmailVecchie(); } catch (e) { console.error('[inbox]', e); } })
+    .catch((e) => console.error('[inbox]', e));
   timer = setInterval(tick, config.inbox.intervalSeconds * 1000);
   timer.unref?.();
   tick();

@@ -382,7 +382,6 @@ const CARICATORI = {
   medicine: caricaMedicine,
   specialistiche: caricaSpecialistiche,
   esami: caricaEsami,
-  email: caricaEmail,
   pazienti: caricaPazienti,
   collaboratori: caricaCollaboratori,
   sistema: caricaSistema
@@ -425,9 +424,6 @@ async function caricaRiepilogo() {
     }],
     ['Medicinali da evadere', riepilogo.medicine_da_evadere, {
       scheda: 'medicine', filtri: { '#med-stato': 'nuova' }
-    }],
-    ['Email da leggere', riepilogo.email_da_leggere, {
-      scheda: 'email', filtri: { '#mail-stato': 'nuova' }
     }],
     ['Pazienti in archivio', riepilogo.pazienti, {
       scheda: 'pazienti', filtri: { '#paz-cerca': '' }
@@ -1222,89 +1218,6 @@ function schedaMedicina(r) {
   return carta;
 }
 
-// ---- Email ricevute --------------------------------------------------------
-
-async function caricaEmail() {
-  const parametri = new URLSearchParams();
-  if ($('#mail-stato').value) parametri.set('stato', $('#mail-stato').value);
-
-  const { email, totale } = await api(`/admin/email?${parametri}`);
-  const contenitore = $('#elenco-email');
-
-  if (!email.length) {
-    contenitore.replaceChildren(vuoto('Nessuna email in questa vista.'));
-    return;
-  }
-
-  contenitore.replaceChildren(
-    nodo('p', 'piccolo tenue', `${totale} email.`),
-    ...email.map(schedaEmail)
-  );
-}
-
-const TIPI_EMAIL = { prenotazione: '📅 Prenotazione', medicina: '💊 Medicinali', altro: '✉️ Altro' };
-
-function schedaEmail(m) {
-  const carta = nodo('div', 'carta');
-
-  const testata = nodo('div');
-  testata.style.cssText = 'display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;justify-content:space-between';
-  const sinistra = nodo('div');
-  sinistra.append(
-    nodo('strong', null, m.oggetto || '(senza oggetto)'),
-    nodo('div', 'piccolo tenue', `${m.mittente_nome ? `${m.mittente_nome} · ` : ''}${m.mittente} · ${quando(m.ricevuta_il)}`)
-  );
-  const destra = nodo('div');
-  destra.style.cssText = 'display:flex;gap:.4rem;align-items:center';
-  destra.append(nodo('span', 'etichetta', TIPI_EMAIL[m.tipo] || m.tipo), etichetta(m.stato));
-  testata.append(sinistra, destra);
-  carta.append(testata);
-
-  const corpo = nodo('div', 'piccolo', m.corpo);
-  corpo.style.cssText = 'white-space:pre-line;margin-top:.85rem;max-height:11rem;overflow:auto;' +
-    'background:var(--sfondo);padding:.75rem;border-radius:8px';
-  carta.append(corpo);
-
-  if (m.collegata_a) {
-    carta.append(nodo('p', 'piccolo tenue', `Richiesta generata: ${m.collegata_a}`));
-  }
-
-  // Il messaggio in Gmail non c'e' piu' in posta in arrivo: il testo qui sopra
-  // e' rimasto l'unica copia che non scade. Va detto, non lasciato scoprire.
-  if (m.cestinata_il) {
-    carta.append(nodo('p', 'piccolo tenue',
-      `Messaggio spostato nel cestino di Gmail il ${quando(m.cestinata_il)}. `
-      + 'Gmail lo svuota dopo trenta giorni: il testo qui sopra resta comunque.'));
-  }
-
-  const azioni = nodo('div');
-  azioni.style.cssText = 'display:flex;gap:.5rem;margin-top:.85rem;flex-wrap:wrap';
-  for (const [stato, testo] of [['gestita', 'Segna come gestita'], ['archiviata', 'Archivia'], ['nuova', 'Rimetti da leggere']]) {
-    if (m.stato === stato) continue;
-    const b = nodo('button', 'bottone secondario piccolo', testo);
-    b.type = 'button';
-    b.addEventListener('click', () => {
-      // Prima qui c'era una richiesta di conferma prima di cestinare. E' stata
-      // tolta di proposito: chiudere una pratica e togliere il messaggio dalla
-      // posta in arrivo sono la stessa cosa, e chiederlo ogni volta a chi lo fa
-      // venti volte al giorno non protegge nessuno, insegna solo a premere
-      // "si" senza leggere. Il testo dell'email resta salvato qui comunque, e
-      // la scheda lo dice.
-      b.disabled = true;
-      protetto(async () => {
-        await api(`/admin/email/${m.codice}`, { method: 'PATCH', body: { stato } });
-        if (stato === 'gestita' && m.message_id) {
-          avvisa('Segnata come gestita. Il messaggio va nel cestino di Gmail entro un minuto.', 'ok');
-        }
-        await caricaEmail();
-      });
-    });
-    azioni.append(b);
-  }
-  carta.append(azioni);
-  return carta;
-}
-
 // ---- Richieste dai Moduli Google -------------------------------------------
 //
 // Sono arrivate mentre il sito era spento e nessuno le ha ancora viste. Il
@@ -1587,12 +1500,19 @@ function cellaMedicine(p) {
 }
 
 async function caricaPazienti() {
+  const parametri = new URLSearchParams();
   const cerca = $('#paz-cerca').value.trim();
-  const { pazienti } = await api(`/admin/pazienti?${new URLSearchParams(cerca ? { cerca } : {})}`);
+  if (cerca) parametri.set('cerca', cerca);
+  if ($('#paz-dimessi').value) parametri.set('dimessi', '1');
+
+  const { pazienti } = await api(`/admin/pazienti?${parametri}`);
   const contenitore = $('#elenco-pazienti');
 
   if (!pazienti.length) {
-    contenitore.replaceChildren(vuoto('Nessun paziente trovato.'));
+    contenitore.replaceChildren(vuoto($('#paz-dimessi').value
+      ? 'Nessun paziente trovato.'
+      : 'Nessun paziente trovato. Se cercavi qualcuno che ha cambiato medico, '
+        + 'prova a mostrare anche chi non è più assistito.'));
     return;
   }
 
@@ -1609,13 +1529,79 @@ async function caricaPazienti() {
   contenitore.replaceChildren(tabella(
     ['Cognome e nome', 'Telefono', 'Email', 'Prende di solito', 'Visite'],
     pazienti.map((p) => [
-      { nodo: medico ? apriFascicoloBottone(p) : nodo('span', null, `${p.cognome} ${p.nome}`) },
+      { nodo: cellaNomePaziente(p, medico) },
       { nodo: collegamentoTelefono(p.telefono) },
       p.email || '—',
       { nodo: cellaMedicine(p) },
       p.visite
     ])
   ));
+}
+
+/**
+ * I due modi di togliere una persona dallo studio, e sono diversi apposta.
+ *
+ * "Non è più nostro paziente" e' quello che serve quasi sempre e si annulla con
+ * un altro click. "Cancella definitivamente" no, e per questo non basta un si':
+ * bisogna scrivere il cognome. Non e' un fastidio messo per prudenza generica,
+ * e' l'unico modo di essere sicuri che chi preme abbia guardato quale scheda ha
+ * davanti — sbagliare persona e' l'errore probabile, non il pentimento.
+ */
+function bottoniUscita(paziente, prenotazioni, medicine) {
+  if (utenteAttivo?.ruolo !== 'admin') return [];
+
+  const dimetti = nodo('button', 'bottone secondario piccolo',
+    paziente.dimesso_il ? '↩︎ È tornato nostro paziente' : 'Non è più nostro paziente');
+  dimetti.type = 'button';
+  dimetti.addEventListener('click', () => protetto(async () => {
+    await api(`/admin/pazienti/${paziente.id}/dimetti`, {
+      method: 'POST', body: { dimesso: !paziente.dimesso_il }
+    });
+    avvisa(paziente.dimesso_il
+      ? 'Torna fra i pazienti dello studio.'
+      : 'Tolto dagli elenchi. La sua storia resta nell\'archivio.', 'ok');
+    await apriFascicolo(paziente.id);
+  }));
+
+  const cancella = nodo('button', 'bottone pericolo piccolo', 'Cancella definitivamente');
+  cancella.type = 'button';
+  cancella.addEventListener('click', () => {
+    const quante = [
+      prenotazioni.length && `${prenotazioni.length} visite`,
+      medicine.length && `${medicine.length} richieste`
+    ].filter(Boolean).join(' e ');
+
+    const conferma = prompt(
+      `Stai per cancellare ${paziente.nome} ${paziente.cognome}`
+      + (quante ? `, con ${quante}.` : '.')
+      + '\n\nNon si torna indietro: sparisce tutto, comprese le foto delle '
+      + 'prescrizioni. Se ti serve solo toglierlo dagli elenchi, annulla e usa '
+      + '"Non è più nostro paziente".'
+      + `\n\nPer confermare scrivi il cognome: ${paziente.cognome}`);
+
+    if (conferma === null) return;
+    if (conferma.trim().toLowerCase() !== paziente.cognome.trim().toLowerCase()) {
+      return avvisa('Il cognome non corrisponde: non ho cancellato niente.', 'errore');
+    }
+
+    protetto(async () => {
+      const { rimosso } = await api(`/admin/pazienti/${paziente.id}`, { method: 'DELETE' });
+      avvisa(`${rimosso.cancellato} è stato cancellato con tutta la sua storia.`, 'ok');
+      await caricaPazienti();
+    });
+  });
+
+  return [dimetti, cancella];
+}
+
+/** Il nome, e se non e' piu' un nostro paziente lo dice sotto. */
+function cellaNomePaziente(p, medico) {
+  const cella = nodo('div');
+  cella.append(medico ? apriFascicoloBottone(p) : nodo('span', null, `${p.cognome} ${p.nome}`));
+  if (p.dimesso_il) {
+    cella.append(nodo('div', 'piccolo tenue', `Non più assistito dal ${dataEstesa(p.dimesso_il.slice(0, 10))}`));
+  }
+  return cella;
 }
 
 function apriFascicoloBottone(p) {
@@ -1648,7 +1634,7 @@ async function apriFascicolo(id) {
   indietro.type = 'button';
   indietro.addEventListener('click', () => protetto(caricaPazienti));
   const barra = nodo('div', 'azioni');
-  barra.append(indietro);
+  barra.append(indietro, ...bottoniUscita(paziente, prenotazioni, medicine));
 
   const intestazione = nodo('div', 'carta');
   intestazione.append(nodo('h3', null, `${paziente.cognome} ${paziente.nome}`));
@@ -1657,6 +1643,12 @@ async function apriFascicolo(id) {
   recapiti.append(nodo('span', 'tenue', paziente.email ? ` · ${paziente.email}` : ' · senza email'));
   intestazione.append(recapiti);
   intestazione.append(nodo('div', 'piccolo tenue', `In archivio dal ${quando(paziente.creato_il)}`));
+
+  if (paziente.dimesso_il) {
+    intestazione.append(nodo('p', 'piccolo',
+      `⚠️ Non è più assistito da questo studio dal ${quando(paziente.dimesso_il)}. `
+      + 'La sua storia resta qui sotto, e non compare più negli elenchi.'));
+  }
 
   // Le richieste vecchie non hanno il tipo scritto: sono tutte medicinali,
   // perche' prima esistevano solo quelle.
@@ -2122,7 +2114,6 @@ function collegaFiltri() {
       apriChiudi($(contenitore), (chiudi) => moduloNuovaMedicina(chiudi, tipo)));
   }
 
-  $('#mail-stato').addEventListener('change', () => protetto(caricaEmail));
   $('#mail-controlla').addEventListener('click', (e) => {
     // Il controllo apre una connessione alla casella e riguarda sette giorni di
     // posta, un messaggio alla volta: puo' metterci mezzo minuto abbondante, e
@@ -2141,10 +2132,14 @@ function collegaFiltri() {
 
     protetto(async () => {
       const { esito } = await api('/admin/email/controlla', { method: 'POST' });
+      // Le nuove email diventano richieste da sole: quelle dei medicinali
+      // finiscono fra i medicinali, quelle di prenotazione in "Da confermare".
+      // Si ricarica quel che si sta guardando, cosi' si vedono comparire.
       avvisa(esito?.saltato
         ? 'Un controllo era già in corso: aspetta che finisca quello.'
         : `Controllo eseguito: ${esito?.nuove ?? 0} nuove email.`, 'ok');
-      await caricaEmail();
+      const attiva = $('#schede button.attiva')?.dataset.scheda;
+      if (attiva && CARICATORI[attiva]) await CARICATORI[attiva]();
     }).finally(() => {
       clearInterval(avanzamento);
       bottone.textContent = testoOriginale;
@@ -2153,6 +2148,7 @@ function collegaFiltri() {
   });
 
   $('#paz-cerca').addEventListener('input', attendi(() => protetto(caricaPazienti)));
+  $('#paz-dimessi').addEventListener('change', () => protetto(caricaPazienti));
 }
 
 async function avvia() {

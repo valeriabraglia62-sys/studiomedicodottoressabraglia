@@ -417,6 +417,24 @@ export function elencoAdmin({ dal, al, stato, ambulatorio_id, cerca, pagina = 1,
   if (!stato) {
     dove.push("(p.stato <> 'annullata' OR date(p.annullata_il) >= date('now', '-1 day'))");
   }
+
+  /**
+   * E una visita gia' fatta sgombera il giorno dopo.
+   *
+   * L'elenco delle prenotazioni serve a sapere chi deve ancora venire. Una
+   * visita di marzo, ad agosto, e' solo una riga fra cui scorrere per arrivare
+   * a quelle di domani, e ogni settimana ce ne sono di piu'.
+   *
+   * Il giorno di margine c'e' apposta: la visita di oggi resta in elenco fino a
+   * domani, perche' la giornata si chiude la sera e non a mezzogiorno.
+   *
+   * Anche questa e' una sparizione dalla vista: la visita resta nell'archivio e
+   * nella scheda del paziente, sotto "Visite", che e' il posto dove si va a
+   * cercarla mesi dopo. Chi la vuole nell'elenco la ritrova mettendo le date.
+   */
+  if (!stato && !dal && !al && !cerca) {
+    dove.push("(p.stato <> 'confermata' OR p.data >= date('now', '-1 day'))");
+  }
   if (ambulatorio_id) { dove.push('p.ambulatorio_id = ?'); par.push(ambulatorio_id); }
   if (cerca) {
     dove.push(`(pa.nome LIKE ? OR pa.cognome LIKE ? OR pa.telefono LIKE ?

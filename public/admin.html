@@ -87,7 +87,6 @@
       <button type="button" data-scheda="medicine">Medicinali</button>
       <button type="button" data-scheda="specialistiche">Visite specialistiche</button>
       <button type="button" data-scheda="esami">Esami del sangue</button>
-      <button type="button" data-scheda="email">Email ricevute</button>
       <button type="button" data-scheda="pazienti">Pazienti</button>
       <button type="button" data-scheda="collaboratori" data-solo-medico hidden>Collaboratori</button>
       <button type="button" data-scheda="sistema">Stato del sistema</button>
@@ -243,21 +242,11 @@
     </section>
 
     <!-- Email -->
-    <section data-pannello="email" class="nascosto">
-      <div class="filtri">
-        <div class="campo">
-          <label for="mail-stato">Stato</label>
-          <select id="mail-stato">
-            <option value="nuova">Da leggere</option>
-            <option value="gestita">Gestite</option>
-            <option value="archiviata">Archiviate</option>
-            <option value="">Tutte</option>
-          </select>
-        </div>
-        <button type="button" class="bottone" id="mail-controlla">Controlla la casella ora</button>
-      </div>
-      <div id="elenco-email"></div>
-    </section>
+    <!-- La scheda "Email ricevute" non c'e' piu': le richieste di medicinali
+         arrivate per email diventano richieste da sole, quelle di prenotazione
+         finiscono in "Da confermare", e i messaggi vanno nel cestino di Gmail
+         da soli quando la pratica e' chiusa. Non restava niente da fare a mano.
+         Il bottone per leggere la casella subito e' in "Stato del sistema". -->
 
     <!-- Pazienti -->
     <section data-pannello="pazienti" class="nascosto">
@@ -265,6 +254,13 @@
         <div class="campo" style="flex:1;min-width:220px">
           <label for="paz-cerca">Cerca</label>
           <input id="paz-cerca" placeholder="Nome, cognome, telefono, email…">
+        </div>
+        <div class="campo">
+          <label for="paz-dimessi">Chi non è più assistito</label>
+          <select id="paz-dimessi">
+            <option value="">Nascosti</option>
+            <option value="1">Mostrali anche</option>
+          </select>
         </div>
       </div>
       <div id="elenco-pazienti"></div>
@@ -306,6 +302,9 @@
 
     <!-- Sistema -->
     <section data-pannello="sistema" class="nascosto">
+      <div class="filtri">
+        <button type="button" class="bottone" id="mail-controlla">Controlla la casella ora</button>
+      </div>
       <div id="stato-sistema"></div>
     </section>
 

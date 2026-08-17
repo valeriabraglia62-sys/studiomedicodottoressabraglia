@@ -519,6 +519,27 @@ export function elencoAdmin({ stato, tipo, cerca, pagina = 1, perPagina = 50 } =
 
   if (stato) { dove.push('r.stato = ?'); par.push(stato); }
 
+  /**
+   * Una richiesta chiusa resta in vista un giorno, poi sgombera.
+   *
+   * Il giorno serve: chi ha confermato una ricetta la mattina vuole ritrovarla
+   * il pomeriggio se il paziente richiama, e vederla sparire nell'istante in cui
+   * si preme il bottone e' peggio che tenersela. Passate le ventiquattro ore
+   * pero' e' storia, e la storia ha il suo posto: la scheda del paziente, dove
+   * si va a cercarla quando serve davvero — mesi dopo, non lo stesso giorno.
+   *
+   * Sparisce dalla vista, non dall'archivio. Chi la vuole rivedere mette il
+   * filtro sullo stato e la ritrova tutta, e la scheda del paziente non ne
+   * perde nemmeno una. Anche una ricerca per nome le riporta tutte: chi scrive
+   * un cognome nella casella sta cercando la storia di quella persona, e
+   * nascondergliene meta' sarebbe il contrario di quello che ha chiesto.
+   */
+  if (!stato && !cerca) {
+    dove.push(`(r.stato = 'nuova'
+                OR datetime(COALESCE(r.gestita_il, r.aggiornata_il, r.creata_il))
+                   >= datetime('now', '-1 day'))`);
+  }
+
   // Senza tipo si vede tutto, ed e' voluto: chi apre la scheda al mattino vuole
   // sapere cosa c'e' da fare, non da fare di che genere.
   if (tipo && Object.hasOwn(TIPI, tipo)) { dove.push('r.tipo = ?'); par.push(tipo); }

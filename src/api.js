@@ -14,6 +14,7 @@ import { ErroreDominio } from './prenotazioni.js';
 import * as medicine from './medicine.js';
 import * as chatbot from './chatbot.js';
 import * as assistente from './assistente.js';
+import * as pazienti from './pazienti.js';
 import * as inbox from './inbox.js';
 import * as moduli from './moduli.js';
 import * as attesa from './attesa.js';
@@ -375,6 +376,9 @@ admin.get('/riepilogo', (_req, res) => {
         `SELECT COUNT(*) n FROM prenotazioni WHERE data > ? AND stato = 'confermata'`, oggi),
       medicine_da_evadere: conta(
         `SELECT COUNT(*) n FROM richieste_medicine WHERE stato = 'nuova'`),
+      // Resta nel riepilogo anche se il pannello non lo mostra piu': dice
+      // quante email il programma non ha ancora chiuso, ed e' il modo per
+      // accorgersi che la pulizia automatica si e' inceppata.
       email_da_leggere: conta(`SELECT COUNT(*) n FROM richieste_email WHERE stato = 'nuova'`),
       moduli_da_confermare: moduli.daConfermare(),
       pazienti: conta('SELECT COUNT(*) n FROM pazienti'),
@@ -504,28 +508,29 @@ admin.post('/email/controlla', via(async (_req, res) => {
   ok(res, { esito: await inbox.controllaCasella() });
 }));
 
-admin.get('/pazienti', (req, res) => {
-  const cerca = String(req.query.cerca || '').trim();
-  const dove = cerca ? 'WHERE nome LIKE ? OR cognome LIKE ? OR telefono LIKE ? OR email LIKE ?' : '';
-  const par = cerca ? Array(4).fill(`%${cerca}%`) : [];
+admin.get('/pazienti', (req, res) => ok(res, {
+  pazienti: pazienti.elenco({
+    cerca: req.query.cerca,
+    dimessi: req.query.dimessi === '1'
+  })
+}));
 
-  ok(res, {
-    pazienti: db.prepare(`
-      SELECT p.*,
-             (SELECT COUNT(*) FROM prenotazioni WHERE paziente_id = p.id) AS visite,
-             -- I primi farmaci che prende, i piu' recenti. Servono nell'elenco e
-             -- non solo nel fascicolo: con il paziente al telefono si cerca il
-             -- nome e la risposta deve essere gia' li', senza dover aprire la
-             -- scheda per scoprire che quella persona prende il Coumadin.
-             (SELECT group_concat(farmaco, ' · ') FROM (
-                SELECT farmaco FROM medicine_abituali
-                 WHERE paziente_id = p.id ORDER BY ultima_volta DESC LIMIT 3
-              )) AS medicine,
-             (SELECT COUNT(*) FROM medicine_abituali WHERE paziente_id = p.id) AS quante_medicine
-        FROM pazienti p ${dove} ORDER BY p.cognome, p.nome LIMIT 200
-    `).all(...par)
-  });
-});
+/**
+ * Dimettere e cancellare li puo' fare solo il medico.
+ *
+ * Non e' diffidenza verso la segreteria: e' che sono le due uniche azioni del
+ * pannello che tolgono qualcosa invece di aggiungerlo, e la seconda non si
+ * annulla. Chi risponde al telefono non ha motivo di trovarsele sotto il dito.
+ */
+admin.post('/pazienti/:id/dimetti', richiedeAdmin, (req, res) =>
+  ok(res, { paziente: pazienti.dimetti(req.params.id, req.body?.dimesso !== false) }));
+
+/** Cosa sparirebbe: il pannello lo dice prima di far premere il bottone. */
+admin.get('/pazienti/:id/conteggi', richiedeAdmin, (req, res) =>
+  ok(res, { conteggi: pazienti.conteggi(req.params.id) }));
+
+admin.delete('/pazienti/:id', richiedeAdmin, (req, res) =>
+  ok(res, { rimosso: pazienti.cancella(req.params.id) }));
 
 /** Tutto quello che sappiamo di un paziente, in una schermata sola. */
 admin.get('/pazienti/:id', richiedeAdmin, (req, res) => {

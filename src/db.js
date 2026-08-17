@@ -338,7 +338,18 @@ for (const [tabella, colonna, tipo] of [
   // scritto quando e' successo: serve a non rincorrere all'infinito un'email
   // gia' spostata, e a poter dire, guardando una riga, se di quel messaggio
   // esiste ancora una copia nella casella o solo questa qui.
-  ['richieste_email', 'cestinata_il', 'TEXT']
+  ['richieste_email', 'cestinata_il', 'TEXT'],
+  // Quando questa persona ha smesso di essere in carico allo studio: ha
+  // cambiato medico, si e' trasferita, non c'e' piu'.
+  //
+  // Non e' una cancellazione ed e' voluto. Sparisce dagli elenchi, dalla
+  // ricerca e dai conteggi — chi lavora non se la trova piu' fra i piedi — ma
+  // visite, richieste e ricette restano dove sono. Se fra due anni arriva una
+  // contestazione, o l'ASL chiede conto di una prescrizione, la storia c'e'
+  // ancora; una riga cancellata non si spiega piu' a nessuno.
+  //
+  // Per cancellare davvero c'e' un'altra strada, esplicita e separata.
+  ['pazienti', 'dimesso_il', 'TEXT']
 ]) {
   const presente = db.prepare(`PRAGMA table_info(${tabella})`).all().some((c) => c.name === colonna);
   if (!presente) db.exec(`ALTER TABLE ${tabella} ADD COLUMN ${colonna} ${tipo}`);

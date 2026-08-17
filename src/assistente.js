@@ -44,7 +44,6 @@ const SCHEDE = [
   { id: 'medicine', nome: 'Medicinali', parole: ['medicin', 'farmac', 'ricett'] },
   { id: 'specialistiche', nome: 'Visite specialistiche', parole: ['specialist'] },
   { id: 'esami', nome: 'Esami del sangue', parole: ['esami', 'esame', 'analisi', 'sangue'] },
-  { id: 'email', nome: 'Email ricevute', parole: ['email', 'mail', 'posta', 'casella'] },
   { id: 'pazienti', nome: 'Pazienti', parole: ['pazient', 'anagrafic', 'fascicol'] },
   { id: 'sistema', nome: 'Stato del sistema', parole: ['sistema', 'stato del', 'backup', 'copia'] }
 ];
@@ -61,7 +60,7 @@ const risposta = (testo, extra = {}) => ({ testo, azioni: AZIONI_BASE, vai: null
 /** Il saluto: dice subito la cosa piu' urgente, senza farsela chiedere. */
 export function benvenuto(utente) {
   const n = numeri();
-  const daVedere = n.medicine + n.specialistiche + n.esami + n.moduli + n.email;
+  const daVedere = n.medicine + n.specialistiche + n.esami + n.moduli;
 
   const apertura = daVedere === 0
     ? 'Non c\'è niente in sospeso: tutto evaso.'
@@ -87,9 +86,11 @@ function numeri() {
     medicine: perTipo('medicina'),
     specialistiche: perTipo('specialistica'),
     esami: perTipo('esami'),
-    email: conta(`SELECT COUNT(*) n FROM richieste_email WHERE stato = 'nuova'`),
+    // Le email non si contano piu': non c'e' piu' una scheda dove andarle a
+    // leggere, perche' diventano richieste da sole e poi si cestinano da sole.
+    // Un numero senza un posto dove portare e' solo un numero.
     moduli: moduli.daConfermare(),
-    pazienti: conta('SELECT COUNT(*) n FROM pazienti')
+    pazienti: conta('SELECT COUNT(*) n FROM pazienti WHERE dimesso_il IS NULL')
   };
 }
 
@@ -102,31 +103,46 @@ function riepilogo() {
     `💊 Medicinali da vedere: ${n.medicine}`,
     `🩺 Visite specialistiche da vedere: ${n.specialistiche}`,
     `🧪 Esami da vedere: ${n.esami}`,
-    `📝 Richieste dai Moduli da confermare: ${n.moduli}`,
-    `✉️ Email da leggere: ${n.email}`
+    `📝 Da confermare: ${n.moduli}`
   ];
   return risposta(`**Come va oggi**\n\n${righe.join('\n')}`);
 }
 
-/** Solo cio' che aspetta una risposta, con il bottone per andarci. */
+/**
+ * Solo cio' che aspetta una risposta, con il bottone per andarci.
+ *
+ * I tre posti dove si lavora tutti i giorni — da confermare, prenotazioni,
+ * medicinali — hanno il loro bottone sempre, anche quando il conto e' a zero:
+ * "cosa devo vedere" e' il punto da cui si parte la mattina, e da li' si deve
+ * poter aprire l'agenda anche quando non c'e' niente di arretrato.
+ */
 function daVedere() {
   const n = numeri();
   const code = [
-    { n: n.moduli, testo: 'dai Moduli Google da confermare', scheda: 'moduli' },
+    { n: n.moduli, testo: 'da confermare', scheda: 'moduli' },
     { n: n.medicine, testo: 'di medicinali', scheda: 'medicine' },
     { n: n.specialistiche, testo: 'di visite specialistiche', scheda: 'specialistiche' },
-    { n: n.esami, testo: 'di esami del sangue', scheda: 'esami' },
-    { n: n.email, testo: 'email da leggere', scheda: 'email' }
+    { n: n.esami, testo: 'di esami del sangue', scheda: 'esami' }
   ].filter((c) => c.n > 0);
 
-  if (!code.length) return risposta('Non c\'è niente da vedere: sei in pari. 🎉');
+  const sempre = [
+    { scheda: 'moduli', etichetta: '📝 Da confermare' },
+    { scheda: 'prenotazioni', etichetta: '📅 Prenotazioni' },
+    { scheda: 'medicine', etichetta: '💊 Medicinali' }
+  ].map((s) => ({ id: `apri ${s.scheda}`, etichetta: s.etichetta }));
 
-  return {
-    testo: `Ti aspettano:\n\n${code.map((c) => `• ${c.n} ${c.testo}`).join('\n')}`,
-    azioni: code.map((c) => ({ id: `apri ${c.scheda}`, etichetta: `Apri ${c.testo}` }))
-      .concat(AZIONI_BASE.slice(3)),
-    vai: null
-  };
+  // Anche le code che non sono fra i tre fissi meritano il loro bottone, se
+  // hanno qualcosa dentro: altrimenti si legge "2 di esami" e poi tocca
+  // cercarsi la scheda a mano.
+  const altre = code
+    .filter((c) => !sempre.some((s) => s.id === `apri ${c.scheda}`))
+    .map((c) => ({ id: `apri ${c.scheda}`, etichetta: `Apri ${c.testo}` }));
+
+  const testo = code.length
+    ? `Ti aspettano:\n\n${code.map((c) => `• ${c.n} ${c.testo}`).join('\n')}`
+    : 'Non c\'è niente da vedere: sei in pari. 🎉';
+
+  return { testo, azioni: [...sempre, ...altre], vai: null };
 }
 
 /** L'agenda di un giorno, in chiaro per il medico e senza motivo per gli altri. */
@@ -166,7 +182,7 @@ function agenda(giorno, utente) {
 function cercaPaziente(chi) {
   const come = `%${chi}%`;
   const righe = db.prepare(`
-    SELECT p.nome, p.cognome, p.telefono,
+    SELECT p.nome, p.cognome, p.telefono, p.dimesso_il,
            (SELECT COUNT(*) FROM prenotazioni WHERE paziente_id = p.id) AS visite,
            (SELECT group_concat(farmaco, ' · ') FROM (
               SELECT farmaco FROM medicine_abituali
@@ -189,9 +205,13 @@ function cercaPaziente(chi) {
     };
   }
 
+  // Chi e' stato dimesso compare lo stesso, ma detto: al telefono la domanda e'
+  // "questo signore e' nostro?", e la risposta utile e' "c'e' stato, adesso no",
+  // non il silenzio di chi non lo trova.
   const elenco = righe.map((r) =>
     `• ${r.nome} ${r.cognome} — ${r.telefono || 'nessun telefono'}` +
     ` (${plurale(r.visite, 'visita', 'visite')})` +
+    (r.dimesso_il ? ' · non più assistito' : '') +
     (r.medicine ? `\n   💊 ${r.medicine}` : '')).join('\n');
 
   // Niente bottone "apri i pazienti" fra le azioni: il pannello ne disegna gia'
@@ -324,11 +344,10 @@ function quantiSono(t) {
   if (contiene(t, 'medicin', 'farmac', 'ricett')) {
     return risposta(`Richieste di medicinali da vedere: ${n.medicine}.`);
   }
-  if (contiene(t, 'email', 'mail', 'posta')) {
-    return risposta(`Email da leggere: ${n.email}.`);
-  }
-  if (contiene(t, 'modul')) {
-    return risposta(`Richieste dai Moduli Google da confermare: ${n.moduli}.`);
+  if (contiene(t, 'modul', 'confermare', 'email', 'mail', 'posta')) {
+    return risposta(`Da confermare ce ne sono ${n.moduli}. ` +
+      'Li dentro finiscono sia le richieste dai Moduli Google sia le prenotazioni ' +
+      'arrivate per email.');
   }
   if (contiene(t, 'pazient', 'person', 'anagrafic')) {
     return risposta(`In archivio ci sono ${n.pazienti} pazienti.`);
