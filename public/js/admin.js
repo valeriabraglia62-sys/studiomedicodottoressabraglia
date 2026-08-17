@@ -1207,12 +1207,17 @@ function schedaMedicina(r) {
     });
   }
 
-  if (r.stato === 'confermata') {
-    bottone('Ritirata', '', () => {
-      if (!confirm(`${r.codice}: il paziente è passato a ritirare?`)) return null;
-      return { azione: 'consegnata', fatto: `${r.codice}: segnata come consegnata.` };
-    });
-  }
+  // Il bottone "Ritirata" non c'e' piu'.
+  //
+  // Serviva quando la ricetta si ritirava in ambulatorio: il paziente passava,
+  // lo si vedeva in faccia e si chiudeva la pratica. Da quando il ritiro avviene
+  // in farmacia nessuno qui dentro puo' sapere se e quando ci e' andato, e un
+  // bottone che si puo' premere solo tirando a indovinare non e' un'informazione:
+  // e' una data falsa messa in archivio.
+  //
+  // Lo stato "consegnata" resta, e resta il filtro per cercarlo: le richieste
+  // chiuse cosi' quando il ritiro era in ambulatorio sono ancora in archivio, e
+  // devono restare trovabili.
 
   carta.append(azioni);
   return carta;

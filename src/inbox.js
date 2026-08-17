@@ -1,7 +1,7 @@
 import { db } from './db.js';
 import { config, NOTIFY_EMAIL } from './config.js';
 import { accoda, registraGestore } from './outbox.js';
-import { generaCodice, ErroreDominio } from './prenotazioni.js';
+import { generaCodice, ErroreDominio, telefonoValido } from './prenotazioni.js';
 import { creaRichiesta, allegaFile } from './medicine.js';
 
 /**
@@ -84,10 +84,47 @@ function estraiNome(mittenteNome, mittente) {
   };
 }
 
-const estraiTelefono = (testo) => {
-  const m = String(testo).match(/(?:\+39\s?)?\b3\d{2}[\s.\-]?\d{3}[\s.\-]?\d{3,4}\b/);
-  return m ? m[0].replace(/[\s.\-]/g, '') : null;
-};
+/**
+ * Il numero di telefono, pescato da un'email che non ha campi.
+ *
+ * Si cerca in tre modi, in ordine di quanto ci si puo' fidare.
+ *
+ * 1. Un cellulare italiano scritto per esteso: comincia per 3 e ha dieci cifre.
+ *    E' l'unica forma che si riconosce senza rischiare di sbagliare.
+ *
+ * 2. Un numero qualsiasi, ma solo se annunciato da una parola: "tel. 0522
+ *    123456", "il mio numero e' ...". Il fisso da solo non si cerca, e non e'
+ *    pigrizia: una data scritta 09.08.2026 diventa otto cifre di fila e
+ *    passerebbe per un numero valido. Un telefono sbagliato in archivio e'
+ *    peggio di nessun telefono — si chiama e risponde un estraneo, mentre il
+ *    paziente aspetta.
+ *
+ * 3. Quello che sappiamo gia'. Se da quell'indirizzo email e' gia' passato
+ *    qualcuno, il suo numero e' in archivio: la maggior parte di chi scrive per
+ *    prenotare non lo mette, perche' da' per scontato che lo studio ce l'abbia.
+ *    E infatti spesso ce l'ha.
+ */
+function estraiTelefono(testo, email = null) {
+  const pulisci = (s) => String(s).replace(/[\s.\-()]/g, '');
+
+  const cellulare = String(testo).match(/(?:\+39\s?)?\b3\d{2}[\s.\-]?\d{3}[\s.\-]?\d{3,4}\b/);
+  if (cellulare) return pulisci(cellulare[0]);
+
+  const annunciato = String(testo).match(
+    /(?:tel(?:efono)?|cell(?:ulare)?|numero|recapito)\W{0,4}((?:\+39[\s.\-]?)?\d[\d\s.\-]{6,13})/i);
+  if (annunciato && telefonoValido(pulisci(annunciato[1]))) return pulisci(annunciato[1]);
+
+  if (email) {
+    const noto = db.prepare(`
+      SELECT telefono FROM pazienti
+       WHERE lower(email) = lower(?) AND telefono IS NOT NULL AND telefono <> ''
+       ORDER BY id DESC LIMIT 1
+    `).get(String(email).trim());
+    if (noto) return noto.telefono;
+  }
+
+  return null;
+}
 
 /**
  * I file arrivati insieme all'email, ridotti a quelli che sono davvero documenti.
@@ -175,7 +212,7 @@ export function registraEmail({ messageId, mittente, mittenteNome, oggetto, corp
       try {
         const richiesta = creaRichiesta({
           nome, cognome, email: mittente,
-          telefono: estraiTelefono(corpo) || '',
+          telefono: estraiTelefono(corpo, mittente) || '',
           farmaci: (oggetto ? `${oggetto}\n\n` : '') + corpo.slice(0, 1200),
           note: 'Richiesta ricevuta via email, da verificare.',
           origine: 'email'
@@ -236,7 +273,7 @@ export function registraEmail({ messageId, mittente, mittenteNome, oggetto, corp
       `).run(
         generaCodice('MOD'), `email:${codice}`,
         nome, cognome,
-        estraiTelefono(corpo) || '', mittente,
+        estraiTelefono(corpo, mittente) || '', mittente,
         (oggetto ? `${oggetto}\n\n` : '') + corpo.slice(0, 1200),
         'Arrivata per email: giorno e ora vanno scelti a mano.',
         JSON.stringify({ da: 'email', codice, oggetto, corpo: corpo.slice(0, 2000) }),
@@ -253,7 +290,7 @@ export function registraEmail({ messageId, mittente, mittenteNome, oggetto, corp
       accoda('sheet_medicina', {
         codice, stato: 'nuova',
         nome: mittenteNome || mittente, cognome: '',
-        telefono: estraiTelefono(corpo) || '', email: mittente,
+        telefono: estraiTelefono(corpo, mittente) || '', email: mittente,
         farmaci: `[${tipo.toUpperCase()} via email] ${oggetto || ''}`.trim(),
         note: corpo.slice(0, 500), ambulatorio_nome: '',
         origine: 'email', creata_il: adesso, aggiornata_il: null

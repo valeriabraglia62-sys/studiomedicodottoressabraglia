@@ -13,7 +13,7 @@ import {
 /**
  * Il giro di una richiesta di medicinali.
  *
- *   nuova ──┬─ conferma ──────────► confermata ── ritiro ──► consegnata
+ *   nuova ──┬─ conferma ──────────► confermata
  *           ├─ modifica ──────────► confermata
  *           └─ rifiuta ───────────► rifiutata
  *
@@ -21,6 +21,12 @@ import {
  * studio: sono le stesse tre parole che gli arrivano per email. "Modifica"
  * non e' uno stato a se' perche' cambiare una richiesta vuol dire accettarla
  * cambiando qualcosa, e al paziente interessa sapere che e' stata accolta.
+ *
+ * C'e' un quarto stato, "consegnata", ma nessuno lo scrive piu': valeva quando
+ * la ricetta si ritirava in ambulatorio e il paziente lo si vedeva arrivare.
+ * Ora si ritira in farmacia e qui nessuno puo' sapere se ci e' andato, quindi
+ * il bottone e' stato tolto. Lo stato resta perche' le richieste chiuse cosi'
+ * sono ancora in archivio e devono restare leggibili.
  */
 export const STATI = ['nuova', 'confermata', 'rifiutata', 'consegnata'];
 

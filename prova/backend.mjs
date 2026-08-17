@@ -915,6 +915,53 @@ console.log('\nEmail in arrivo (rete di sicurezza)');
   verifica('e porta con se\' il testo di cosa chiedeva',
     parcheggiata?.testo?.includes('prenotare'), parcheggiata?.testo?.slice(0, 80));
 
+  // Il telefono e' obbligatorio per prenotare, ma un'email non ha campi: se non
+  // si riesce a pescarlo, chi lavora deve scriverlo a mano. Vale la pena
+  // provare i tre modi in cui si prova a trovarlo, perche' ognuno di essi e'
+  // una telefonata in meno da fare per chiederlo.
+  {
+    const numeroDi = (email) => db.prepare(
+      "SELECT telefono FROM richieste_modulo WHERE email = ? ORDER BY id DESC LIMIT 1").get(email)?.telefono;
+
+    registraEmail({
+      messageId: '<tel-1@example.com>', mittente: 'cellulare@example.com',
+      oggetto: 'Prenotazione', corpo: 'Vorrei prenotare. Mi trova al 333 444 5566.'
+    });
+    verifica('il cellulare scritto nel testo viene letto',
+      numeroDi('cellulare@example.com') === '3334445566', numeroDi('cellulare@example.com'));
+
+    registraEmail({
+      messageId: '<tel-2@example.com>', mittente: 'fisso@example.com',
+      oggetto: 'Prenotazione', corpo: 'Vorrei prenotare un appuntamento. Tel. 0522 123456'
+    });
+    verifica('anche un fisso, se annunciato da "tel"',
+      numeroDi('fisso@example.com') === '0522123456', numeroDi('fisso@example.com'));
+
+    // Una data non e' un numero di telefono. Un recapito sbagliato in archivio
+    // e' peggio di nessun recapito: si chiama e risponde un estraneo.
+    registraEmail({
+      messageId: '<tel-3@example.com>', mittente: 'data@example.com',
+      oggetto: 'Prenotazione', corpo: 'Vorrei prenotare un appuntamento dopo il 09.08.2026, grazie.'
+    });
+    verifica('ma una data non viene scambiata per un numero',
+      !numeroDi('data@example.com'), `letto: ${numeroDi('data@example.com')}`);
+
+    // Il caso piu' frequente: chi scrive non mette il numero perche' da' per
+    // scontato che lo studio ce l'abbia. E spesso ce l'ha davvero.
+    const gia = await chiama('POST', '/api/medicine', {
+      nome: 'Gia', cognome: 'Conosciuto', telefono: '3339990011',
+      email: 'conosciuto@example.com', farmaci: 'Nulla', tipo: 'medicina'
+    });
+    verifica('la persona era gia\' passata di qui', gia.stato === 201);
+
+    registraEmail({
+      messageId: '<tel-4@example.com>', mittente: 'conosciuto@example.com',
+      oggetto: 'Prenotazione', corpo: 'Vorrei prenotare una visita, grazie.'
+    });
+    verifica('senza numero nel testo si usa quello gia\' in archivio',
+      numeroDi('conosciuto@example.com') === '3339990011', numeroDi('conosciuto@example.com'));
+  }
+
   // Rileggere la casella non deve sdoppiarla.
   registraEmail({
     messageId: '<prova-3-bis@example.com>',
