@@ -460,6 +460,24 @@ td.codice { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-si
   cursor: pointer;
 }
 
+/* Le due linguette del pannello dello studio: "Chiedi" e "Al telefono".
+   Sul sito pubblico il modo e' uno solo e questa fila non viene disegnata. */
+.chat-modi { display: flex; border-bottom: 1px solid var(--bordo); background: var(--sfondo); }
+
+.chat-modi button {
+  flex: 1;
+  padding: .55rem .5rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font: inherit;
+  font-size: .82rem;
+  color: var(--testo-tenue);
+  cursor: pointer;
+}
+
+.chat-modi button.attivo { color: var(--verde-scuro); border-bottom-color: var(--verde); font-weight: 600; }
+
 .chat-corpo { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: .6rem; }
 
 .bolla {
@@ -489,6 +507,9 @@ td.codice { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-si
 }
 
 .chat-azioni button:hover { background: var(--verde-chiaro); }
+
+/* "Nuova telefonata": e' un ricomincia, non una risposta, e si distingue. */
+.chat-azioni button.chat-ricomincia { border-color: var(--bordo); color: var(--testo-tenue); }
 
 .chat-piede { display: flex; gap: .5rem; padding: .75rem; border-top: 1px solid var(--bordo); }
 .chat-piede input { flex: 1; padding: .6rem .8rem; border: 1px solid var(--bordo); border-radius: 999px; font: inherit; font-size: .9rem; }

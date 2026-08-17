@@ -13,6 +13,7 @@ import * as prenotazioni from './prenotazioni.js';
 import { ErroreDominio } from './prenotazioni.js';
 import * as medicine from './medicine.js';
 import * as chatbot from './chatbot.js';
+import * as assistente from './assistente.js';
 import * as inbox from './inbox.js';
 import * as moduli from './moduli.js';
 import * as attesa from './attesa.js';
@@ -349,6 +350,18 @@ function filtraClinico(req, righe) {
   if (soloMedico(req)) return righe;
   return righe.map((r) => ('problema' in r ? { ...r, problema: MOTIVO_NASCOSTO } : r));
 }
+
+/**
+ * L'assistente del pannello.
+ *
+ * Sta dietro richiedeStaff come tutto il resto, e riceve req.utente perche' le
+ * risposte cambiano con chi le chiede: il motivo della visita e' del medico, e
+ * l'assistente non puo' diventare la porta di servizio da cui esce lo stesso.
+ */
+admin.get('/assistente', (req, res) => ok(res, assistente.benvenuto(req.utente)));
+
+admin.post('/assistente', (req, res) =>
+  ok(res, assistente.assiste(req.body?.testo, req.utente)));
 
 admin.get('/riepilogo', (_req, res) => {
   const oggi = oggiISO();

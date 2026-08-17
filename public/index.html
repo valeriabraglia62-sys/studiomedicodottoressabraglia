@@ -380,26 +380,9 @@
   </div>
 </footer>
 
-<button class="chat-apri" id="chat-apri" type="button">
-  <span aria-hidden="true">💬</span> Assistente
-</button>
-
-<div class="chat nascosto" id="chat" role="dialog" aria-label="Assistente dello studio">
-  <div class="chat-testata">
-    <span aria-hidden="true">💬</span>
-    <div>
-      <strong>Assistente</strong>
-      <div class="stato">Ti guido passo passo</div>
-    </div>
-    <button type="button" id="chat-chiudi" aria-label="Chiudi">×</button>
-  </div>
-  <div class="chat-corpo" id="chat-corpo"></div>
-  <div class="chat-azioni" id="chat-azioni"></div>
-  <form class="chat-piede" id="chat-form">
-    <input id="chat-testo" placeholder="Scrivi qui…" autocomplete="off">
-    <button type="submit" aria-label="Invia">↑</button>
-  </form>
-</div>
+<!-- Il riquadro dell'assistente lo costruisce js/chat.js: e' lo stesso che usa
+     il pannello dello studio, e tenerlo scritto in due pagine voleva dire
+     correggerlo due volte. -->
 
 <div class="notifiche" id="notifiche"></div>
 

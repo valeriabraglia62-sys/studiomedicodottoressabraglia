@@ -4,6 +4,8 @@
  * automaticamente alla schermata di accesso, senza pagine bianche.
  */
 
+import { montaChat } from './chat.js';
+
 const $ = (sel, dove = document) => dove.querySelector(sel);
 const $$ = (sel, dove = document) => [...dove.querySelectorAll(sel)];
 
@@ -172,6 +174,111 @@ function mostraPannello(utente) {
   // scheda non compare proprio, cosi' non ci sono bottoni che danno errore.
   const medico = utente?.ruolo === 'admin';
   $$('[data-solo-medico]').forEach((el) => { el.hidden = !medico; });
+
+  collegaAssistente();
+}
+
+// ---- Assistente del pannello ----------------------------------------------
+
+/**
+ * Il campo di ricerca di ogni scheda, per posare dentro quello che l'assistente
+ * ha appena trovato: chi legge "PRE-1234-ABCD" non deve poi ricopiarlo a mano.
+ */
+const RICERCA_SCHEDA = {
+  prenotazioni: '#pren-cerca',
+  medicine: '#med-cerca',
+  specialistiche: '#spe-cerca',
+  esami: '#esa-cerca',
+  pazienti: '#paz-cerca'
+};
+
+/** Chi risponde alle domande dello studio: conta e cerca nell'archivio. */
+const motoreAssistente = () => ({
+  apri: () => api('/admin/assistente'),
+  invia: (testo) => api('/admin/assistente', { method: 'POST', body: { testo } })
+});
+
+/**
+ * Il chatbot dei pazienti, dentro il pannello, per chi e' al telefono.
+ *
+ * La sessione sta in memoria e non in localStorage, al contrario che sul sito:
+ * li' e' sempre la stessa persona che torna, qui e' una persona diversa a ogni
+ * chiamata, e riprendere la conversazione di prima vorrebbe dire attaccare i
+ * dati di uno alla richiesta di un altro.
+ */
+function motoreTelefono() {
+  let sessioneId = '';
+  const ricorda = (dati) => { sessioneId = dati.sessioneId; return dati; };
+
+  return {
+    apri: async () => ricorda(await api('/chat')),
+    invia: async (testo, etichetta) => ricorda(await api('/chat', {
+      method: 'POST', body: { sessione: sessioneId, testo, etichetta }
+    }))
+  };
+}
+
+/** Il bottone che porta dove l'assistente ha detto, col filtro gia' messo. */
+function bottoneVai(vai) {
+  const linguetta = $(`#schede button[data-scheda="${vai.scheda}"]`);
+  if (!linguetta || linguetta.hidden) return null;
+
+  const riquadro = nodo('div', 'bolla bot');
+  const b = nodo('button', 'bottone piccolo', `Aprilo qui →`);
+  b.type = 'button';
+  b.addEventListener('click', () => {
+    const campo = $(RICERCA_SCHEDA[vai.scheda] || '');
+    if (campo) campo.value = vai.cerca || '';
+    apriScheda(vai.scheda);
+  });
+  riquadro.append(b);
+  return riquadro;
+}
+
+let assistenteMontato = false;
+
+function collegaAssistente() {
+  // Una volta sola: entrare e uscire dal pannello non deve lasciare in giro
+  // due bottoni sovrapposti.
+  if (assistenteMontato) return;
+  assistenteMontato = true;
+
+  montaChat({
+    titolo: 'Assistente',
+    sottotitolo: 'Chiedi, oppure registra al telefono',
+    etichettaApri: '💬 Assistente',
+    modi: [
+      { id: 'assistente', etichetta: 'Chiedi', motore: motoreAssistente() },
+      {
+        id: 'telefono',
+        etichetta: 'Al telefono',
+        motore: motoreTelefono(),
+        ricomincia: '↻ Nuova telefonata'
+      }
+    ],
+
+    suRisposta(dati, vista, modo) {
+      if (dati.vai) {
+        const bottone = bottoneVai(dati.vai);
+        if (bottone) vista.aggiungi(bottone);
+      }
+
+      // Al telefono la foto non ce l'ha chi risponde: il paziente la manda dal
+      // sito col suo codice. Meglio dirlo, invece di lasciare in aria l'invito
+      // ad allegare che il chatbot fa al paziente.
+      if (modo === 'telefono' && dati.allegaA) {
+        vista.bolla('bot',
+          `📎 La prescrizione la può allegare il paziente dal sito con il codice ${dati.allegaA}.`);
+      }
+
+      // Una richiesta nata al telefono deve comparire subito nell'elenco che si
+      // sta guardando, senza dover ricaricare la pagina per vederla.
+      if (modo === 'telefono' && (dati.prenotazione || dati.richiesta)) {
+        const attiva = $('#schede button.attiva')?.dataset.scheda;
+        if (attiva && CARICATORI[attiva]) protetto(CARICATORI[attiva]);
+      }
+    }
+  });
 }
 
 function chiediNuovaPassword() {

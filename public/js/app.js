@@ -3,6 +3,8 @@
  * qui non si ricalcola nessun orario, si mostra solo ciò che l'API risponde.
  */
 
+import { montaChat } from './chat.js';
+
 const $ = (sel, dove = document) => dove.querySelector(sel);
 const $$ = (sel, dove = document) => [...dove.querySelectorAll(sel)];
 
@@ -661,22 +663,27 @@ function schedaRichiesta(r) {
 
 const CHIAVE_SESSIONE = 'studio-medico-chat';
 
-const chat = {
-  sessioneId: localStorage.getItem(CHIAVE_SESSIONE) || '',
-  avviata: false,
-  inCorso: false
-};
+/**
+ * Chi risponde al paziente: la sessione vive nel browser, la conversazione nel
+ * server. Il riquadro non sa niente di tutto questo, e va bene cosi': cambiare
+ * il modo di parlare col server non deve voler dire rimettere mano alle bolle.
+ */
+function motorePaziente() {
+  let sessioneId = localStorage.getItem(CHIAVE_SESSIONE) || '';
 
-function bolla(ruolo, contenuto) {
-  const el = nodo('div', `bolla ${ruolo === 'utente' ? 'utente' : 'bot'}`);
-  // Il grassetto **così** è l'unica formattazione: tutto il resto resta testo.
-  for (const [i, pezzo] of testo(contenuto).split(/\*\*(.+?)\*\*/gs).entries()) {
-    if (!pezzo) continue;
-    el.append(i % 2 ? nodo('strong', null, pezzo) : document.createTextNode(pezzo));
-  }
-  $('#chat-corpo').append(el);
-  $('#chat-corpo').scrollTop = $('#chat-corpo').scrollHeight;
-  return el;
+  const ricorda = (dati) => {
+    sessioneId = dati.sessioneId;
+    localStorage.setItem(CHIAVE_SESSIONE, sessioneId);
+    return dati;
+  };
+
+  return {
+    apri: async () => ricorda(await api(`/chat?sessione=${encodeURIComponent(sessioneId)}`)),
+    invia: async (contenuto, etichetta) => ricorda(await api('/chat', {
+      method: 'POST',
+      body: { sessione: sessioneId, testo: contenuto, etichetta }
+    }))
+  };
 }
 
 /**
@@ -687,7 +694,7 @@ function bolla(ruolo, contenuto) {
  * foto sul posto. Se qualcosa va storto la richiesta resta comunque valida e il
  * messaggio lo dice, altrimenti uno pensa di aver perso tutto e ricomincia.
  */
-function mostraAllegaInChat(codice) {
+function riquadroAllega(codice, vista) {
   const riquadro = nodo('div', 'bolla bot allega-chat');
   riquadro.append(nodo('span', 'piccolo tenue', '📎 Allega la richiesta dello specialista (foto o PDF)'));
 
@@ -717,109 +724,32 @@ function mostraAllegaInChat(codice) {
       esito.textContent = err.message;
       campo.disabled = false;
     }
-    $('#chat-corpo').scrollTop = $('#chat-corpo').scrollHeight;
+    vista.scorri();
   });
 
-  $('#chat-corpo').append(riquadro);
-  $('#chat-corpo').scrollTop = $('#chat-corpo').scrollHeight;
-}
-
-function disegnaAzioniChat(azioni = []) {
-  const contenitore = $('#chat-azioni');
-  contenitore.replaceChildren(...azioni.map((a) => {
-    const b = nodo('button', null, a.etichetta);
-    b.type = 'button';
-    b.addEventListener('click', () => inviaChat(a.id, a.etichetta));
-    return b;
-  }));
-}
-
-async function avviaChat() {
-  if (chat.avviata) return;
-  chat.avviata = true;
-
-  try {
-    const dati = await api(`/chat?sessione=${encodeURIComponent(chat.sessioneId)}`);
-    chat.sessioneId = dati.sessioneId;
-    localStorage.setItem(CHIAVE_SESSIONE, dati.sessioneId);
-
-    $('#chat-corpo').replaceChildren();
-    for (const m of dati.cronologia || []) bolla(m.ruolo, m.testo);
-
-    if (dati.ripresa) {
-      const nota = nodo('div', 'bolla bot', '↑ Riprendiamo da dove eravamo rimasti.');
-      nota.style.opacity = '.7';
-      $('#chat-corpo').append(nota);
-    }
-    disegnaAzioniChat(dati.azioni);
-  } catch (err) {
-    chat.avviata = false;
-    bolla('bot', `Non riesco a collegarmi: ${err.message}`);
-  }
-}
-
-async function inviaChat(testoMessaggio, etichettaVisibile) {
-  const contenuto = String(testoMessaggio || '').trim();
-  if (!contenuto || chat.inCorso) return;
-
-  chat.inCorso = true;
-  bolla('utente', etichettaVisibile || contenuto);
-  disegnaAzioniChat([]);
-  $('#chat-testo').value = '';
-
-  const attesa = bolla('bot', '…');
-
-  try {
-    const dati = await api('/chat', {
-      method: 'POST',
-      body: { sessione: chat.sessioneId, testo: contenuto, etichetta: etichettaVisibile || '' }
-    });
-    chat.sessioneId = dati.sessioneId;
-    localStorage.setItem(CHIAVE_SESSIONE, dati.sessioneId);
-
-    attesa.remove();
-    bolla('bot', dati.testo);
-    disegnaAzioniChat(dati.azioni);
-
-    // Solo per gli esami: la richiesta e' appena nata e ha un codice, quindi la
-    // foto della prescrizione ha dove attaccarsi. Il bottone compare dentro la
-    // conversazione perche' chi sta parlando col chatbot non deve uscire, andare
-    // a cercare il modulo sul sito e ricominciare da capo.
-    if (dati.allegaA) mostraAllegaInChat(dati.allegaA);
-
-    // Una prenotazione nata in chat cambia le disponibilità mostrate nella pagina.
-    if (dati.prenotazione) {
-      caricaMese();
-      if (stato.dataScelta) scegliGiorno(stato.dataScelta);
-    }
-  } catch (err) {
-    attesa.remove();
-    bolla('bot', `Problema di collegamento: ${err.message}. Riprova tra un istante.`);
-  } finally {
-    chat.inCorso = false;
-    $('#chat-testo').focus();
-  }
+  return riquadro;
 }
 
 function collegaChat() {
-  const pannello = $('#chat');
-  const apri = $('#chat-apri');
+  montaChat({
+    titolo: 'Assistente',
+    sottotitolo: 'Studio Dottoressa Braglia',
+    etichettaApri: '💬 Assistente',
+    modi: [{ id: 'paziente', etichetta: 'Assistente', motore: motorePaziente() }],
 
-  const mostra = (visibile) => {
-    pannello.classList.toggle('nascosto', !visibile);
-    apri.classList.toggle('nascosto', visibile);
-    if (visibile) { avviaChat(); $('#chat-testo').focus(); }
-  };
+    suRisposta(dati, vista) {
+      // Solo per le richieste con allegato: la richiesta e' appena nata e ha un
+      // codice, quindi la foto della prescrizione ha dove attaccarsi. Il bottone
+      // compare dentro la conversazione perche' chi sta parlando col chatbot non
+      // deve uscire, andare a cercare il modulo sul sito e ricominciare da capo.
+      if (dati.allegaA) vista.aggiungi(riquadroAllega(dati.allegaA, vista));
 
-  apri.addEventListener('click', () => mostra(true));
-  $('#chat-chiudi').addEventListener('click', () => mostra(false));
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !pannello.classList.contains('nascosto')) mostra(false);
-  });
-
-  $('#chat-form').addEventListener('submit', (evento) => {
-    evento.preventDefault();
-    inviaChat($('#chat-testo').value);
+      // Una prenotazione nata in chat cambia le disponibilità mostrate nella pagina.
+      if (dati.prenotazione) {
+        caricaMese();
+        if (stato.dataScelta) scegliGiorno(stato.dataScelta);
+      }
+    }
   });
 }
 

@@ -483,6 +483,107 @@ let token = null;
   verifica('un token inventato non apre nulla', finto.stato === 401);
 }
 
+console.log('\nL\'assistente del pannello');
+{
+  const chiedi = async (testo) =>
+    (await chiama('POST', '/api/admin/assistente', { testo }, token)).dati;
+
+  const fuori = await chiama('POST', '/api/admin/assistente', { testo: 'come va oggi' });
+  verifica('l\'assistente e\' chiuso senza credenziali', fuori.stato === 401);
+
+  const saluto = await chiama('GET', '/api/admin/assistente', null, token);
+  verifica('l\'assistente saluta e propone qualcosa',
+    saluto.stato === 200 && saluto.dati.testo?.length > 10 && saluto.dati.azioni?.length > 0);
+
+  // I numeri devono venire dal database, non da una frase inventata: il modo di
+  // verificarlo e' confrontarli con il riepilogo, che li conta per conto suo.
+  const veri = (await chiama('GET', '/api/admin/riepilogo', null, token)).dati.riepilogo;
+  const oggi = await chiedi('quante prenotazioni ho oggi');
+  verifica('il numero delle visite di oggi e\' quello vero',
+    oggi.testo.includes(String(veri.prenotazioni_oggi)), oggi.testo);
+
+  const situazione = await chiedi('come va oggi');
+  verifica('"come va oggi" mette in fila tutti i conteggi',
+    ['Oggi', 'Medicinali', 'specialistiche', 'Esami', 'Email'].every((p) => situazione.testo.includes(p)),
+    situazione.testo.slice(0, 120));
+
+  const sospeso = await chiedi('cosa devo vedere');
+  verifica('"cosa devo vedere" risponde senza rompersi', Boolean(sospeso.testo));
+
+  const agenda = await chiedi('chi viene oggi');
+  verifica('l\'agenda di oggi risponde', Boolean(agenda.testo));
+
+  // Un codice incollato deve essere riconosciuto e deve dire dove andare.
+  const prima = (await chiama('GET', '/api/admin/prenotazioni', null, token)).dati.prenotazioni[0];
+  const perCodice = await chiedi(`  ${prima.codice}  `);
+  verifica('un codice incollato viene riconosciuto',
+    perCodice.testo.includes(prima.codice) && perCodice.vai?.scheda === 'prenotazioni',
+    perCodice.testo.slice(0, 100));
+
+  const cercato = await chiedi(`cerca ${prima.paziente_cognome}`);
+  verifica('cercando un cognome si trova la persona',
+    cercato.testo.includes(prima.paziente_cognome) && cercato.vai?.scheda === 'pazienti',
+    cercato.testo.slice(0, 100));
+
+  // Le parole si sovrappongono anche qui: "Esposito" contiene "esa" e i cognomi
+  // non si possono prevedere. Chi cerca una persona deve finire fra i pazienti,
+  // non fra gli esami del sangue.
+  const cognomeInsidioso = await chiedi('cerca Esposito');
+  verifica('"cerca Esposito" non finisce negli esami',
+    cognomeInsidioso.vai?.scheda === 'pazienti', JSON.stringify(cognomeInsidioso.vai));
+
+  const vai = await chiedi('apri i medicinali');
+  verifica('"apri i medicinali" porta sulla scheda giusta', vai.vai?.scheda === 'medicine',
+    JSON.stringify(vai.vai));
+
+  const boh = await chiedi('qwerty asdf zxcv');
+  verifica('una domanda incomprensibile non lo rompe', Boolean(boh.testo) && boh.azioni?.length > 0);
+}
+
+console.log('\nL\'assistente non aggira il segreto del medico');
+{
+  // Il motivo della visita e' del medico. L'assistente risponde a voce, e a voce
+  // sarebbe la strada piu' comoda per farselo dire lo stesso: se qui passasse,
+  // il controllo nelle altre schermate non servirebbe a niente.
+  const EMAIL = 'assistente.segretaria@example.com';
+  const creato = await chiama('POST', '/api/admin/utenti',
+    { nome: 'Giulia', email: EMAIL, ruolo: 'segretaria' }, token);
+  const provvisoria = creato.dati.password_provvisoria;
+
+  // Un accesso solo, non due: il freno sul login e' di 10 tentativi ogni cinque
+  // minuti e vale per tutta la prova. Cambiando la password la sessione aperta
+  // resta valida, quindi il secondo accesso sarebbe stato sprecato — e a furia
+  // di sprecarne, e' l'ultima prova della lista a farsi respingere.
+  const entra = await chiama('POST', '/api/auth/login', { email: EMAIL, password: provvisoria });
+  const tokenCollab = entra.dati.token;
+  await chiama('POST', '/api/auth/password',
+    { attuale: provvisoria, nuova: 'PasswordSegretaria1' }, tokenCollab);
+  verifica('la segretaria entra nel pannello', entra.stato === 200 && Boolean(tokenCollab));
+
+  const suo = await chiama('POST', '/api/admin/assistente', { testo: 'chi viene oggi' }, tokenCollab);
+  verifica('la segretaria usa l\'assistente', suo.stato === 200 && Boolean(suo.dati.testo));
+
+  // Il confronto e' fra le due risposte alla stessa domanda: quella del medico
+  // contiene il motivo, quella della segretaria deve contenere il segnaposto al
+  // suo posto. Cercare una frase fissa non proverebbe niente il giorno in cui
+  // quella frase non c'e'.
+  const conMotivo = (await chiama('GET', '/api/admin/prenotazioni', null, token))
+    .dati.prenotazioni.find((p) => p.problema && p.problema.trim());
+  verifica('c\'e\' una prenotazione con un motivo su cui provare', Boolean(conMotivo),
+    'nessuna prenotazione ha un motivo: la prova qui sotto non direbbe nulla');
+
+  const daMedico = await chiama('POST', '/api/admin/assistente', { testo: conMotivo.codice }, token);
+  verifica('il medico vede il motivo della visita',
+    daMedico.dati.testo.includes(conMotivo.problema), daMedico.dati.testo.slice(0, 200));
+
+  const daSegretaria = await chiama('POST', '/api/admin/assistente',
+    { testo: conMotivo.codice }, tokenCollab);
+  verifica('la segretaria, sulla stessa prenotazione, non lo vede',
+    !daSegretaria.dati.testo.includes(conMotivo.problema)
+    && daSegretaria.dati.testo.includes('riservato al medico'),
+    daSegretaria.dati.testo.slice(0, 200));
+}
+
 console.log('\nGli annullamenti vecchi non ingombrano l\'elenco');
 {
   // Un annullamento serve il giorno che succede; il giorno dopo e' rumore su un
