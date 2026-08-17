@@ -1,6 +1,11 @@
 # Segreti — non deve MAI finire nel repository
+#
+# Anche le copie: prima di toccare il .env se ne fa una di sicurezza, e
+# ".env.prima-di-qualcosa" contiene le stesse password del file vero. Con la
+# sola riga ".env" quelle copie restavano scoperte, e sarebbero entrate nel
+# primo "git add -A" senza che nessuno se ne accorgesse.
 .env
-.env.local
+.env.*
 *.key.json
 service-account*.json
 google-credentials.json
