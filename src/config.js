@@ -219,4 +219,20 @@ export const config = {
   cancellazioneMinutiMinimi: 60
 };
 
-export const NOTIFY_EMAIL = config.admin.email || 'valeriabraglia62@gmail.com';
+/**
+ * Dove arrivano gli avvisi allo studio.
+ *
+ * Era la stessa riga con cui si entra nel pannello, e le due cose non sono la
+ * stessa cosa: spostare la posta su un'altra casella avrebbe voluto dire
+ * cambiare anche le credenziali di accesso, e rischiare di restare chiusi
+ * fuori dal proprio pannello per aver cambiato indirizzo email.
+ *
+ * Adesso ha la sua riga nel .env. Se manca si torna all'indirizzo
+ * dell'amministratore, come e' sempre stato, e in ultima istanza alla casella
+ * da cui il programma scrive: un indirizzo scritto qui dentro a mano sarebbe
+ * il posto dove la posta di uno studio finisce per sbaglio a una persona che
+ * non c'entra piu' niente.
+ */
+export const NOTIFY_EMAIL = (process.env.NOTIFY_EMAIL || '').trim().toLowerCase()
+  || config.admin.email
+  || config.email.user.toLowerCase();

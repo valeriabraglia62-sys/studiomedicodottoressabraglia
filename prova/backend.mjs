@@ -1005,6 +1005,30 @@ console.log('\nEmail in arrivo (rete di sicurezza)');
       id.note.includes('appunti.docx'), id.note);
   }
 
+  // L'indirizzo dove arrivano gli avvisi allo studio non deve tornare a essere
+  // quello con cui si entra nel pannello. Erano la stessa riga, e spostare la
+  // posta su un'altra casella voleva dire cambiare anche le credenziali di
+  // accesso: se qualcuno rimettesse insieme le due cose, il giorno che si
+  // cambia casella ci si ritroverebbe chiusi fuori dal proprio pannello.
+  {
+    const { NOTIFY_EMAIL } = await import('../src/config.js');
+    const scritto = (process.env.NOTIFY_EMAIL || '').trim().toLowerCase();
+
+    verifica('gli avvisi hanno un indirizzo tutto loro',
+      Boolean(scritto) && NOTIFY_EMAIL === scritto,
+      `avvisi: ${NOTIFY_EMAIL} · accesso: ${config.admin.email}`);
+
+    // E gli avvisi che partono da noi verso quella casella non devono
+    // rientrare come se fossero richieste di un paziente.
+    const nostroAvviso = registraEmail({
+      messageId: '<prova-avviso@example.com>',
+      mittente: NOTIFY_EMAIL,
+      oggetto: 'Nuova prenotazione', corpo: 'Notifica interna.'
+    });
+    verifica('e quelli mandati a quella casella non rientrano',
+      nostroAvviso.saltata === true || !nostroAvviso.codice, JSON.stringify(nostroAvviso));
+  }
+
   // La posta che ci siamo mandati da soli non deve rientrare come richiesta:
   // e' cosi' che le notifiche di spostamento avevano invaso le email da leggere.
   const nostra = registraEmail({
