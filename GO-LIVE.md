@@ -25,8 +25,8 @@ verifica email) parte da sola all'avvio ed è additiva.
 
 ## 2. Cambiare la password dell'amministratore  **[TU] — URGENTE**
 
-`[password storica rimossa]` era scritta in chiaro nella cronologia Git (ora ripulita) ed è
-tuttora la password del pannello. Va cambiata. Con **PowerShell amministratore**:
+La vecchia password del pannello era finita in chiaro nella cronologia Git (ora
+ripulita) ed è debole. Va cambiata. Con **PowerShell amministratore**:
 
 1. Apri `C:\Users\valer\studiomedico\.env` e metti una password nuova e robusta:
    ```
