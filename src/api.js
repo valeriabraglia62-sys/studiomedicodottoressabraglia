@@ -22,8 +22,8 @@ import * as chiusure from './chiusure.js';
 import * as statistiche from './statistiche.js';
 import * as utenti from './utenti.js';
 import { eseguiBackup, statoBackup } from './backup.js';
-import { statoCoda, riprovaTutto } from './outbox.js';
-import { verificaConnessioneEmail } from './mailer.js';
+import { statoCoda, riprovaTutto, accoda } from './outbox.js';
+import { verificaConnessioneEmail, emailVerificaPaziente } from './mailer.js';
 import { verificaFoglio } from './sheets.js';
 import { linkGoogleCalendar } from './evento.js';
 
@@ -320,10 +320,44 @@ router.post('/chat', limiteChat, (req, res) => {
 
 // ---- Autenticazione -------------------------------------------------------
 
+/** Base pubblica per i link nelle email: il dominio vero se configurato. */
+const basePubblica = () =>
+  config.pubblico.url || `http://localhost:${config.port}`;
+const linkVerificaEmail = (token) =>
+  `${basePubblica()}/api/auth/verifica-email?token=${encodeURIComponent(token)}`;
+
 router.post('/auth/register', limiteRegistrazione, (req, res) => {
-  const utente = utenti.registraPaziente(req.body || {});
-  const { token, scadenza } = creaSessione(utente.id);
-  res.status(201).json({ success: true, token, scadenza, utente });
+  const { utente, token } = utenti.registraPaziente(req.body || {});
+  // Nessuna sessione adesso: prima si conferma l'indirizzo dal link.
+  accoda('email', emailVerificaPaziente({
+    to: utente.email, nome: utente.nome, url: linkVerificaEmail(token)
+  }));
+  res.status(201).json({
+    success: true,
+    verifica_inviata: true,
+    message: 'Ti abbiamo inviato un\'email: apri il link per confermare l\'indirizzo e accedere.'
+  });
+});
+
+// Il link nell'email arriva qui: si conferma e si rimanda al sito.
+router.get('/auth/verifica-email', (req, res) => {
+  try {
+    utenti.verificaEmailPaziente(req.query.token);
+    res.redirect(303, '/?email=verificata');
+  } catch {
+    res.redirect(303, '/?email=nonvalida');
+  }
+});
+
+router.post('/auth/verifica-email/rinvia', limiteRegistrazione, (req, res) => {
+  const esito = utenti.preparaRinvioVerifica(req.body?.email);
+  if (esito) {
+    accoda('email', emailVerificaPaziente({
+      to: esito.utente.email, nome: esito.utente.nome, url: linkVerificaEmail(esito.token)
+    }));
+  }
+  // Risposta uguale in ogni caso: non si rivela se l'account esiste.
+  ok(res, { message: 'Se l\'indirizzo corrisponde a un account da confermare, l\'email è ripartita.' });
 });
 
 router.post('/auth/login', limiteLogin, via(async (req, res) => {
@@ -355,6 +389,17 @@ router.post('/auth/login', limiteLogin, via(async (req, res) => {
   // Account sospeso: la password puo' anche essere giusta, ma non si entra.
   if (utente.attivo === 0) {
     throw new ErroreDominio('Questo accesso e\' stato sospeso. Rivolgiti al medico.', 403);
+  }
+
+  // Un account paziente non confermato non entra: prima va aperto il link
+  // dell'email di verifica. Lo staff non e' soggetto a questo controllo.
+  if (utente.ruolo === 'paziente' && !utente.email_verificata) {
+    falliti.delete(email);
+    return res.status(403).json({
+      success: false,
+      verifica_email: true,
+      message: 'Devi prima confermare il tuo indirizzo email. Controlla la posta o richiedi un nuovo link.'
+    });
   }
 
   // Chi sa la password riparte pulito: gli errori di battitura non si sommano

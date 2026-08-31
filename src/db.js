@@ -363,10 +363,31 @@ for (const [tabella, colonna, tipo] of [
   // ancora; una riga cancellata non si spiega piu' a nessuno.
   //
   // Per cancellare davvero c'e' un'altra strada, esplicita e separata.
-  ['pazienti', 'dimesso_il', 'TEXT']
+  ['pazienti', 'dimesso_il', 'TEXT'],
+  // Verifica dell'indirizzo email per gli account paziente. Senza, chi conosce
+  // l'email o il telefono di un paziente potrebbe registrarsi al suo posto e
+  // rivendicare la sua scheda. Finche' email_verificata = 0 l'account non entra
+  // e non e' collegato a nessuna scheda preesistente.
+  ['utenti', 'email_verificata', 'INTEGER NOT NULL DEFAULT 0'],
+  ['utenti', 'token_verifica', 'TEXT'],
+  ['utenti', 'token_verifica_scade', 'TEXT'],
+  // La scheda paziente esistente che l'account rivendica: il collegamento
+  // scatta solo dopo la verifica dell'email, non alla registrazione.
+  ['utenti', 'scheda_da_collegare', 'INTEGER']
 ]) {
   const presente = db.prepare(`PRAGMA table_info(${tabella})`).all().some((c) => c.name === colonna);
   if (!presente) db.exec(`ALTER TABLE ${tabella} ADD COLUMN ${colonna} ${tipo}`);
+}
+
+// Gli account che esistevano prima della verifica email — il medico, la
+// segreteria, gli eventuali pazienti gia' registrati — restano validi: la
+// colonna nasce a 0, ma vanno segnati verificati una volta sola, altrimenti al
+// primo riavvio si troverebbero l'accesso chiuso. Si fa alla prima esecuzione
+// di questa versione e non piu': i nuovi account partono da 0.
+if (!db.prepare("SELECT valore FROM impostazioni WHERE chiave = 'verifica_email_introdotta'").get()) {
+  db.prepare('UPDATE utenti SET email_verificata = 1 WHERE token_verifica IS NULL').run();
+  db.prepare("INSERT INTO impostazioni (chiave, valore, aggiornata_il) VALUES ('verifica_email_introdotta', ?, ?)")
+    .run(new Date().toISOString(), new Date().toISOString());
 }
 
 /**

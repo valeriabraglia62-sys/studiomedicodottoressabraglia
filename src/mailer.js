@@ -353,6 +353,18 @@ export const emailPromemoriaPaziente = (p) => componiEmail({
   chiusura: 'Se non può presentarsi, la preghiamo di annullare per liberare il posto.'
 });
 
+export const emailVerificaPaziente = ({ to, nome, url }) => componiEmail({
+  to,
+  subject: 'Conferma il tuo indirizzo email',
+  titolo: 'Conferma il tuo indirizzo email',
+  intro: `Gentile ${esc(nome || '')}, per completare la registrazione e poter prenotare ` +
+    'o consultare le tue richieste, conferma che questo indirizzo è tuo.',
+  righe: [['Validità del link', '24 ore']],
+  azione: { testo: 'Conferma il mio indirizzo', url },
+  chiusura: 'Se non hai richiesto tu la registrazione, ignora questo messaggio: ' +
+    'senza la conferma l\'account resta inattivo e non è collegato ad alcun dato.'
+});
+
 export const emailAttesaRegistrata = (v) => componiEmail({
   to: v.paziente_email,
   subject: `Sei in lista d'attesa per ${formattaDataEstesa(v.data)}`,

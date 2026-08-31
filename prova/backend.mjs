@@ -87,8 +87,11 @@ const chiama = async (metodo, percorso, corpo, token) => {
       && registraPazienteDiretto && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emailCorpo)
       && /^(\+39)?\d{8,11}$/.test(String(corpo?.telefono || '').replace(/[\s.\-()]/g, ''))
       && corpo?.nome && corpo?.cognome) {
-    const u = registraPazienteDiretto({ ...corpo, password: 'PasswordPaziente!2026' });
-    tokenPaziente = creaSessioneDiretta(u.id).token;
+    const reg = registraPazienteDiretto({ ...corpo, password: 'PasswordPaziente!2026' });
+    // In produzione l'account entra solo dopo il link email; qui si completa
+    // subito la verifica (che segna verificato e collega la scheda).
+    verificaEmailDiretto(reg.token);
+    tokenPaziente = creaSessioneDiretta(reg.utente.id).token;
     tokenPazienti.set(emailCorpo, tokenPaziente);
   }
   const credenziale = token || tokenPazienti.get(emailCorpo) || (protettaPaziente ? tokenPaziente : '');
@@ -105,7 +108,9 @@ const chiama = async (metodo, percorso, corpo, token) => {
 
 const { db } = await import('../src/db.js');
 const { config } = await import('../src/config.js');
-({ registraPaziente: registraPazienteDiretto } = await import('../src/utenti.js'));
+let verificaEmailDiretto = null;
+({ registraPaziente: registraPazienteDiretto, verificaEmailPaziente: verificaEmailDiretto } =
+  await import('../src/utenti.js'));
 ({ creaSessione: creaSessioneDiretta, inizializzaAdmin: inizializzaAdminDiretto } = await import('../src/auth.js'));
 const serverModulo = await import('../server.js');
 await new Promise((r) => setTimeout(r, 1500));
@@ -116,10 +121,40 @@ const registrazionePaziente = await chiama('POST', '/api/auth/register', {
   nome: 'Mario', cognome: 'Rossi', telefono: '3331234567',
   email: 'mario.rossi.prova@example.it', password: 'PasswordPaziente!2026'
 });
-tokenPaziente = registrazionePaziente.dati.token || '';
+verifica('la registrazione non da\' accesso immediato: serve la verifica email',
+  registrazionePaziente.stato === 201
+  && registrazionePaziente.dati.verifica_inviata === true
+  && !registrazionePaziente.dati.token);
+
+const loginNonVerificato = await chiama('POST', '/api/auth/login', {
+  email: 'mario.rossi.prova@example.it', password: 'PasswordPaziente!2026'
+});
+verifica('senza verifica email il login e\' rifiutato con 403',
+  loginNonVerificato.stato === 403 && loginNonVerificato.dati.verifica_email === true);
+
+// Flusso completo dal vero endpoint del link (token grezzo da una registrazione diretta).
+const regDir = registraPazienteDiretto({
+  nome: 'Giulia', cognome: 'Neri', telefono: '3332221100',
+  email: 'giulia.neri.prova@example.it', password: 'PasswordGiulia2026!'
+});
+const conferma = await fetch(
+  `${BASE}/api/auth/verifica-email?token=${encodeURIComponent(regDir.token)}`, { redirect: 'manual' });
+verifica('il link di verifica conferma e rimanda al sito',
+  conferma.status === 303 && (conferma.headers.get('location') || '').includes('email=verificata'));
+const loginDopoVerifica = await chiama('POST', '/api/auth/login', {
+  email: 'giulia.neri.prova@example.it', password: 'PasswordGiulia2026!'
+});
+verifica('dopo la verifica il login riesce',
+  loginDopoVerifica.stato === 200 && loginDopoVerifica.dati.utente?.ruolo === 'paziente');
+const linkScaduto = await chiama('POST', '/api/auth/verifica-email/rinvia',
+  { email: 'nessuno.qui@example.it' });
+verifica('il rinvio non rivela se l\'account esiste', linkScaduto.stato === 200);
+
+// Per il resto della suite Mario serve verificato e con una sessione.
+db.prepare("UPDATE utenti SET email_verificata = 1 WHERE email = 'mario.rossi.prova@example.it'").run();
+tokenPaziente = creaSessioneDiretta(
+  db.prepare("SELECT id FROM utenti WHERE email = 'mario.rossi.prova@example.it'").get().id).token;
 tokenPazienti.set('mario.rossi.prova@example.it', tokenPaziente);
-verifica('registrazione paziente crea una sessione',
-  registrazionePaziente.stato === 201 && Boolean(tokenPaziente));
 
 console.log('\nDati pubblici');
 {
@@ -207,18 +242,19 @@ console.log('\nRicerca e annullamento');
   const inesistente = await chiama('GET', '/api/prenotazioni/PRE-XXXX-XXXX');
   verifica('codice inesistente da 404', inesistente.stato === 404);
 
-  const secondo = await chiama('POST', '/api/auth/register', {
+  const secondoReg = registraPazienteDiretto({
     nome: 'Secondo', cognome: 'Paziente', telefono: '3337654321',
     email: 'secondo.paziente@example.it', password: 'PasswordSecondo!2026'
   });
-  tokenPazienti.set('secondo.paziente@example.it', secondo.dati.token);
+  verificaEmailDiretto(secondoReg.token);
+  const tokenSecondo = creaSessioneDiretta(secondoReg.utente.id).token;
+  tokenPazienti.set('secondo.paziente@example.it', tokenSecondo);
   const loginSecondo = await chiama('POST', '/api/auth/login', {
     email: 'secondo.paziente@example.it', password: 'PasswordSecondo!2026'
   });
   verifica('login paziente riuscito', loginSecondo.stato === 200
     && loginSecondo.dati.utente?.ruolo === 'paziente');
-  const incrociata = await chiama('GET', `/api/prenotazioni/${codicePrenotazione}`, null,
-    secondo.dati.token);
+  const incrociata = await chiama('GET', `/api/prenotazioni/${codicePrenotazione}`, null, tokenSecondo);
   verifica('un paziente non legge la pratica di un altro', incrociata.stato === 404);
   tokenPaziente = tokenProprietario;
 

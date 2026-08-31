@@ -30,35 +30,77 @@ async function api(percorso, opzioni = {}) {
   try { dati = await risposta.json(); } catch { /* risposta non JSON: gestita sotto */ }
 
   if (!risposta.ok || dati.success === false) {
-    throw new Error(dati.message || 'Problema di collegamento. Controlla la rete e riprova.');
+    const err = new Error(dati.message || 'Problema di collegamento. Controlla la rete e riprova.');
+    err.stato = risposta.status;
+    err.dati = dati;
+    throw err;
   }
   return dati;
 }
 
 function collegaAccountPaziente() {
   const statoAccount = $('#stato-account');
+  const mostraStato = (testo, tipo = 'ok') => {
+    statoAccount.className = `avviso ${tipo}`;
+    statoAccount.textContent = testo;
+  };
+
+  // Ritorno dal link di verifica: /?email=verificata oppure /?email=nonvalida
+  const esitoVerifica = new URLSearchParams(location.search).get('email');
+  if (esitoVerifica === 'verificata') {
+    mostraStato('Indirizzo confermato. Ora puoi accedere con la tua email e password.', 'ok');
+  } else if (esitoVerifica === 'nonvalida') {
+    mostraStato('Link di verifica non valido o scaduto. Richiedine uno nuovo qui sotto.', 'errore');
+  }
+  if (esitoVerifica) history.replaceState(null, '', location.pathname + location.hash);
+
   const salva = (dati) => {
     if (dati.utente?.ruolo !== 'paziente') throw new Error('Questo non è un account paziente.');
     tokenPaziente = dati.token;
     sessionStorage.setItem(CHIAVE_TOKEN_PAZIENTE, tokenPaziente);
-    statoAccount.className = 'avviso ok';
-    statoAccount.textContent = `Accesso effettuato come ${dati.utente.nome || dati.utente.email}.`;
+    mostraStato(`Accesso effettuato come ${dati.utente.nome || dati.utente.email}.`, 'ok');
   };
-  if (tokenPaziente) {
-    statoAccount.className = 'avviso ok';
-    statoAccount.textContent = 'Sessione paziente attiva in questa scheda.';
+  if (tokenPaziente && !esitoVerifica) {
+    mostraStato('Sessione paziente attiva in questa scheda.', 'ok');
   }
-  for (const [selettore, percorso] of [['#form-login-paziente', '/auth/login'], ['#form-registra-paziente', '/auth/register']]) {
-    const form = $(selettore);
-    form.addEventListener('submit', (evento) => {
-      evento.preventDefault();
-      inviaProtetto(form, async () => {
-        const dati = await api(percorso, { method: 'POST', body: datiModulo(form) });
-        salva(dati);
+
+  $('#form-login-paziente').addEventListener('submit', (evento) => {
+    evento.preventDefault();
+    const form = evento.currentTarget;
+    inviaProtetto(form, async () => {
+      try {
+        salva(await api('/auth/login', { method: 'POST', body: datiModulo(form) }));
         form.reset();
-      });
+      } catch (err) {
+        if (err.dati?.verifica_email) {
+          mostraStato('Devi prima confermare l\'email. Controlla la posta o usa "Rinvia il link".', 'attenzione');
+        }
+        throw err;
+      }
     });
-  }
+  });
+
+  $('#form-registra-paziente').addEventListener('submit', (evento) => {
+    evento.preventDefault();
+    const form = evento.currentTarget;
+    inviaProtetto(form, async () => {
+      const dati = await api('/auth/register', { method: 'POST', body: datiModulo(form) });
+      mostraStato(dati.message || 'Ti abbiamo inviato un\'email: apri il link per confermare l\'indirizzo.', 'ok');
+      form.reset();
+    });
+  });
+
+  $('#rinvia-verifica').addEventListener('click', async (evento) => {
+    evento.preventDefault();
+    const email = $('#login-email').value.trim();
+    if (!email) { mostraStato('Scrivi la tua email qui sopra, poi premi "Rinvia il link".', 'attenzione'); return; }
+    try {
+      const dati = await api('/auth/verifica-email/rinvia', { method: 'POST', body: { email } });
+      mostraStato(dati.message || 'Se l\'indirizzo è corretto, l\'email di conferma è ripartita.', 'ok');
+    } catch (err) {
+      avvisa(err.message, 'errore');
+    }
+  });
 }
 
 const testo = (s) => String(s ?? '');

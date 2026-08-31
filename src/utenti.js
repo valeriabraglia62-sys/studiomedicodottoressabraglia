@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { db } from './db.js';
+import { config } from './config.js';
 import { hashPassword, verificaPassword, RUOLI_STAFF } from './auth.js';
 import { ErroreDominio } from './prenotazioni.js';
 
@@ -50,10 +51,29 @@ export function elenco() {
   return { utenti: righe.map(pubblico) };
 }
 
+const ORE_VALIDITA_VERIFICA = 24;
+const hashTokenVerifica = (t) => crypto.createHmac('sha256', config.sessionSecret).update(t).digest('hex');
+
+/** L'id della scheda paziente che email o telefono indicano in modo NON ambiguo. */
+function schedaUnivoca(indirizzo, numero) {
+  const perEmail = db.prepare('SELECT id FROM pazienti WHERE lower(trim(email)) = ?').all(indirizzo);
+  const perTelefono = db.prepare(`
+    SELECT id FROM pazienti WHERE replace(replace(replace(replace(replace(
+      telefono, ' ', ''), '.', ''), '-', ''), '(', ''), ')', '') = ?
+  `).all(numero);
+  const candidati = [...new Set([...perEmail, ...perTelefono].map((p) => p.id))];
+  return (perEmail.length <= 1 && perTelefono.length <= 1 && candidati.length === 1) ? candidati[0] : null;
+}
+
 /**
- * Crea l'identita' del paziente e la collega a una sola scheda certa.
- * TODO sicurezza: aggiungere verifica dell'indirizzo email prima di consentire
- * la rivendicazione di una scheda preesistente.
+ * Crea l'identita' del paziente. NON collega subito una scheda preesistente: il
+ * collegamento scatta solo dopo la verifica dell'email, cosi' conoscere
+ * l'indirizzo o il telefono di un paziente non basta per prendersi la sua
+ * storia clinica. Se non c'e' una scheda corrispondente ne nasce una nuova,
+ * vuota e quindi senza rischi.
+ *
+ * Restituisce anche il token grezzo di verifica: chi chiama lo mette nel link
+ * dell'email. Nel database ne resta solo l'impronta.
  */
 export function registraPaziente({ nome, cognome, telefono, email, password }) {
   const indirizzo = pulisciEmail(email);
@@ -74,28 +94,84 @@ export function registraPaziente({ nome, cognome, telefono, email, password }) {
     throw new ErroreDominio('Esiste già un account con questa email.', 409);
   }
 
-  const perEmail = db.prepare('SELECT id FROM pazienti WHERE lower(trim(email)) = ?').all(indirizzo);
-  const perTelefono = db.prepare(`
-    SELECT id FROM pazienti WHERE replace(replace(replace(replace(replace(
-      telefono, ' ', ''), '.', ''), '-', ''), '(', ''), ')', '') = ?
-  `).all(numero);
-  const candidati = [...new Set([...perEmail, ...perTelefono].map((p) => p.id))];
-  const collegabile = perEmail.length <= 1 && perTelefono.length <= 1 && candidati.length === 1;
+  const schedaEsistente = schedaUnivoca(indirizzo, numero);
+  const token = crypto.randomBytes(32).toString('base64url');
+  const scade = new Date(Date.now() + ORE_VALIDITA_VERIFICA * 3600000).toISOString();
 
   return db.transaction(() => {
-    let pazienteId = collegabile ? candidati[0] : null;
-    if (!pazienteId) {
+    let pazienteId = null;
+    let schedaDaCollegare = null;
+    if (schedaEsistente) {
+      schedaDaCollegare = schedaEsistente;           // collegata solo dopo la verifica
+    } else {
       pazienteId = db.prepare(`
         INSERT INTO pazienti (nome, cognome, email, telefono, creato_il) VALUES (?, ?, ?, ?, ?)
       `).run(nomePulito, cognomePulito, indirizzo, numero, new Date().toISOString()).lastInsertRowid;
     }
     const info = db.prepare(`
-      INSERT INTO utenti (nome, email, password_hash, ruolo, paziente_id, attivo, cambio_password, creato_il)
-      VALUES (?, ?, ?, 'paziente', ?, 1, 0, ?)
+      INSERT INTO utenti (nome, email, password_hash, ruolo, paziente_id, attivo, cambio_password,
+                          email_verificata, token_verifica, token_verifica_scade, scheda_da_collegare, creato_il)
+      VALUES (?, ?, ?, 'paziente', ?, 1, 0, 0, ?, ?, ?, ?)
     `).run(`${nomePulito} ${cognomePulito}`, indirizzo, hashPassword(scelta), pazienteId,
-      new Date().toISOString());
-    return pubblico(db.prepare('SELECT * FROM utenti WHERE id = ?').get(info.lastInsertRowid));
+      hashTokenVerifica(token), scade, schedaDaCollegare, new Date().toISOString());
+    return {
+      utente: pubblico(db.prepare('SELECT * FROM utenti WHERE id = ?').get(info.lastInsertRowid)),
+      token
+    };
   })();
+}
+
+/**
+ * Conferma l'indirizzo email a partire dal token del link. Solo qui l'account
+ * viene collegato a una scheda paziente preesistente, e solo se nel frattempo
+ * quella scheda e' ancora l'unica corrispondenza certa.
+ */
+export function verificaEmailPaziente(tokenGrezzo) {
+  const token = String(tokenGrezzo || '');
+  if (!token) throw new ErroreDominio('Link di verifica non valido.', 400);
+  const u = db.prepare('SELECT * FROM utenti WHERE token_verifica = ?').get(hashTokenVerifica(token));
+  if (!u) throw new ErroreDominio('Link di verifica non valido o gia\' usato.', 400);
+  if (u.email_verificata) return pubblico(u);
+  if (new Date(u.token_verifica_scade) < new Date()) {
+    throw new ErroreDominio('Link di verifica scaduto: richiedine uno nuovo dalla pagina di accesso.', 400);
+  }
+
+  return db.transaction(() => {
+    let pazienteId = u.paziente_id;
+    if (!pazienteId && u.scheda_da_collegare) {
+      const scheda = db.prepare('SELECT telefono FROM pazienti WHERE id = ?').get(u.scheda_da_collegare);
+      const ancoraUnivoca = schedaUnivoca(pulisciEmail(u.email), pulisciTelefono(scheda?.telefono));
+      if (ancoraUnivoca === u.scheda_da_collegare) pazienteId = u.scheda_da_collegare;
+    }
+    if (!pazienteId) {
+      // La scheda non e' piu' identificabile con certezza: se ne crea una nuova
+      // e sara' lo studio a riunire eventuali duplicati.
+      const parti = String(u.nome || '').trim().split(/\s+/);
+      pazienteId = db.prepare(`
+        INSERT INTO pazienti (nome, cognome, email, telefono, creato_il) VALUES (?, ?, ?, ?, ?)
+      `).run(parti[0] || u.email, parti.slice(1).join(' ') || '-', pulisciEmail(u.email), '',
+        new Date().toISOString()).lastInsertRowid;
+    }
+    db.prepare(`
+      UPDATE utenti SET email_verificata = 1, token_verifica = NULL, token_verifica_scade = NULL,
+                        scheda_da_collegare = NULL, paziente_id = ?
+       WHERE id = ?
+    `).run(pazienteId, u.id);
+    return pubblico(db.prepare('SELECT * FROM utenti WHERE id = ?').get(u.id));
+  })();
+}
+
+/**
+ * Rigenera il token per rinviare l'email di verifica. Non rivela mai se
+ * l'account esiste: chi chiama risponde sempre allo stesso modo.
+ */
+export function preparaRinvioVerifica(email) {
+  const u = db.prepare("SELECT * FROM utenti WHERE email = ? AND ruolo = 'paziente'").get(pulisciEmail(email));
+  if (!u || u.email_verificata) return null;
+  const token = crypto.randomBytes(32).toString('base64url');
+  db.prepare('UPDATE utenti SET token_verifica = ?, token_verifica_scade = ? WHERE id = ?')
+    .run(hashTokenVerifica(token), new Date(Date.now() + ORE_VALIDITA_VERIFICA * 3600000).toISOString(), u.id);
+  return { utente: pubblico(u), token };
 }
 
 function trova(id) {
