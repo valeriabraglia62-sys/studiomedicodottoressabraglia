@@ -221,6 +221,20 @@ export const config = {
     process.env.CARTELLA_BACKUP || path.join(path.dirname(FILE_ARCHIVIO), 'backup')
   ),
 
+  // Chiave per cifrare le copie di sicurezza (AES-256-GCM): 64 caratteri esa =
+  // 32 byte. Generala una volta sola con  openssl rand -hex 32  e conservala
+  // FUORI dalla macchina e fuori dalla cartella dei backup — senza, un backup
+  // cifrato non si recupera. Se manca, le copie restano in chiaro e il
+  // programma lo segnala a ogni avvio.
+  backupEncryptionKey: (() => {
+    const raw = (process.env.BACKUP_ENCRYPTION_KEY || '').trim();
+    if (!raw) return null;
+    if (!/^[0-9a-fA-F]{64}$/.test(raw)) {
+      throw new Error('BACKUP_ENCRYPTION_KEY deve essere 64 caratteri esadecimali (openssl rand -hex 32).');
+    }
+    return Buffer.from(raw, 'hex');
+  })(),
+
   // Finestra entro cui il paziente non puo' piu' annullare da solo.
   cancellazioneMinutiMinimi: 60
 };
