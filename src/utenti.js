@@ -25,6 +25,7 @@ export function passwordProvvisoria(lunghezza = 12) {
 }
 
 const pulisciEmail = (v) => String(v ?? '').trim().toLowerCase();
+const pulisciTelefono = (v) => String(v ?? '').replace(/[\s.\-()]/g, '');
 
 /** Quello che si puo' mostrare: mai l'hash della password. */
 const pubblico = (u) => ({
@@ -32,6 +33,7 @@ const pubblico = (u) => ({
   nome: u.nome || '',
   email: u.email,
   ruolo: u.ruolo,
+  paziente_id: u.paziente_id || null,
   attivo: Boolean(u.attivo),
   deve_cambiare_password: Boolean(u.cambio_password),
   ultimo_accesso: u.ultimo_accesso || null,
@@ -46,6 +48,54 @@ export function elenco() {
      ORDER BY attivo DESC, ruolo, email
   `).all(...RUOLI_STAFF);
   return { utenti: righe.map(pubblico) };
+}
+
+/**
+ * Crea l'identita' del paziente e la collega a una sola scheda certa.
+ * TODO sicurezza: aggiungere verifica dell'indirizzo email prima di consentire
+ * la rivendicazione di una scheda preesistente.
+ */
+export function registraPaziente({ nome, cognome, telefono, email, password }) {
+  const indirizzo = pulisciEmail(email);
+  const numero = pulisciTelefono(telefono);
+  const nomePulito = String(nome ?? '').trim();
+  const cognomePulito = String(cognome ?? '').trim();
+  const scelta = String(password ?? '');
+
+  if (!nomePulito || !cognomePulito) throw new ErroreDominio('Nome e cognome sono obbligatori.', 400);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(indirizzo)) {
+    throw new ErroreDominio('Serve un indirizzo email valido.', 400);
+  }
+  if (!/^(\+39)?\d{8,11}$/.test(numero)) throw new ErroreDominio('Serve un numero di telefono valido.', 400);
+  if (scelta.length < LUNGHEZZA_MINIMA_PASSWORD) {
+    throw new ErroreDominio(`La password deve avere almeno ${LUNGHEZZA_MINIMA_PASSWORD} caratteri.`, 400);
+  }
+  if (db.prepare('SELECT id FROM utenti WHERE email = ?').get(indirizzo)) {
+    throw new ErroreDominio('Esiste già un account con questa email.', 409);
+  }
+
+  const perEmail = db.prepare('SELECT id FROM pazienti WHERE lower(trim(email)) = ?').all(indirizzo);
+  const perTelefono = db.prepare(`
+    SELECT id FROM pazienti WHERE replace(replace(replace(replace(replace(
+      telefono, ' ', ''), '.', ''), '-', ''), '(', ''), ')', '') = ?
+  `).all(numero);
+  const candidati = [...new Set([...perEmail, ...perTelefono].map((p) => p.id))];
+  const collegabile = perEmail.length <= 1 && perTelefono.length <= 1 && candidati.length === 1;
+
+  return db.transaction(() => {
+    let pazienteId = collegabile ? candidati[0] : null;
+    if (!pazienteId) {
+      pazienteId = db.prepare(`
+        INSERT INTO pazienti (nome, cognome, email, telefono, creato_il) VALUES (?, ?, ?, ?, ?)
+      `).run(nomePulito, cognomePulito, indirizzo, numero, new Date().toISOString()).lastInsertRowid;
+    }
+    const info = db.prepare(`
+      INSERT INTO utenti (nome, email, password_hash, ruolo, paziente_id, attivo, cambio_password, creato_il)
+      VALUES (?, ?, ?, 'paziente', ?, 1, 0, ?)
+    `).run(`${nomePulito} ${cognomePulito}`, indirizzo, hashPassword(scelta), pazienteId,
+      new Date().toISOString());
+    return pubblico(db.prepare('SELECT * FROM utenti WHERE id = ?').get(info.lastInsertRowid));
+  })();
 }
 
 function trova(id) {
@@ -164,8 +214,12 @@ export function cambiaPasswordProprio(utenteId, attuale, nuova) {
     throw new ErroreDominio('La nuova password deve essere diversa dalla precedente.', 400);
   }
 
-  db.prepare('UPDATE utenti SET password_hash = ?, cambio_password = 0 WHERE id = ?')
-    .run(hashPassword(scelta), utente.id);
+  db.transaction(() => {
+    db.prepare('UPDATE utenti SET password_hash = ?, cambio_password = 0 WHERE id = ?')
+      .run(hashPassword(scelta), utente.id);
+    // Una password cambiata per sospetto furto deve chiudere anche il token rubato.
+    db.prepare('DELETE FROM sessioni WHERE utente_id = ?').run(utente.id);
+  })();
   return { cambiata: true };
 }
 

@@ -1,5 +1,5 @@
 /**
- * Pannello di gestione. Il token di sessione vive in localStorage e viaggia
+ * Pannello di gestione. Il token di sessione vive in sessionStorage e viaggia
  * nell'intestazione Authorization: se il server risponde 401 si torna
  * automaticamente alla schermata di accesso, senza pagine bianche.
  */
@@ -22,7 +22,9 @@ const ETICHETTE_MEDICINE = {
   consegnata: 'Consegnata'
 };
 
-let token = localStorage.getItem(CHIAVE_TOKEN) || '';
+// Trade-off: il refresh mantiene l'accesso, ma la chiusura della scheda lo
+// elimina. Un cookie httpOnly richiederebbe una migrazione CSRF coordinata.
+let token = sessionStorage.getItem(CHIAVE_TOKEN) || '';
 
 // ---- Utilità ---------------------------------------------------------------
 
@@ -289,7 +291,7 @@ function chiediNuovaPassword() {
 function esci(messaggio) {
   token = '';
   utenteAttivo = null;
-  localStorage.removeItem(CHIAVE_TOKEN);
+  sessionStorage.removeItem(CHIAVE_TOKEN);
   mostraSchermata('accesso');
   if (messaggio) avvisa(messaggio, 'errore');
 }
@@ -311,7 +313,7 @@ function collegaAccesso() {
         body: { email: $('#acc-email').value, password: $('#acc-password').value }
       });
       token = dati.token;
-      localStorage.setItem(CHIAVE_TOKEN, token);
+      sessionStorage.setItem(CHIAVE_TOKEN, token);
       $('#acc-password').value = '';
       mostraPannello(dati.utente);
       if (!dati.utente?.deve_cambiare_password) {

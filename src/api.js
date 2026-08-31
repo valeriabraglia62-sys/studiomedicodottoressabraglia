@@ -3,7 +3,7 @@ import { db } from './db.js';
 import { config } from './config.js';
 import {
   autenticazioneOpzionale, richiedeStaff, richiedeAdmin, verificaPassword,
-  creaSessione, eliminaSessione
+  richiedePaziente, RUOLI_STAFF, creaSessione, eliminaSessione
 } from './auth.js';
 import {
   listaAmbulatori, orariAmbulatorio, slotDisponibili, giorniConDisponibilita,
@@ -63,8 +63,18 @@ function limite({ max, secondi }) {
 }
 
 const limiteScrittura = limite({ max: 30, secondi: 60 });
-const limiteLogin = limite({ max: 10, secondi: 300 });
+const limiteLogin = limite({ max: 20, secondi: 300 });
 const limiteChat = limite({ max: 60, secondi: 60 });
+
+// La registrazione e' un gesto unico per persona, ma tante persone possono
+// condividere un indirizzo: la rete di casa di una famiglia, il wifi di uno
+// studio, e soprattutto le uscite NAT degli operatori mobili, dietro cui
+// stanno migliaia di clienti. Cinque all'ora chiudevano fuori il lancio, in
+// cui centinaia di pazienti si iscrivono nello stesso giorno. Sessanta all'ora
+// per indirizzo lasciano passare quei gruppi e fermano comunque uno script che
+// martella da una sorgente sola; il freno vero contro gli account falsi e' la
+// verifica dell'email, non questo conteggio.
+const limiteRegistrazione = limite({ max: 60, secondi: 3600 });
 
 /**
  * Secondo freno sul login, contato per account invece che per indirizzo.
@@ -113,6 +123,29 @@ function fallimentiRecenti(email) {
 export const router = express.Router();
 router.use(autenticazioneOpzionale);
 
+const eStaff = (req) => RUOLI_STAFF.includes(req.utente?.ruolo);
+
+function richiedeAccount(req, res, next) {
+  if (!req.utente) return res.status(401).json({ success: false, message: 'Accedi per continuare.' });
+  if (eStaff(req) && req.utente.deve_cambiare_password) {
+    return res.status(403).json({ success: false, message: 'Devi prima cambiare la password provvisoria.' });
+  }
+  if (!eStaff(req) && (req.utente.ruolo !== 'paziente' || !req.utente.paziente_id)) {
+    return res.status(403).json({ success: false, message: 'Account non collegato a un paziente.' });
+  }
+  next();
+}
+
+function schedaPaziente(req) {
+  const p = db.prepare('SELECT * FROM pazienti WHERE id = ?').get(Number(req.utente.paziente_id));
+  if (!p) throw new ErroreDominio('Il tuo account non è collegato a una scheda valida.', 403);
+  return p;
+}
+
+function praticaVisibile(req, completa, delPaziente) {
+  return eStaff(req) ? completa() : delPaziente(req.utente.paziente_id);
+}
+
 // ---- Dati pubblici --------------------------------------------------------
 
 router.get('/ambulatori', (_req, res) => {
@@ -140,13 +173,21 @@ router.get('/calendario', (req, res) => {
 
 // ---- Prenotazioni ---------------------------------------------------------
 
-router.post('/prenotazioni', limiteScrittura, (req, res) => {
-  const p = prenotazioni.creaPrenotazione({ ...req.body, origine: 'sito' });
+router.post('/prenotazioni', limiteScrittura, richiedePaziente, (req, res) => {
+  const proprietario = schedaPaziente(req);
+  const p = prenotazioni.creaPrenotazione({
+    ...req.body,
+    nome: proprietario.nome, cognome: proprietario.cognome,
+    email: proprietario.email, telefono: proprietario.telefono,
+    origine: 'sito'
+  });
   res.status(201).json({ success: true, prenotazione: pubblica(p) });
 });
 
-router.get('/prenotazioni/:codice', (req, res) => {
-  const p = prenotazioni.perCodice(req.params.codice);
+router.get('/prenotazioni/:codice', richiedeAccount, (req, res) => {
+  const p = praticaVisibile(req,
+    () => prenotazioni.perCodice(req.params.codice),
+    (id) => prenotazioni.perCodiceDelPaziente(req.params.codice, id));
   if (!p) throw new ErroreDominio('Prenotazione non trovata. Controlla il codice.', 404);
   ok(res, {
     prenotazione: pubblica(p),
@@ -155,16 +196,24 @@ router.get('/prenotazioni/:codice', (req, res) => {
   });
 });
 
-router.post('/prenotazioni/:codice/annulla', limiteScrittura, (req, res) => {
-  const p = prenotazioni.annullaPrenotazione(req.params.codice, { da: 'paziente' });
+router.post('/prenotazioni/:codice/annulla', limiteScrittura, richiedeAccount, (req, res) => {
+  if (req.body?.conferma !== true) throw new ErroreDominio('Conferma esplicitamente l\'annullamento.', 400);
+  const propria = praticaVisibile(req,
+    () => prenotazioni.perCodice(req.params.codice),
+    (id) => prenotazioni.perCodiceDelPaziente(req.params.codice, id));
+  if (!propria) throw new ErroreDominio('Prenotazione non trovata.', 404);
+  const p = prenotazioni.annullaPrenotazione(req.params.codice,
+    { da: eStaff(req) ? req.utente.email : 'paziente' });
   attesa.avvisaPerPostoLibero(p);
   ok(res, { prenotazione: pubblica(p) });
 });
 
 // ---- Lista d'attesa -------------------------------------------------------
 
-router.post('/attesa', limiteScrittura, (req, res) => {
-  const v = attesa.iscrivi(req.body || {});
+router.post('/attesa', limiteScrittura, richiedePaziente, (req, res) => {
+  const proprietario = schedaPaziente(req);
+  const v = attesa.iscrivi({ ...req.body, nome: proprietario.nome, cognome: proprietario.cognome,
+    email: proprietario.email, telefono: proprietario.telefono });
   res.status(201).json({ success: true, attesa: { codice: v.codice, data: v.data } });
 });
 
@@ -196,8 +245,11 @@ function pubblica(p) {
 
 // ---- Richieste medicinali -------------------------------------------------
 
-router.post('/medicine', limiteScrittura, (req, res) => {
-  const r = medicine.creaRichiesta({ ...req.body, origine: 'sito' });
+router.post('/medicine', limiteScrittura, richiedePaziente, (req, res) => {
+  const proprietario = schedaPaziente(req);
+  const r = medicine.creaRichiesta({ ...req.body,
+    nome: proprietario.nome, cognome: proprietario.cognome,
+    email: proprietario.email, telefono: proprietario.telefono, origine: 'sito' });
   res.status(201).json({
     success: true,
     richiesta: {
@@ -219,10 +271,13 @@ router.post('/medicine', limiteScrittura, (req, res) => {
  * risposto, un documento che compare senza che nessuno se ne accorga sarebbe
  * peggio che non riceverlo.
  */
-router.post('/medicine/:codice/allegato', limiteScrittura,
+router.post('/medicine/:codice/allegato', limiteScrittura, richiedeAccount,
   express.raw({ type: '*/*', limit: medicine.MASSIMO_BYTE_ALLEGATO }),
   (req, res) => {
-    const r = medicine.perCodice(req.params.codice);
+    if (req.query.conferma !== 'si') throw new ErroreDominio('Conferma esplicitamente il caricamento.', 400);
+    const r = praticaVisibile(req,
+      () => medicine.perCodice(req.params.codice),
+      (id) => medicine.perCodiceDelPaziente(req.params.codice, id));
     if (!r) throw new ErroreDominio('Richiesta non trovata. Controlla il codice.', 404);
     if (r.stato !== 'nuova') {
       throw new ErroreDominio('Questa richiesta è già stata gestita: per aggiungere un documento ci contatti.');
@@ -236,8 +291,10 @@ router.post('/medicine/:codice/allegato', limiteScrittura,
     res.status(201).json({ success: true, allegato: esito });
   });
 
-router.get('/medicine/:codice', (req, res) => {
-  const r = medicine.perCodice(req.params.codice);
+router.get('/medicine/:codice', richiedeAccount, (req, res) => {
+  const r = praticaVisibile(req,
+    () => medicine.perCodice(req.params.codice),
+    (id) => medicine.perCodiceDelPaziente(req.params.codice, id));
   if (!r) throw new ErroreDominio('Richiesta non trovata. Controlla il codice.', 404);
   ok(res, {
     richiesta: {
@@ -263,13 +320,18 @@ router.post('/chat', limiteChat, (req, res) => {
 
 // ---- Autenticazione -------------------------------------------------------
 
+router.post('/auth/register', limiteRegistrazione, (req, res) => {
+  const utente = utenti.registraPaziente(req.body || {});
+  const { token, scadenza } = creaSessione(utente.id);
+  res.status(201).json({ success: true, token, scadenza, utente });
+});
+
 router.post('/auth/login', limiteLogin, via(async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
-  const da = req.ip || 'ignoto';
   const prima = fallimentiRecenti(email);
 
   if (prima >= MAX_FALLITI) {
-    console.error(`[login] account in pausa dopo ${prima} fallimenti: ${email} — ultimo da ${da}`);
+    console.error(`[login] account in pausa dopo ${prima} fallimenti`);
     throw new ErroreDominio(
       'Troppi tentativi falliti su questo account. Riprova fra un quarto d\'ora.', 429
     );
@@ -281,9 +343,8 @@ router.post('/auth/login', limiteLogin, via(async (req, res) => {
     const n = prima + 1;
     falliti.set(email, { n, ultimo: Date.now() });
 
-    // Finisce in logs/errori.log: e' l'unica traccia di un attacco in corso.
-    // Si scrive l'indirizzo tentato, mai la password provata.
-    console.error(`[login] tentativo fallito n.${n} su ${email || '(email vuota)'} da ${da}`);
+    // Finisce in logs/errori.log senza indirizzi o altri identificativi.
+    console.error(`[login] tentativo fallito n.${n}`);
 
     await pausa(RITARDI_MS[Math.min(n, RITARDI_MS.length - 1)]);
 
@@ -309,6 +370,7 @@ router.post('/auth/login', limiteLogin, via(async (req, res) => {
       email: utente.email,
       ruolo: utente.ruolo,
       nome: utente.nome || '',
+      paziente_id: utente.paziente_id || null,
       // Con la password provvisoria si entra, ma il pannello resta chiuso
       // finche' non se ne sceglie una personale.
       deve_cambiare_password: Boolean(utente.cambio_password)
@@ -332,6 +394,12 @@ router.get('/auth/me', (req, res) => {
   if (!req.utente) return res.status(401).json({ success: false, message: 'Sessione scaduta.' });
   ok(res, { utente: req.utente });
 });
+
+router.get('/paziente/prenotazioni', richiedePaziente, (req, res) =>
+  ok(res, { prenotazioni: prenotazioni.perPaziente(req.utente.paziente_id).map(pubblica) }));
+
+router.get('/paziente/medicine', richiedePaziente, (req, res) =>
+  ok(res, { richieste: medicine.perPaziente(req.utente.paziente_id) }));
 
 // ---- Area amministratore --------------------------------------------------
 

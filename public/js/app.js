@@ -12,13 +12,17 @@ const NOMI_MESI = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno',
   'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
 const NOMI_GIORNI = ['domenica', 'lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato'];
 const INIZIALI_GIORNI = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
+const CHIAVE_TOKEN_PAZIENTE = 'studio-medico-paziente';
+let tokenPaziente = sessionStorage.getItem(CHIAVE_TOKEN_PAZIENTE) || '';
 
 // ---- Utilità ---------------------------------------------------------------
 
 async function api(percorso, opzioni = {}) {
+  const headers = { ...(opzioni.body ? { 'Content-Type': 'application/json' } : {}), ...(opzioni.headers || {}) };
+  if (tokenPaziente) headers.Authorization = `Bearer ${tokenPaziente}`;
   const risposta = await fetch(`/api${percorso}`, {
-    headers: opzioni.body ? { 'Content-Type': 'application/json' } : {},
     ...opzioni,
+    headers,
     body: opzioni.body ? JSON.stringify(opzioni.body) : undefined
   });
 
@@ -29,6 +33,32 @@ async function api(percorso, opzioni = {}) {
     throw new Error(dati.message || 'Problema di collegamento. Controlla la rete e riprova.');
   }
   return dati;
+}
+
+function collegaAccountPaziente() {
+  const statoAccount = $('#stato-account');
+  const salva = (dati) => {
+    if (dati.utente?.ruolo !== 'paziente') throw new Error('Questo non è un account paziente.');
+    tokenPaziente = dati.token;
+    sessionStorage.setItem(CHIAVE_TOKEN_PAZIENTE, tokenPaziente);
+    statoAccount.className = 'avviso ok';
+    statoAccount.textContent = `Accesso effettuato come ${dati.utente.nome || dati.utente.email}.`;
+  };
+  if (tokenPaziente) {
+    statoAccount.className = 'avviso ok';
+    statoAccount.textContent = 'Sessione paziente attiva in questa scheda.';
+  }
+  for (const [selettore, percorso] of [['#form-login-paziente', '/auth/login'], ['#form-registra-paziente', '/auth/register']]) {
+    const form = $(selettore);
+    form.addEventListener('submit', (evento) => {
+      evento.preventDefault();
+      inviaProtetto(form, async () => {
+        const dati = await api(percorso, { method: 'POST', body: datiModulo(form) });
+        salva(dati);
+        form.reset();
+      });
+    });
+  }
 }
 
 const testo = (s) => String(s ?? '');
@@ -477,11 +507,15 @@ function mostraAnteprime(campoFile) {
 /** Manda i file uno per uno, dopo che la richiesta esiste e ha un codice. */
 async function inviaAllegati(codice, campoFile) {
   if (!campoFile?.files?.length) return;
+  if (!confirm('Confermi di voler caricare questi documenti sanitari?')) {
+    throw new Error('Caricamento annullato: la richiesta è comunque registrata.');
+  }
 
   for (const file of campoFile.files) {
     const risposta = await fetch(
-      `/api/medicine/${codice}/allegato?nome=${encodeURIComponent(file.name)}`,
-      { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file }
+      `/api/medicine/${codice}/allegato?conferma=si&nome=${encodeURIComponent(file.name)}`,
+      { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream',
+        Authorization: `Bearer ${tokenPaziente}` }, body: file }
     );
 
     if (!risposta.ok) {
@@ -605,7 +639,9 @@ function schedaPrenotazione(p, annullabile) {
     if (!confirm('Vuoi davvero annullare questa prenotazione?')) return;
     pulsante.disabled = true;
     try {
-      const { prenotazione } = await api(`/prenotazioni/${p.codice}/annulla`, { method: 'POST' });
+      const { prenotazione } = await api(`/prenotazioni/${p.codice}/annulla`, {
+        method: 'POST', body: { conferma: true }
+      });
       $('#esito-ricerca').replaceChildren(schedaPrenotazione(prenotazione, false));
       avvisa('Prenotazione annullata. Il posto è tornato disponibile.', 'ok');
       caricaMese();
@@ -777,6 +813,7 @@ async function avvia() {
   stato.meseVisibile = { anno, mese: mese - 1 };
 
   collegaNavigazione();
+  collegaAccountPaziente();
   collegaFormPrenotazione();
   collegaFormMedicine();
   collegaFormRicerca();

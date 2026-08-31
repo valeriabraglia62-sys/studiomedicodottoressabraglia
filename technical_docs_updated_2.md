@@ -120,7 +120,9 @@ Il sistema espone i seguenti endpoint API:
 - Invio conferma di annullamento via email
 
 ### Pannello Amministratore
-- Login sicuro (email: valeriabraglia62@gmail.com, password: [RIMOSSA-DALLA-CRONOLOGIA])
+- Login amministratore (credenziali: `[RIMOSSE — configurare in .env]`)
+  > Nota: la credenziale precedentemente presente va considerata compromessa e ruotata;
+  > la rimozione dalla cronologia Git deve essere eseguita separatamente.
 - Dashboard con statistiche e grafici
 - Visualizzazione di tutte le prenotazioni
 - Filtri per data, ambulatorio e stato

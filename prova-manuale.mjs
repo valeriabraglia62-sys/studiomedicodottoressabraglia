@@ -34,6 +34,10 @@ process.env.INBOX_POLLING_ENABLED = 'false';
 process.env.GOOGLE_SHEETS_ENABLED = 'false';
 process.env.GOOGLE_MODULI_ENABLED = 'false';
 
+// La prova a mano gira su http://localhost: senza questo l'HTTPS fail-closed
+// rimanderebbe ogni richiesta al lucchetto (in produzione resta obbligatorio).
+process.env.SITO_HTTPS = 'false';
+
 process.env.ADMIN_EMAIL = 'auslvaleria@gmail.com';
 process.env.ADMIN_PASSWORD = 'ProvaUsaEGetta2026!';
 

@@ -121,37 +121,63 @@ export function richiedeAdmin(req, res, next) {
   next();
 }
 
+/** Un paziente con fascicolo collegato; gli account incompleti non vedono dati. */
+export function richiedePaziente(req, res, next) {
+  const utente = req.utente || utenteDaToken(estraiToken(req));
+  if (!utente || utente.ruolo !== 'paziente' || !utente.paziente_id) {
+    return res.status(403).json({
+      success: false,
+      message: 'Accedi con il tuo account paziente per continuare.'
+    });
+  }
+  req.utente = utente;
+  next();
+}
+
 /** Crea o aggiorna un account di servizio a partire da .env, all'avvio. */
-function inizializzaUtente(email, password, ruolo, etichetta) {
+function inizializzaUtente(email, password, ruolo, etichetta, resetOnce = false) {
   if (!email) return;
 
   const esistente = db.prepare('SELECT id, password_hash, ruolo FROM utenti WHERE email = ?').get(email);
 
   if (!esistente) {
     if (!password) {
-      console.warn(`[auth] Nessun account ${etichetta} per ${email}: imposta la password in .env.`);
+      console.warn(`[auth] Account bootstrap ${etichetta} assente: configura la password iniziale.`);
       return;
     }
     db.prepare('INSERT INTO utenti (email, password_hash, ruolo, creato_il) VALUES (?, ?, ?, ?)')
       .run(email, hashPassword(password), ruolo, new Date().toISOString());
-    console.log(`[auth] Account ${etichetta} creato per ${email}.`);
+    console.log(`[auth] Account bootstrap ${etichetta} creato.`);
     return;
   }
 
-  if (esistente.ruolo !== ruolo) {
-    db.prepare('UPDATE utenti SET ruolo = ? WHERE id = ?').run(ruolo, esistente.id);
-  }
+  // Mai riapplicare automaticamente una password bootstrap: dopo il primo
+  // avvio la password vera appartiene all'utente, non al file .env.
+  if (!resetOnce || !password) return;
 
-  // Permette di recuperare l'accesso reimpostando la password in .env.
-  if (password && !verificaPassword(password, esistente.password_hash)) {
-    db.prepare('UPDATE utenti SET password_hash = ? WHERE id = ?')
+  // "once" resta nel file anche dopo il riavvio. L'impronta rende il comando
+  // davvero monouso; cambiando intenzionalmente la password si ottiene un nuovo
+  // recovery, senza conservare il segreto nel database.
+  const chiave = `recovery:${ruolo}:${email}`;
+  const impronta = crypto.createHmac('sha256', config.sessionSecret)
+    .update(`${email}\0${password}`).digest('hex');
+  const giaConsumata = db.prepare('SELECT valore FROM impostazioni WHERE chiave = ?').get(chiave);
+  if (giaConsumata?.valore === impronta) return;
+
+  db.transaction(() => {
+    db.prepare('UPDATE utenti SET password_hash = ?, cambio_password = 1 WHERE id = ?')
       .run(hashPassword(password), esistente.id);
-    console.log(`[auth] Password ${etichetta} aggiornata da .env per ${email}.`);
-  }
+    db.prepare('DELETE FROM sessioni WHERE utente_id = ?').run(esistente.id);
+    db.prepare(`
+      INSERT INTO impostazioni (chiave, valore, aggiornata_il) VALUES (?, ?, ?)
+      ON CONFLICT(chiave) DO UPDATE SET valore = excluded.valore, aggiornata_il = excluded.aggiornata_il
+    `).run(chiave, impronta, new Date().toISOString());
+  })();
+  console.warn(`[auth] Recovery monouso ${etichetta} applicato; sessioni revocate.`);
 }
 
 export function inizializzaAdmin() {
-  inizializzaUtente(config.admin.email, config.admin.initialPassword, 'admin', 'medico');
+  inizializzaUtente(config.admin.email, config.admin.initialPassword, 'admin', 'medico', config.admin.resetOnce);
   inizializzaUtente(config.segreteria.email, config.segreteria.initialPassword,
-    'segretaria', 'segreteria');
+    'segretaria', 'segreteria', config.segreteria.resetOnce);
 }

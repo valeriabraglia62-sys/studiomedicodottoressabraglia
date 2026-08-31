@@ -109,6 +109,14 @@ const SELECT_COMPLETO = `
 export const perCodice = (codice) =>
   db.prepare(`${SELECT_COMPLETO} WHERE r.codice = ?`).get(String(codice || '').trim().toUpperCase());
 
+export const perCodiceDelPaziente = (codice, pazienteId) => db.prepare(
+  `${SELECT_COMPLETO} WHERE r.codice = ? AND r.paziente_id = ?`
+).get(String(codice || '').trim().toUpperCase(), Number(pazienteId));
+
+export const perPaziente = (pazienteId) => db.prepare(
+  `${SELECT_COMPLETO} WHERE r.paziente_id = ? ORDER BY r.creata_il DESC`
+).all(Number(pazienteId));
+
 export const dettaglio = (id) => db.prepare(`${SELECT_COMPLETO} WHERE r.id = ?`).get(id);
 
 export function creaRichiesta(dati) {

@@ -8,6 +8,7 @@ export const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
 const bool = (v, def = false) => (v === undefined ? def : /^(1|true|si|sì|yes)$/i.test(String(v).trim()));
+const lista = (v) => String(v || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
 
 function requireSecret() {
   const s = process.env.SESSION_SECRET;
@@ -69,13 +70,14 @@ export const config = {
   nomeStudio: (process.env.NOME_STUDIO || '').trim() || 'Studio Medico Dottoressa Braglia',
 
   // Il sito e' raggiungibile da internet, dietro un proxy o un tunnel che
-  // fornisce il lucchetto HTTPS. Da attivare SOLO quando quel lucchetto c'e'
-  // davvero: acceso troppo presto rimanderebbe i pazienti a un indirizzo
-  // sicuro che ancora non esiste, e nessuno aprirebbe piu' il sito.
+  // fornisce il lucchetto HTTPS. L'HTTP locale va richiesto esplicitamente:
+  // una configurazione incompleta deve chiudere l'accesso, non esporre dati.
   pubblico: {
-    https: bool(process.env.SITO_HTTPS),
+    // Fail closed: l'HTTP va scelto esplicitamente, per esempio nei test locali.
+    https: process.env.SITO_HTTPS === undefined ? true : String(process.env.SITO_HTTPS).trim().toLowerCase() !== 'false',
     // Indirizzo pubblico, es. https://studio-arceto.it — finisce nelle email.
     url: (process.env.SITO_URL || '').trim().replace(/\/+$/, ''),
+    hostAmmessi: lista(process.env.HOST_AMMESSI),
 
     // Quanti proxy stanno davanti al sito (il tunnel Cloudflare conta come 1).
     //
@@ -96,14 +98,16 @@ export const config = {
   admin: {
     email: (process.env.ADMIN_EMAIL || '').trim().toLowerCase(),
     // Usata solo al primo avvio per creare l'account; poi resta solo l'hash nel database.
-    initialPassword: process.env.ADMIN_PASSWORD || ''
+    initialPassword: process.env.ADMIN_PASSWORD || '',
+    resetOnce: String(process.env.ADMIN_PASSWORD_RESET || '').trim().toLowerCase() === 'once'
   },
 
   // Account della segreteria: vede l'agenda e gestisce ricette ed email,
   // ma non i motivi delle visite ne' le statistiche.
   segreteria: {
     email: (process.env.SEGRETARIA_EMAIL || '').trim().toLowerCase(),
-    initialPassword: process.env.SEGRETARIA_PASSWORD || ''
+    initialPassword: process.env.SEGRETARIA_PASSWORD || '',
+    resetOnce: String(process.env.SEGRETARIA_PASSWORD_RESET || '').trim().toLowerCase() === 'once'
   },
 
   email: {
@@ -116,7 +120,9 @@ export const config = {
 
   inbox: {
     enabled: bool(process.env.INBOX_POLLING_ENABLED),
-    intervalSeconds: Math.max(30, Number(process.env.INBOX_POLL_INTERVAL_SECONDS) || 120)
+    intervalSeconds: Math.max(30, Number(process.env.INBOX_POLL_INTERVAL_SECONDS) || 120),
+    massimoByteMessaggio: Math.max(1024 * 1024,
+      Number(process.env.INBOX_MAX_MESSAGE_BYTES) || 15 * 1024 * 1024)
   },
 
   sheets: {

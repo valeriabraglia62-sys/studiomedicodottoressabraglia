@@ -437,6 +437,9 @@ registraGestore('cestina_email', cestinaMessaggio);
 let inCorso = false;
 let timer = null;
 let ultimoEsito = { mai_eseguito: true };
+
+export const superaLimiteMessaggio = (byte) =>
+  Number(byte || 0) > config.inbox.massimoByteMessaggio;
 // La connessione del giro in corso, per poterla chiudere se sfora il tempo.
 let clientAttivo = null;
 
@@ -584,9 +587,14 @@ async function leggiCasella() {
         // finestra di giorni viene riletta ogni due minuti, scaricare ogni volta
         // il testo di tutti i messaggi vorrebbe dire ripassare gli stessi
         // megabyte tutto il giorno per non trovarci quasi mai niente di nuovo.
-        const busta = await client.fetchOne(String(id), { envelope: true }, { uid: true });
+        const busta = await client.fetchOne(String(id), { envelope: true, size: true }, { uid: true });
         const idMessaggio = busta?.envelope?.messageId || `uid-${id}`;
         if (giaVista(idMessaggio)) continue;
+        if (superaLimiteMessaggio(busta?.size)) {
+          stmtSegnaVista.run(idMessaggio, new Date().toISOString(), 'scartata_dimensione', null);
+          console.warn('[inbox] messaggio scartato: dimensione oltre il limite configurato');
+          continue;
+        }
 
         // Le notifiche di annullamento che il programma manda finiscono nella
         // stessa casella che legge, perche' mittente e destinatario sono lo
@@ -608,6 +616,11 @@ async function leggiCasella() {
 
         const msg = await client.fetchOne(String(id), { source: true }, { uid: true });
         if (!msg?.source) continue;
+        if (superaLimiteMessaggio(msg.source.length)) {
+          stmtSegnaVista.run(idMessaggio, new Date().toISOString(), 'scartata_dimensione', null);
+          console.warn('[inbox] messaggio scartato: dimensione oltre il limite configurato');
+          continue;
+        }
 
         const mail = await simpleParser(msg.source);
         const mittente = mail.from?.value?.[0]?.address || '';
@@ -690,7 +703,7 @@ export function pulisciEmailVecchie() {
       segnaEmail(e.codice, 'gestita');
       cestinate++;
     } catch (err) {
-      console.error('[inbox] pulizia', e.codice, err.message);
+      console.error('[inbox] pulizia fallita:', err.message);
     }
   }
 

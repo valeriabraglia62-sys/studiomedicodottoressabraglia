@@ -326,17 +326,51 @@ let ultimoEsito = { mai_eseguito: true };
 // senza un limite la lettura resterebbe appesa per sempre e non ripartirebbe.
 const TEMPO_MASSIMO_MS = 60_000;
 
-async function leggiFoglio(tipo) {
+export async function leggiFoglio(tipo) {
   const foglio = config.moduli.fogli[tipo];
   if (!foglio.id) return { nuove: 0, gia_viste: 0, saltato: 'non configurato' };
 
   const sheets = await clientFogli();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: foglio.id,
-    range: `${foglio.scheda}!A:Z`
-  });
+  const chiave = `google_forms:${tipo}:${foglio.id}:${foglio.scheda}`;
+  const chiaveRiconciliazione = `${chiave}:riconciliazione`;
+  const salvato = db.prepare('SELECT ultima_riga FROM cursori_integrazioni WHERE chiave = ?').get(chiave);
+  const ultimaRiga = Math.max(Number(salvato?.ultima_riga || 1), 1);
+  const ultimoCompleto = db.prepare('SELECT valore FROM impostazioni WHERE chiave = ?')
+    .get(chiaveRiconciliazione)?.valore;
+  // La lettura ordinaria e' incrementale. Una volta al giorno si riconcilia
+  // l'intero foglio: protegge da righe inserite o riordinate manualmente prima
+  // del cursore, senza rileggere A:Z a ogni ciclo.
+  const completa = !ultimoCompleto || Date.now() - Date.parse(ultimoCompleto) >= 86400000;
+  const rigaIniziale = completa ? 2 : ultimaRiga + 1;
+  const [testata, nuoveRighe] = await Promise.all([
+    sheets.spreadsheets.values.get({
+      spreadsheetId: foglio.id,
+      range: `${foglio.scheda}!A1:Z1`
+    }),
+    sheets.spreadsheets.values.get({
+      spreadsheetId: foglio.id,
+      range: `${foglio.scheda}!A${rigaIniziale}:Z`
+    })
+  ]);
+  const righe = nuoveRighe.data.values || [];
+  const intestazioni = testata.data.values?.[0] || [];
+  const esito = importaRighe(tipo, [intestazioni, ...righe]);
 
-  return importaRighe(tipo, res.data.values || []);
+  const nuovaUltimaRiga = righe.length ? rigaIniziale + righe.length - 1 : (completa ? 1 : ultimaRiga);
+  if (righe.length || completa) db.prepare(`
+    INSERT INTO cursori_integrazioni (chiave, ultima_riga, aggiornata_il)
+    VALUES (?, ?, ?)
+    ON CONFLICT(chiave) DO UPDATE SET
+      ultima_riga = excluded.ultima_riga,
+      aggiornata_il = excluded.aggiornata_il
+  `).run(chiave, completa ? nuovaUltimaRiga : Math.max(ultimaRiga, nuovaUltimaRiga), new Date().toISOString());
+
+  if (completa) db.prepare(`
+    INSERT INTO impostazioni (chiave, valore, aggiornata_il) VALUES (?, ?, ?)
+    ON CONFLICT(chiave) DO UPDATE SET valore = excluded.valore, aggiornata_il = excluded.aggiornata_il
+  `).run(chiaveRiconciliazione, new Date().toISOString(), new Date().toISOString());
+
+  return esito;
 }
 
 export async function controllaModuli() {

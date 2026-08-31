@@ -58,7 +58,8 @@ macchina Windows, come servizio `StudioMedico`, sulla porta 3000, in
 `C:\Users\valer\Desktop\studiomedicodottoressabraglia`. Il Mac non deve piu'
 avviare il server.
 
-Dagli altri computer dello studio si raggiunge a **`http://PC-DI-VALERIA:3000`**.
+Dagli altri computer dello studio si raggiunge esclusivamente via HTTPS, per
+esempio **`https://studio.tuodominio.it`**, attraverso il proxy configurato.
 
 **Non usare l'indirizzo numerico.** Questa macchina prende l'IP dal DHCP e
 cambia da solo: la sera del 10 agosto e' passato da `172.20.10.7` a
@@ -281,7 +282,7 @@ Scegli una sera in cui non usa il pannello nessuno.
    ```powershell
    npm start
    ```
-4. Apri `http://localhost:3000` e `http://localhost:3000/admin.html` **da quella
+4. Apri `https://studio.tuodominio.it` e `https://studio.tuodominio.it/admin.html` **da quella
    stessa macchina**. Se il pannello si apre, il login funziona e ci sono tutte
    le prenotazioni, il travaso e' riuscito.
 5. Poi lancia i test:
@@ -458,8 +459,8 @@ un riavvio e' innocuo, ma tanto vale che capiti quando non serve a nessuno.
 ### 5.9 Portare le copie di backup fuori dalla macchina
 
 Il backup gia' funziona, ma le copie stanno accanto all'originale: se salta quel
-disco, saltano insieme. Windows 11 ha OneDrive gia' dentro, quindi basta far
-scrivere le copie li'.
+disco, saltano insieme. Le copie devono andare su una destinazione organizzativa
+controllata dallo studio e cifrata, mai su OneDrive personale.
 
 Costo zero: l'archivio pesa meno di mezzo mega, un anno di copie giornaliere sta
 in centocinquanta mega scarsi.
@@ -469,19 +470,17 @@ vuota, le copie restano in `data/backup` come sempre, quindi finche' non la si
 tocca non cambia niente. Il percorso puo' essere assoluto o relativo alla radice
 del progetto.
 
-Per mandarle su OneDrive basta scrivere nel `.env`:
+Configurare nel `.env` una destinazione organizzativa dedicata:
 
 ```
-CARTELLA_BACKUP=C:\Users\valer\OneDrive\StudioMedico\backup
+CARTELLA_BACKUP=D:\BackupOrganizzazione\StudioMedico
 ```
 
 e riavviare il servizio, perche' la configurazione si legge all'avvio.
 
-**Prima di farlo, una cosa va detta chiaramente.** Dentro quelle copie ci sono i
-dati sanitari di persone reali. Sincronizzarle su OneDrive significa metterle su
-un servizio esterno, sull'account personale di chi possiede quella cartella. E' il
-prezzo da pagare per non perdere tutto se salta il disco, ed e' un compromesso
-ragionevole, ma va scelto sapendolo. Non e' una comodita' da attivare di sfuggita.
+**Dentro quelle copie ci sono dati sanitari reali.** Vietato usare OneDrive o
+altri account cloud personali. La destinazione deve essere organizzativa, con
+accessi amministrati, cifratura e politica di conservazione documentata.
 
 Da sapere anche: le copie dei test si chiamano `prova-*.sqlite` e quelle vere
 `medstudent-*.sqlite`. Le due serie si contano separatamente, quindi rilanciare i

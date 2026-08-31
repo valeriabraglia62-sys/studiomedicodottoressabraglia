@@ -23,13 +23,27 @@ import { router } from './src/api.js';
  * massimo la singola richiesta, mai il servizio degli altri pazienti.
  */
 process.on('uncaughtException', (err) => {
-  console.error('[fatale] eccezione non gestita:', err);
+  console.error('[fatale] eccezione non gestita:', err?.name || 'Errore');
 });
 process.on('unhandledRejection', (err) => {
-  console.error('[fatale] promise rifiutata:', err);
+  console.error('[fatale] promise rifiutata:', err?.name || 'Errore');
 });
 
 const app = express();
+
+const hostConfigurato = (() => {
+  try { return config.pubblico.url ? new URL(config.pubblico.url).host.toLowerCase() : ''; }
+  catch { return ''; }
+})();
+const hostAmmessi = new Set([
+  ...config.pubblico.hostAmmessi.map((h) => h.toLowerCase()),
+  hostConfigurato
+].filter(Boolean));
+
+export function destinazioneRedirectHttps(hostRichiesto) {
+  const richiesto = String(hostRichiesto || '').toLowerCase();
+  return hostConfigurato || (hostAmmessi.has(richiesto) ? richiesto : '');
+}
 
 // Vedi config.pubblico.proxyDavanti: da questo numero dipende se l'indirizzo
 // di chi chiama e' un fatto o una dichiarazione dell'interessato.
@@ -76,8 +90,12 @@ app.use((req, res, next) => {
     // com'e' arrivata dal paziente. Se e' partita in chiaro la rimandiamo al
     // lucchetto, altrimenti password e dati sanitari attraverserebbero reti
     // altrui leggibili da chiunque.
-    if (req.get('x-forwarded-proto') === 'http') {
-      return res.redirect(308, `https://${req.get('host')}${req.originalUrl}`);
+    // Il controllo di salute lo interroga il monitoraggio locale in HTTP diretto
+    // su localhost: non va mai redirezionato, o ogni sonda fallisce.
+    if (!req.secure && req.path !== '/salute') {
+      const destinazione = destinazioneRedirectHttps(req.get('host'));
+      if (!destinazione) return res.status(421).send('Host non ammesso.');
+      return res.redirect(308, `https://${destinazione}${req.originalUrl}`);
     }
     res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
   }
@@ -105,15 +123,16 @@ app.get('/salute', (_req, res) => {
 app.use((_req, res) => res.status(404).sendFile(path.join(ROOT, 'public', 'index.html')));
 
 inizializzaAdmin();
+pulisciChatVecchie(3);
 
 const manutenzione = setInterval(() => {
   pulisciSessioniScadute();
-  pulisciChatVecchie(30);
-}, 6 * 3600 * 1000);
+  pulisciChatVecchie(3);
+}, 15 * 60 * 1000);
 manutenzione.unref?.();
 
 const server = app.listen(config.port, async () => {
-  console.log(`\n  ${config.nomeStudio} — server attivo su http://localhost:${config.port}\n`);
+  console.log(`\n  ${config.nomeStudio} — servizio attivo sulla porta ${config.port}\n`);
 
   avviaWorker(30);
   avviaPromemoria();

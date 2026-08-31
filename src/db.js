@@ -59,6 +59,20 @@ CREATE TABLE IF NOT EXISTS sessioni (
 );
 CREATE INDEX IF NOT EXISTS idx_sessioni_scadenza ON sessioni(scade_il);
 
+-- Stato operativo piccolo e non sensibile: recovery monouso e cursori delle
+-- integrazioni devono sopravvivere ai riavvii del processo.
+CREATE TABLE IF NOT EXISTS impostazioni (
+  chiave        TEXT PRIMARY KEY,
+  valore        TEXT,
+  aggiornata_il TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cursori_integrazioni (
+  chiave        TEXT PRIMARY KEY,
+  ultima_riga   INTEGER NOT NULL DEFAULT 1,
+  aggiornata_il TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS prenotazioni (
   id                 INTEGER PRIMARY KEY AUTOINCREMENT,
   codice             TEXT NOT NULL UNIQUE,
@@ -376,6 +390,36 @@ for (const [vecchio, nuovo] of [
 ]) {
   db.prepare('UPDATE richieste_medicine SET stato = ? WHERE stato = ?').run(nuovo, vecchio);
 }
+
+/**
+ * Collega le vecchie richieste al fascicolo solo quando il dato e' univoco.
+ * Email e telefono possono mancare o essere duplicati: in quel caso non si
+ * indovina. La riga resta senza proprietario e la puo' gestire solo lo staff.
+ */
+const senzaProprietario = db.prepare(`
+  SELECT id, lower(trim(coalesce(email, ''))) AS email,
+         replace(replace(replace(replace(replace(coalesce(telefono, ''),
+           ' ', ''), '.', ''), '-', ''), '(', ''), ')', '') AS telefono
+    FROM richieste_medicine WHERE paziente_id IS NULL
+`).all();
+const pazientiPerEmail = db.prepare('SELECT id FROM pazienti WHERE lower(trim(coalesce(email, \'\'))) = ?');
+const pazientiPerTelefono = db.prepare(`
+  SELECT id FROM pazienti WHERE replace(replace(replace(replace(replace(
+    coalesce(telefono, ''), ' ', ''), '.', ''), '-', ''), '(', ''), ')', '') = ?
+`);
+const collegaRichiesta = db.prepare(
+  'UPDATE richieste_medicine SET paziente_id = ? WHERE id = ? AND paziente_id IS NULL'
+);
+
+db.transaction(() => {
+  for (const r of senzaProprietario) {
+    const perEmail = r.email ? pazientiPerEmail.all(r.email) : [];
+    const perTelefono = r.telefono ? pazientiPerTelefono.all(r.telefono) : [];
+    if (perEmail.length > 1 || perTelefono.length > 1) continue;
+    const candidati = [...new Set([...perEmail, ...perTelefono].map((p) => p.id))];
+    if (candidati.length === 1) collegaRichiesta.run(candidati[0], r.id);
+  }
+})();
 
 const AMBULATORI_INIZIALI = [
   {

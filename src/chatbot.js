@@ -35,7 +35,14 @@ function leggiSessione(id) {
   const s = db.prepare('SELECT * FROM chat_sessioni WHERE id = ?').get(id);
   if (!s) return null;
   const scaduta = Date.now() - Date.parse(s.ultima_attivita) > SCADENZA_ORE * 3600000;
-  return { ...s, stato: scaduta ? { ...STATO_INIZIALE } : JSON.parse(s.stato_json || '{}') };
+  if (scaduta) {
+    db.transaction(() => {
+      db.prepare('DELETE FROM chat_messaggi WHERE sessione_id = ?').run(id);
+      db.prepare('DELETE FROM chat_sessioni WHERE id = ?').run(id);
+    })();
+    return null;
+  }
+  return { ...s, stato: JSON.parse(s.stato_json || '{}') };
 }
 
 function salvaStato(id, stato) {
@@ -782,7 +789,7 @@ export function benvenuto(sessioneId) {
   return { sessioneId: id, cronologia: cronologia(id), azioni: MENU.azioni, ripresa: false };
 }
 
-export function pulisciChatVecchie(giorni = 30) {
+export function pulisciChatVecchie(giorni = 3) {
   const limite = new Date(Date.now() - giorni * 86400000).toISOString();
   return db.prepare('DELETE FROM chat_sessioni WHERE ultima_attivita < ?').run(limite).changes;
 }

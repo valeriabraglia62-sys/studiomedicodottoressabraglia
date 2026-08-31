@@ -279,6 +279,10 @@ export const dettaglio = (id) => db.prepare(`${SELECT_COMPLETO} WHERE p.id = ?`)
 export const perCodice = (codice) =>
   db.prepare(`${SELECT_COMPLETO} WHERE p.codice = ?`).get(String(codice || '').trim().toUpperCase());
 
+export const perCodiceDelPaziente = (codice, pazienteId) => db.prepare(
+  `${SELECT_COMPLETO} WHERE p.codice = ? AND p.paziente_id = ?`
+).get(String(codice || '').trim().toUpperCase(), Number(pazienteId));
+
 export const perPaziente = (pazienteId) =>
   db.prepare(`${SELECT_COMPLETO} WHERE p.paziente_id = ? ORDER BY p.data DESC, p.ora_inizio DESC`)
     .all(pazienteId);

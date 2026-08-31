@@ -20,6 +20,9 @@ process.env.DB_FILE = DB_PROVA;
 process.env.PORT = '3999';
 process.env.INBOX_POLLING_ENABLED = 'false';
 process.env.GOOGLE_SHEETS_ENABLED = 'false';
+// I test parlano direttamente in HTTP locale; la produzione resta HTTPS
+// fail-closed salvo questa disattivazione esplicita.
+process.env.SITO_HTTPS = 'false';
 
 // Spento anche il lavoratore dei Moduli: acceso, mentre le prove girano legge il
 // foglio delle risposte vero e ne infila le righe nel database usa e getta. Le
@@ -56,6 +59,11 @@ for (const evento of ['uncaughtException', 'unhandledRejection']) {
 }
 
 const BASE = 'http://localhost:3999';
+let tokenPaziente = '';
+const tokenPazienti = new Map();
+let registraPazienteDiretto = null;
+let creaSessioneDiretta = null;
+let inizializzaAdminDiretto = null;
 
 let passati = 0;
 let falliti = 0;
@@ -71,11 +79,24 @@ function verifica(descrizione, condizione, dettaglio = '') {
 }
 
 const chiama = async (metodo, percorso, corpo, token) => {
+  const protettaPaziente = percorso.startsWith('/api/prenotazioni')
+    || percorso.startsWith('/api/medicine') || percorso === '/api/attesa';
+  const creazione = metodo === 'POST' && ['/api/prenotazioni', '/api/medicine', '/api/attesa'].includes(percorso);
+  const emailCorpo = String(corpo?.email || '').trim().toLowerCase();
+  if (!token && creazione && emailCorpo && !tokenPazienti.has(emailCorpo)
+      && registraPazienteDiretto && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emailCorpo)
+      && /^(\+39)?\d{8,11}$/.test(String(corpo?.telefono || '').replace(/[\s.\-()]/g, ''))
+      && corpo?.nome && corpo?.cognome) {
+    const u = registraPazienteDiretto({ ...corpo, password: 'PasswordPaziente!2026' });
+    tokenPaziente = creaSessioneDiretta(u.id).token;
+    tokenPazienti.set(emailCorpo, tokenPaziente);
+  }
+  const credenziale = token || tokenPazienti.get(emailCorpo) || (protettaPaziente ? tokenPaziente : '');
   const r = await fetch(BASE + percorso, {
     method: metodo,
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
+      ...(credenziale ? { Authorization: `Bearer ${credenziale}` } : {})
     },
     body: corpo ? JSON.stringify(corpo) : undefined
   });
@@ -84,8 +105,21 @@ const chiama = async (metodo, percorso, corpo, token) => {
 
 const { db } = await import('../src/db.js');
 const { config } = await import('../src/config.js');
-await import('../server.js');
+({ registraPaziente: registraPazienteDiretto } = await import('../src/utenti.js'));
+({ creaSessione: creaSessioneDiretta, inizializzaAdmin: inizializzaAdminDiretto } = await import('../src/auth.js'));
+const serverModulo = await import('../server.js');
 await new Promise((r) => setTimeout(r, 1500));
+verifica('un Host ostile non viene riflesso nel redirect HTTPS',
+  serverModulo.destinazioneRedirectHttps('evil.example') === '');
+
+const registrazionePaziente = await chiama('POST', '/api/auth/register', {
+  nome: 'Mario', cognome: 'Rossi', telefono: '3331234567',
+  email: 'mario.rossi.prova@example.it', password: 'PasswordPaziente!2026'
+});
+tokenPaziente = registrazionePaziente.dati.token || '';
+tokenPazienti.set('mario.rossi.prova@example.it', tokenPaziente);
+verifica('registrazione paziente crea una sessione',
+  registrazionePaziente.stato === 201 && Boolean(tokenPaziente));
 
 console.log('\nDati pubblici');
 {
@@ -165,6 +199,7 @@ console.log('\nControlli sui dati');
 
 console.log('\nRicerca e annullamento');
 {
+  const tokenProprietario = tokenPaziente;
   const trovata = await chiama('GET', `/api/prenotazioni/${codicePrenotazione}`);
   verifica('la prenotazione si ritrova col codice', trovata.dati.prenotazione?.codice === codicePrenotazione);
   verifica('i dati interni non escono', trovata.dati.prenotazione?.paziente_id === undefined);
@@ -172,14 +207,32 @@ console.log('\nRicerca e annullamento');
   const inesistente = await chiama('GET', '/api/prenotazioni/PRE-XXXX-XXXX');
   verifica('codice inesistente da 404', inesistente.stato === 404);
 
-  const annullata = await chiama('POST', `/api/prenotazioni/${codicePrenotazione}/annulla`);
+  const secondo = await chiama('POST', '/api/auth/register', {
+    nome: 'Secondo', cognome: 'Paziente', telefono: '3337654321',
+    email: 'secondo.paziente@example.it', password: 'PasswordSecondo!2026'
+  });
+  tokenPazienti.set('secondo.paziente@example.it', secondo.dati.token);
+  const loginSecondo = await chiama('POST', '/api/auth/login', {
+    email: 'secondo.paziente@example.it', password: 'PasswordSecondo!2026'
+  });
+  verifica('login paziente riuscito', loginSecondo.stato === 200
+    && loginSecondo.dati.utente?.ruolo === 'paziente');
+  const incrociata = await chiama('GET', `/api/prenotazioni/${codicePrenotazione}`, null,
+    secondo.dati.token);
+  verifica('un paziente non legge la pratica di un altro', incrociata.stato === 404);
+  tokenPaziente = tokenProprietario;
+
+  const nonConfermata = await chiama('POST', `/api/prenotazioni/${codicePrenotazione}/annulla`, {});
+  verifica('annullare richiede conferma esplicita', nonConfermata.stato === 400);
+
+  const annullata = await chiama('POST', `/api/prenotazioni/${codicePrenotazione}/annulla`, { conferma: true });
   verifica('annullamento riuscito', annullata.stato === 200, JSON.stringify(annullata.dati).slice(0, 120));
 
   verifica('la prenotazione annullata non propone piu\' il calendario',
     annullata.dati.prenotazione?.calendario === null,
     String(annullata.dati.prenotazione?.calendario).slice(0, 80));
 
-  const dueVolte = await chiama('POST', `/api/prenotazioni/${codicePrenotazione}/annulla`);
+  const dueVolte = await chiama('POST', `/api/prenotazioni/${codicePrenotazione}/annulla`, { conferma: true });
   verifica('non si annulla due volte', dueVolte.stato === 400);
 
   const tornato = await chiama('GET', `/api/disponibilita?data=${giorno}&ambulatorio_id=1`);
@@ -197,6 +250,9 @@ console.log('\nRichieste di medicinali');
 
   const consultata = await chiama('GET', `/api/medicine/${dati.richiesta?.codice}`);
   verifica('la richiesta si ritrova col codice', consultata.dati.richiesta?.stato === 'nuova');
+  const medicinaIncrociata = await chiama('GET', `/api/medicine/${dati.richiesta?.codice}`,
+    null, tokenPazienti.get('secondo.paziente@example.it'));
+  verifica('un paziente non legge i medicinali di un altro', medicinaIncrociata.stato === 404);
 
   const senzaFarmaci = await chiama('POST', '/api/medicine', {
     nome: 'Anna', cognome: 'Bianchi', telefono: '3339876543', farmaci: ''
@@ -222,6 +278,13 @@ console.log('\nChatbot');
 
   const sconosciuto = await chiama('POST', '/api/chat', { sessione, testo: 'qwerty asdf' });
   verifica('un messaggio incomprensibile non rompe la chat', sconosciuto.stato === 200 && Boolean(sconosciuto.dati.testo));
+
+  db.prepare("UPDATE chat_sessioni SET ultima_attivita = datetime('now', '-73 hours') WHERE id = ?")
+    .run(sessione);
+  const scaduta = await chiama('GET', `/api/chat?sessione=${encodeURIComponent(sessione)}`);
+  const rimasti = db.prepare('SELECT COUNT(*) n FROM chat_messaggi WHERE sessione_id = ?').get(sessione).n;
+  verifica('la scadenza a 72 ore cancella davvero la cronologia',
+    scaduta.dati.sessioneId !== sessione && rimasti === 0);
 }
 
 // Le parole del menu si sovrappongono: "visita dal cardiologo" contiene sia
@@ -377,8 +440,9 @@ console.log('\nEsami dal chatbot, con la prescrizione allegata');
     'base64');
 
   const carica = (codice, nome) => fetch(
-    `${BASE}/api/medicine/${codice}/allegato?nome=${encodeURIComponent(nome)}`,
-    { method: 'POST', headers: { 'Content-Type': 'image/png' }, body: PNG });
+    `${BASE}/api/medicine/${codice}/allegato?conferma=si&nome=${encodeURIComponent(nome)}`,
+    { method: 'POST', headers: { 'Content-Type': 'image/png',
+      Authorization: `Bearer ${tokenPaziente}` }, body: PNG });
 
   const apertura = await chiama('GET', '/api/chat');
   const sessione = apertura.dati.sessioneId;
@@ -410,56 +474,36 @@ console.log('\nEsami dal chatbot, con la prescrizione allegata');
     `${inCoda?.creato_il} -> ${inCoda?.prossimo_tentativo}`);
 
   const messo = await carica(codice, 'prescrizione.png');
-  verifica('la foto si allega alla richiesta nata in chat', messo.status === 201,
+  verifica('una pratica chatbot senza account resta accessibile solo allo staff', messo.status === 404,
     `stato ${messo.status}`);
-
-  const richiestaId = db.prepare('SELECT id FROM richieste_medicine WHERE codice = ?').get(codice)?.id;
-  const quantiPrima = db.prepare('SELECT COUNT(*) AS c FROM outbox WHERE tipo = \'email\'').get().c;
-
-  // Finche' l'avviso e' fermo in coda, un secondo file non deve generare una
-  // seconda email: se la manda quella, li porta tutti e due.
-  await carica(codice, 'seconda.png');
-  const quantiDopo = db.prepare('SELECT COUNT(*) AS c FROM outbox WHERE tipo = \'email\'').get().c;
-  verifica('un secondo file non moltiplica le email', quantiDopo === quantiPrima,
-    `${quantiPrima} -> ${quantiDopo}`);
-
-  // Ora si finge che l'avviso sia gia' partito: chi carica adesso arriverebbe
-  // tardi, e la prescrizione resterebbe solo dentro il pannello.
-  db.prepare(`
-    UPDATE outbox SET stato = 'completato'
-     WHERE tipo = 'email' AND json_extract(payload, '$.allegatiDi') = ?
-  `).run(richiestaId);
-
-  await carica(codice, 'ritardataria.png');
-  const tardiva = db.prepare(`
-    SELECT payload FROM outbox
-     WHERE tipo = 'email' AND stato = 'in_attesa'
-       AND json_extract(payload, '$.allegatiDi') = ?
-  `).get(richiestaId);
-  verifica('una foto arrivata tardi viene comunque mandata allo studio', Boolean(tardiva));
-  verifica('e il messaggio dice di quale richiesta si tratta',
-    tardiva && JSON.parse(tardiva.payload).subject.includes(codice));
-
-  const allegati = db.prepare('SELECT nome, tipo_mime, length(contenuto) AS byte FROM allegati WHERE richiesta_id = ?')
-    .all(richiestaId);
-  verifica('i tre file sono nell\'archivio col loro contenuto',
-    allegati.length === 3 && allegati.every((a) => a.tipo_mime === 'image/png' && a.byte === PNG.length),
-    JSON.stringify(allegati));
-
-  // Il punto di tutta la storia: quello che parte verso Gmail ha davvero i file
-  // dentro, non solo il numero della richiesta.
-  const { allegatiPerEmail } = await import('../src/mailer.js');
-  const inPartenza = allegatiPerEmail(JSON.parse(tardiva.payload));
-  verifica('l\'email che parte si porta dietro le foto',
-    inPartenza.length === 3
-    && inPartenza.every((a) => Buffer.isBuffer(a.content) && a.content.equals(PNG))
-    && inPartenza.every((a) => a.contentType === 'image/png'),
-    JSON.stringify(inPartenza.map((a) => [a.filename, a.contentType, a.content?.length])));
 }
 
 console.log('\nAccesso amministratore');
 let token = null;
 {
+  const adminPrima = db.prepare('SELECT id, password_hash FROM utenti WHERE email = ?').get(config.admin.email);
+  db.prepare('UPDATE utenti SET password_hash = ? WHERE id = ?').run('hash-modificato-dal-titolare', adminPrima.id);
+  inizializzaAdminDiretto();
+  const nonSovrascritto = db.prepare('SELECT password_hash FROM utenti WHERE id = ?').get(adminPrima.id);
+  verifica('il bootstrap .env non sovrascrive un account esistente',
+    nonSovrascritto.password_hash === 'hash-modificato-dal-titolare');
+  db.prepare('UPDATE utenti SET password_hash = ? WHERE id = ?').run(adminPrima.password_hash, adminPrima.id);
+
+  const sessioneRecovery = creaSessioneDiretta(adminPrima.id).token;
+  config.admin.resetOnce = true;
+  inizializzaAdminDiretto();
+  const dopoRecovery = db.prepare('SELECT cambio_password FROM utenti WHERE id = ?').get(adminPrima.id);
+  const sessioneRevocata = db.prepare('SELECT COUNT(*) n FROM sessioni WHERE utente_id = ?').get(adminPrima.id).n;
+  verifica('il recovery once impone cambio password e revoca le sessioni',
+    Boolean(sessioneRecovery) && dopoRecovery.cambio_password === 1 && sessioneRevocata === 0);
+  db.prepare('UPDATE utenti SET password_hash = ? WHERE id = ?').run('seconda-modifica', adminPrima.id);
+  inizializzaAdminDiretto();
+  verifica('lo stesso recovery non viene riapplicato',
+    db.prepare('SELECT password_hash FROM utenti WHERE id = ?').get(adminPrima.id).password_hash === 'seconda-modifica');
+  config.admin.resetOnce = false;
+  db.prepare('UPDATE utenti SET password_hash = ?, cambio_password = 0 WHERE id = ?')
+    .run(adminPrima.password_hash, adminPrima.id);
+
   const negato = await chiama('GET', '/api/admin/prenotazioni');
   verifica('l\'area admin e\' chiusa senza credenziali', negato.stato === 401);
 
@@ -562,10 +606,14 @@ console.log('\nL\'assistente non aggira il segreto del medico');
   // resta valida, quindi il secondo accesso sarebbe stato sprecato — e a furia
   // di sprecarne, e' l'ultima prova della lista a farsi respingere.
   const entra = await chiama('POST', '/api/auth/login', { email: EMAIL, password: provvisoria });
-  const tokenCollab = entra.dati.token;
+  let tokenCollab = entra.dati.token;
   await chiama('POST', '/api/auth/password',
     { attuale: provvisoria, nuova: 'PasswordSegretaria1' }, tokenCollab);
   verifica('la segretaria entra nel pannello', entra.stato === 200 && Boolean(tokenCollab));
+  const revocataCambio = await chiama('GET', '/api/admin/prenotazioni', null, tokenCollab);
+  verifica('il cambio password revoca la sessione corrente', revocataCambio.stato === 401);
+  tokenCollab = (await chiama('POST', '/api/auth/login',
+    { email: EMAIL, password: 'PasswordSegretaria1' })).dati.token;
 
   const suo = await chiama('POST', '/api/admin/assistente', { testo: 'chi viene oggi' }, tokenCollab);
   verifica('la segretaria usa l\'assistente', suo.stato === 200 && Boolean(suo.dati.testo));
@@ -608,7 +656,7 @@ console.log('\nGli annullamenti vecchi non ingombrano l\'elenco');
     email: 'vecchio.annullamento@example.com', problema: 'Verifica sparizione dall elenco'
   });
   const codice = creata.dati.prenotazione?.codice;
-  await chiama('POST', `/api/prenotazioni/${codice}/annulla`);
+  await chiama('POST', `/api/prenotazioni/${codice}/annulla`, { conferma: true });
 
   const appena = await chiama('GET', '/api/admin/prenotazioni', null, token);
   verifica('appena annullata si vede ancora',
@@ -809,6 +857,7 @@ console.log('\nAccessi personali dei collaboratori');
     { attuale: provvisoria, nuova: 'PasswordPersonale1' }, tokenCollab);
   verifica('il collaboratore sceglie la sua password', cambio.stato === 200);
 
+  tokenCollab = creaSessioneDiretta(creato.dati.utente.id).token;
   const ora = await chiama('GET', '/api/admin/prenotazioni', null, tokenCollab);
   verifica('adesso lavora normalmente', ora.stato === 200);
 
@@ -829,7 +878,7 @@ console.log('\nAccessi personali dei collaboratori');
   await chiama('PATCH', `/api/admin/utenti/${idCollab}`, { attivo: true }, token);
   const riammesso = await chiama('POST', '/api/auth/login',
     { email: EMAIL_COLLAB, password: 'PasswordPersonale1' });
-  verifica('riattivato, torna a entrare', riammesso.stato === 200);
+  verifica('riattivato, torna a entrare', riammesso.stato === 200, `stato ${riammesso.stato}`);
   tokenCollab = riammesso.dati.token;
 
   const rinnovo = await chiama('POST', `/api/admin/utenti/${idCollab}/password`, null, token);
@@ -860,7 +909,10 @@ console.log('\nAccessi personali dei collaboratori');
 
 console.log('\nEmail in arrivo (rete di sicurezza)');
 {
-  const { registraEmail } = await import('../src/inbox.js');
+  const { registraEmail, superaLimiteMessaggio } = await import('../src/inbox.js');
+  verifica('il limite email rifiuta i byte prima del parsing',
+    superaLimiteMessaggio(config.inbox.massimoByteMessaggio + 1)
+    && !superaLimiteMessaggio(config.inbox.massimoByteMessaggio));
 
   const medicine = registraEmail({
     messageId: '<prova-1@example.com>',
@@ -1226,8 +1278,8 @@ console.log('\nModuli Google (richieste arrivate a sito spento)');
     confermata.dati.generata?.codice?.startsWith('PRE-'), JSON.stringify(confermata.dati));
 
   const collegata = await chiama('GET', `/api/prenotazioni/${confermata.dati.generata.codice}`);
-  verifica('la prenotazione generata e\' consultabile dal paziente',
-    collegata.dati.prenotazione?.stato === 'confermata');
+  verifica('la prenotazione da Moduli senza account resta riservata allo staff',
+    collegata.stato === 404);
 
   const ribattuta = await chiama('POST', `/api/admin/moduli/${marta.codice}/conferma`, {}, token);
   verifica('la stessa richiesta non si conferma due volte', ribattuta.stato === 400, ribattuta.dati.message);

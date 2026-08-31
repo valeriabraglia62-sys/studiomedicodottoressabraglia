@@ -1,4 +1,5 @@
 ﻿import nodemailer from 'nodemailer';
+import crypto from 'crypto';
 import { config, NOTIFY_EMAIL } from './config.js';
 import { registraGestore, impostaAvvisoDifficolta } from './outbox.js';
 import { formattaDataEstesa } from './orari.js';
@@ -102,8 +103,7 @@ registraGestore('email', async (payload) => {
   const allegati = allegatiPerEmail(payload);
 
   if (!transporter) {
-    console.log(`[email] non configurata, simulo invio a ${payload.to}: ${payload.subject}`
-      + (allegati.length ? ` (${allegati.length} allegati)` : ''));
+    console.log(`[email] trasporto non configurato; evento ${crypto.randomUUID()}`);
     return;
   }
   await transporter.sendMail({

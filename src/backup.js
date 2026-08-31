@@ -3,6 +3,9 @@ import path from 'path';
 import { db } from './db.js';
 import { config } from './config.js';
 
+// TODO SICUREZZA: cifrare ogni backup prima di trasferirlo nella destinazione
+// organizzativa; non usare account o cartelle OneDrive personali.
+
 /**
  * Copia di sicurezza giornaliera del database.
  *

@@ -10,7 +10,7 @@
 ### 2. Autenticazione
 - Implementare la registrazione e login tramite account Google
 - Implementare la registrazione e login tramite Apple ID
-- Configurare l'accesso amministratore con email valeriabraglia62@gmail.com e password [RIMOSSA-DALLA-CRONOLOGIA]
+- Configurare l'accesso amministratore con le credenziali definite in `.env` (non versionato): `ADMIN_EMAIL` e `ADMIN_PASSWORD`
 
 ### 3. Sistema di Prenotazioni
 - Permettere ai pazienti di annullare la prenotazione fino a un'ora prima della visita

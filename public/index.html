@@ -28,6 +28,31 @@
 
 <main>
 
+<section class="sezione" id="account">
+  <div class="contenitore">
+    <header><h2>Il tuo account paziente</h2>
+      <p class="tenue">Accedi prima di prenotare, inviare o consultare una richiesta.</p></header>
+    <div class="griglia due">
+      <form id="form-login-paziente" class="carta">
+        <h3>Accedi</h3>
+        <div class="campo"><label for="login-email">Email</label><input id="login-email" name="email" type="email" required></div>
+        <div class="campo"><label for="login-password">Password</label><input id="login-password" name="password" type="password" minlength="10" required></div>
+        <button class="bottone" type="submit">Accedi</button>
+      </form>
+      <form id="form-registra-paziente" class="carta">
+        <h3>Crea account</h3>
+        <div class="coppia"><div class="campo"><label for="reg-nome">Nome</label><input id="reg-nome" name="nome" required></div>
+          <div class="campo"><label for="reg-cognome">Cognome</label><input id="reg-cognome" name="cognome" required></div></div>
+        <div class="campo"><label for="reg-telefono">Telefono</label><input id="reg-telefono" name="telefono" type="tel" required></div>
+        <div class="campo"><label for="reg-email">Email</label><input id="reg-email" name="email" type="email" required></div>
+        <div class="campo"><label for="reg-password">Password (almeno 10 caratteri)</label><input id="reg-password" name="password" type="password" minlength="10" required></div>
+        <button class="bottone" type="submit">Registrati</button>
+      </form>
+    </div>
+    <div id="stato-account" class="avviso attenzione">Non hai ancora effettuato l'accesso.</div>
+  </div>
+</section>
+
 <section class="copertina">
   <div class="contenitore">
     <h1>Prenota la tua visita in meno di un minuto</h1>
