@@ -1,8 +1,9 @@
 import { db } from './db.js';
-import { oggiISO, aggiungiGiorni, formattaDataEstesa } from './orari.js';
+import { oggiISO, aggiungiGiorni, formattaDataEstesa, dataValida } from './orari.js';
 import * as medicine from './medicine.js';
 import * as prenotazioni from './prenotazioni.js';
 import * as attesa from './attesa.js';
+import * as chiusure from './chiusure.js';
 import * as moduli from './moduli.js';
 
 /**
@@ -277,6 +278,8 @@ function aiuto() {
     '• "cerca Rossi" — trova una persona e apre i pazienti\n' +
     '• "PRE-1234-ABCD" — incolla un codice e ti dico cos\'è e a che punto sta\n' +
     '• "annulla PRE-1234-ABCD" — annullo l\'appuntamento (con conferma; il paziente riceve l\'email)\n' +
+    '• "blocca il 15/10" oppure "blocca domani dalle 10:30 alle 12" — chiudo le prenotazioni per quel giorno o quella fascia (con conferma)\n' +
+    '• "che chiusure ci sono" — l\'elenco dei giorni e delle fasce bloccate\n' +
     '• "apri i medicinali" — ti porto sulla scheda giusta\n\n' +
     'Per registrare una richiesta mentre sei al telefono, usa "Al telefono" qui sopra: ' +
     'sono le stesse domande che vede il paziente.');
@@ -321,6 +324,145 @@ function annullaAppuntamento(codice, confermato, utente) {
   }
 }
 
+// ---- Chiusure dell'ambulatorio ------------------------------------------------
+
+const MESI = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno',
+  'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
+
+/** Una data da testo libero, deterministica: se non e' chiara torna null. */
+function leggiData(txt) {
+  const t = norm(txt);
+  if (/\bdopodomani\b/.test(t)) return aggiungiGiorni(oggiISO(), 2);
+  if (/\bdomani\b/.test(t)) return aggiungiGiorni(oggiISO(), 1);
+  if (/\boggi\b/.test(t)) return oggiISO();
+
+  const annoCorrente = Number(oggiISO().slice(0, 4));
+  const componi = (g, mese, anno) => {
+    if (mese < 1 || mese > 12 || g < 1 || g > 31) return null;
+    let iso = `${anno}-${String(mese).padStart(2, '0')}-${String(g).padStart(2, '0')}`;
+    if (!dataValida(iso)) return null;
+    // Una data senza anno che risulta gia' passata si intende l'anno prossimo.
+    if (iso < oggiISO()) iso = `${anno + 1}-${String(mese).padStart(2, '0')}-${String(g).padStart(2, '0')}`;
+    return dataValida(iso) ? iso : null;
+  };
+
+  let m = t.match(/\b(\d{1,2})[/.\-](\d{1,2})(?:[/.\-](\d{2,4}))?\b/);
+  if (m) {
+    let anno = m[3] ? Number(m[3]) : annoCorrente;
+    if (anno < 100) anno += 2000;
+    return componi(Number(m[1]), Number(m[2]), anno);
+  }
+  m = t.match(new RegExp(`\\b(\\d{1,2})\\s+(${MESI.join('|')})\\b`));
+  if (m) return componi(Number(m[1]), MESI.indexOf(m[2]) + 1, annoCorrente);
+  return null;
+}
+
+/** Un intervallo di giorni: "dal X al Y", oppure un giorno solo. */
+function leggiIntervallo(t) {
+  const partiAl = t.split(/\b(?:al|fino al|fino a)\b/i);
+  const dal = leggiData(partiAl[0]);
+  if (!dal) return null;
+  const al = partiAl[1] ? (leggiData(partiAl[1]) || dal) : dal;
+  return { dal, al: al < dal ? dal : al };
+}
+
+/** Una fascia oraria: "dalle 10 alle 12", "10:30-12:00", "mattina", "pomeriggio". */
+function leggiFascia(t) {
+  const n = norm(t);
+  let m = n.match(/dalle\s+(\d{1,2})(?:[:.](\d{2}))?\s+alle\s+(\d{1,2})(?:[:.](\d{2}))?/)
+    || n.match(/\b(\d{1,2})(?:[:.](\d{2}))?\s*[-–a]\s*(\d{1,2})(?:[:.](\d{2}))?\b/);
+  if (m) {
+    const oi = `${String(Number(m[1])).padStart(2, '0')}:${m[2] || '00'}`;
+    const of = `${String(Number(m[3])).padStart(2, '0')}:${m[4] || '00'}`;
+    return of > oi ? { ora_inizio: oi, ora_fine: of } : null;
+  }
+  if (/\bmattina\b/.test(n)) return { ora_inizio: '08:00', ora_fine: '13:00' };
+  if (/\bpomeriggio\b/.test(n)) return { ora_inizio: '13:00', ora_fine: '20:00' };
+  return {};   // nessuna fascia = tutto il giorno
+}
+
+function leggiAmbulatorio(t) {
+  const n = norm(t);
+  for (const a of db.prepare('SELECT id, nome FROM ambulatori WHERE attivo = 1').all()) {
+    const parola = norm(a.nome).replace(/^ambulatorio di\s+/, '');
+    if (parola && n.includes(parola)) return a;
+  }
+  return null;
+}
+
+const descriviChiusura = (c) => {
+  const giorni = c.dal === c.al ? formattaDataEstesa(c.dal) : `${formattaDataEstesa(c.dal)} → ${formattaDataEstesa(c.al)}`;
+  const fascia = c.ora_inizio ? `, dalle ${c.ora_inizio} alle ${c.ora_fine}` : ' (tutto il giorno)';
+  const dove = c.ambulatorio_nome ? ` — ${c.ambulatorio_nome}` : '';
+  return `${giorni}${fascia}${dove}${c.motivo ? ` · ${c.motivo}` : ''}`;
+};
+
+/**
+ * Blocca le prenotazioni per un giorno o una fascia. Come l'annullamento:
+ * due passaggi, e senza "conferma" mostra solo cosa ha capito.
+ */
+function bloccaPrenotazioni(t, confermato, utente) {
+  const intervallo = leggiIntervallo(t);
+  if (!intervallo) {
+    return risposta(
+      'Non ho capito il giorno. Prova con "blocca il 15/10", "blocca domani", ' +
+      '"blocca dal 20/10 al 25/10", oppure aggiungi una fascia: ' +
+      '"blocca il 15/10 dalle 10:30 alle 12:00".',
+      { vai: { scheda: 'chiusure', cerca: '' } });
+  }
+  const fascia = leggiFascia(t);
+  if (fascia === null) return risposta('La fascia oraria non è chiara: scrivila come "dalle 10:30 alle 12:00".');
+
+  const amb = leggiAmbulatorio(t);
+  const motivoMatch = norm(t).match(/\b(?:per|motivo:?)\s+(.{2,60})$/);
+  const motivo = motivoMatch ? motivoMatch[1].trim() : '';
+
+  const riepilogoTxt = descriviChiusura({
+    dal: intervallo.dal, al: intervallo.al,
+    ora_inizio: fascia.ora_inizio, ora_fine: fascia.ora_fine,
+    ambulatorio_nome: amb?.nome || '', motivo
+  });
+
+  if (!confermato) {
+    return {
+      testo: `Blocco le prenotazioni per:\n\n**${riepilogoTxt}**\n\n` +
+        `Scrivi **conferma blocca ${t.replace(/^\s*blocca\s+/i, '')}** per procedere. ` +
+        'Gli slot spariscono subito dal sito; le prenotazioni già confermate NON vengono annullate.',
+      azioni: AZIONI_BASE,
+      vai: null
+    };
+  }
+
+  try {
+    const esito = chiusure.aggiungi({
+      dal: intervallo.dal, al: intervallo.al,
+      ambulatorio_id: amb?.id || null, motivo,
+      ora_inizio: fascia.ora_inizio || null, ora_fine: fascia.ora_fine || null
+    });
+    const colpite = esito.prenotazioni_da_avvisare || [];
+    let msg = `Fatto: ${riepilogoTxt}.`;
+    if (colpite.length) {
+      msg += `\n\n⚠️ Ci sono ${colpite.length} prenotazioni confermate in quel periodo, da avvisare a mano:\n` +
+        colpite.map((p) => `• ${p.data} ${p.ora_inizio} — ${p.nome} ${p.cognome} (${p.telefono}) · ${p.codice}`).join('\n');
+    }
+    return risposta(msg, { vai: { scheda: 'chiusure', cerca: '' } });
+  } catch (err) {
+    return risposta(`Non sono riuscito a creare la chiusura: ${err.message}`);
+  }
+}
+
+function elencoChiusure() {
+  const righe = chiusure.elenco().filter((c) => !c.passata);
+  if (!righe.length) {
+    return risposta('Non c\'è nessuna chiusura futura impostata.',
+      { vai: { scheda: 'chiusure', cerca: '' } });
+  }
+  return risposta(
+    `**Chiusure impostate**\n\n${righe.map((c) => `• ${descriviChiusura(c)}`).join('\n')}\n\n` +
+    'Per toglierne una usa la scheda Chiusure.',
+    { vai: { scheda: 'chiusure', cerca: '' } });
+}
+
 /**
  * La domanda, e cosa ne esce.
  *
@@ -338,6 +480,18 @@ export function assiste(domanda, utente) {
   const annulla = t.match(
     /^\s*(conferma\s+)?(?:annulla|annullare|cancella|cancellare|disdici|disdire|elimina)\s+(?:la\s+)?(?:prenotazione\s+|visita\s+|l['’]appuntamento\s+)?(PRE-[A-Z0-9]{4}-[A-Z0-9]{4})\b/i);
   if (annulla) return annullaAppuntamento(annulla[2].toUpperCase(), Boolean(annulla[1]), utente);
+
+  // Chiusure: "che chiusure ci sono" elenca; "blocca il 15/10 ..." ne crea una
+  // (con conferma, come l'annullamento). "blocca" da solo non fa niente di male:
+  // senza una data leggiIntervallo torna null e si spiega come si scrive.
+  if (contiene(t, 'chiusur', 'giorni bloccat', 'ferie impostat')
+    && contiene(t, 'quali', 'che ', 'elenc', 'lista', 'ci sono', 'vedere le')) {
+    return elencoChiusure();
+  }
+  const blocca = t.match(/^\s*(conferma\s+)?(?:blocca|bloccare|chiudi|chiudere)\b(.*)$/i);
+  if (blocca && (contiene(t, 'blocc', 'chiud')) && !/PRE-[A-Z0-9]{4}/i.test(t)) {
+    return bloccaPrenotazioni(blocca[2].trim(), Boolean(blocca[1]), utente);
+  }
 
   const codice = t.match(/\b(PRE|MED|SPE|ESA)-[A-Z0-9]{4}-[A-Z0-9]{4}\b/i);
   if (codice) return cercaCodice(codice[0], utente);
