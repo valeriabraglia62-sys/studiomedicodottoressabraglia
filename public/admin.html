@@ -84,6 +84,7 @@
       <button type="button" data-scheda="riepilogo" class="attiva">Oggi</button>
       <button type="button" data-scheda="moduli">Da confermare<span id="conta-moduli" hidden></span></button>
       <button type="button" data-scheda="prenotazioni">Prenotazioni</button>
+      <button type="button" data-scheda="chiusure">Chiusure</button>
       <button type="button" data-scheda="medicine">Medicinali</button>
       <button type="button" data-scheda="specialistiche">Visite specialistiche</button>
       <button type="button" data-scheda="esami">Esami del sangue</button>
@@ -301,6 +302,42 @@
     </section>
 
     <!-- Sistema -->
+    <section data-pannello="chiusure" class="nascosto">
+      <p class="tenue">Blocca giorni interi o singole fasce orarie: gli slot spariscono dal
+         sito e nessuno può più prenotarli. Le prenotazioni già confermate NON vengono
+         annullate: te le mostriamo qui sotto così puoi avvisare i pazienti.</p>
+
+      <form id="form-chiusura" class="carta" style="max-width:640px">
+        <div class="coppia">
+          <div class="campo"><label for="chi-dal">Dal giorno</label>
+            <input id="chi-dal" name="dal" type="date" required></div>
+          <div class="campo"><label for="chi-al">Al giorno <span class="tenue">(uguale = un giorno solo)</span></label>
+            <input id="chi-al" name="al" type="date"></div>
+        </div>
+
+        <label class="campo" style="flex-direction:row;align-items:center;gap:.5rem">
+          <input type="checkbox" id="chi-solo-fascia" style="width:auto">
+          Blocca solo una fascia oraria (altrimenti l'intera giornata)
+        </label>
+        <div class="coppia" id="chi-fascia" hidden>
+          <div class="campo"><label for="chi-ora-inizio">Dalle</label>
+            <input id="chi-ora-inizio" name="ora_inizio" type="time"></div>
+          <div class="campo"><label for="chi-ora-fine">Alle</label>
+            <input id="chi-ora-fine" name="ora_fine" type="time"></div>
+        </div>
+
+        <div class="campo"><label for="chi-ambulatorio">Ambulatorio</label>
+          <select id="chi-ambulatorio" name="ambulatorio_id"></select></div>
+        <div class="campo"><label for="chi-motivo">Motivo <span class="tenue">(facoltativo)</span></label>
+          <input id="chi-motivo" name="motivo" maxlength="120" placeholder="Es. ferie, corso di aggiornamento…"></div>
+
+        <button type="submit" class="bottone largo">Aggiungi la chiusura</button>
+      </form>
+
+      <div id="esito-chiusura" style="margin-top:1rem"></div>
+      <div id="elenco-chiusure" style="margin-top:1.25rem"></div>
+    </section>
+
     <section data-pannello="sistema" class="nascosto">
       <div class="filtri">
         <button type="button" class="bottone" id="mail-controlla">Controlla la casella ora</button>

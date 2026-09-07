@@ -26,8 +26,9 @@ import { fileURLToPath } from 'url';
 
 const RADICE = path.dirname(fileURLToPath(import.meta.url));
 
-process.env.DB_FILE = path.join(RADICE, 'data', 'prova-manuale.sqlite');
-process.env.CARTELLA_BACKUP = path.join(RADICE, 'data', 'backup-prova-manuale');
+// Fuori da data/ (ristretta con ACL): un terminale normale non vi scrive.
+process.env.DB_FILE = path.join(RADICE, '.prove-tmp', 'prova-manuale.sqlite');
+process.env.CARTELLA_BACKUP = path.join(RADICE, '.prove-tmp', 'backup-prova-manuale');
 process.env.PORT = '3999';
 
 process.env.INBOX_POLLING_ENABLED = 'false';

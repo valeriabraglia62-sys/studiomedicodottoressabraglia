@@ -12,7 +12,11 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const RADICE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const DB_PROVA = path.join(RADICE, 'data', 'prova.sqlite');
+// Fuori da data/: quella cartella e' ristretta con ACL (solo il servizio vi
+// scrive) e un terminale normale non potrebbe crearci il database di prova.
+const CARTELLA_PROVA = path.join(RADICE, '.prove-tmp');
+fs.mkdirSync(CARTELLA_PROVA, { recursive: true });
+const DB_PROVA = path.join(CARTELLA_PROVA, 'prova.sqlite');
 
 for (const f of [DB_PROVA, `${DB_PROVA}-wal`, `${DB_PROVA}-shm`]) fs.rmSync(f, { force: true });
 
@@ -36,11 +40,20 @@ process.env.GOOGLE_MODULI_ENABLED = 'false';
 // Le copie di sicurezza delle prove restano qui dentro. Senza questa riga
 // seguirebbero CARTELLA_BACKUP del .env, che sul server punta a OneDrive: ogni
 // "npm run prova" caricherebbe sul cloud una copia di un database usa e getta.
-process.env.CARTELLA_BACKUP = path.join(RADICE, 'data', 'backup-prova');
+process.env.CARTELLA_BACKUP = path.join(CARTELLA_PROVA, 'backup');
 
 // Nessuna credenziale: le email restano in coda invece di partire davvero.
 process.env.EMAIL_USER = '';
 process.env.EMAIL_PASS = '';
+
+// Account admin di prova, indipendente dal .env vero: le prove sul bootstrap e
+// sul recovery "once" pilotano da sole config.admin.resetOnce, quindi il valore
+// di partenza deve essere spento a prescindere da com'e' messo il file vero.
+process.env.ADMIN_EMAIL = 'admin@prova.local';
+process.env.ADMIN_PASSWORD = 'ProvaAdmin2026!';
+process.env.ADMIN_PASSWORD_RESET = '';
+process.env.SEGRETARIA_PASSWORD_RESET = '';
+process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'prova'.repeat(16);
 
 // server.js intercetta le eccezioni e le scrive senza uscire: in produzione e'
 // giusto, perche' un errore su una richiesta non deve buttare giu' il sito per
@@ -561,6 +574,61 @@ let token = null;
 
   const finto = await chiama('GET', '/api/admin/prenotazioni', null, 'token-inventato');
   verifica('un token inventato non apre nulla', finto.stato === 401);
+}
+
+console.log('\nChiusure (giorni e fasce orarie bloccate)');
+{
+  const { oggiISO, aggiungiGiorni } = await import('../src/orari.js');
+  let g = null;
+  let slot = [];
+  for (let i = 20; i <= 34 && !g; i++) {
+    const d = aggiungiGiorni(oggiISO(), i);
+    const r = await chiama('GET', `/api/disponibilita?data=${d}&ambulatorio_id=1`);
+    const liberi = (r.dati.slot || []).filter((s) => s.disponibile);
+    if (liberi.length >= 6) { g = d; slot = liberi; }
+  }
+  verifica('trovato un giorno libero per la prova delle chiusure', Boolean(g));
+
+  const paziente = {
+    nome: 'Chi', cognome: 'Usura', telefono: '3330000099',
+    email: 'chi.usura.prova@example.it', problema: 'prova chiusure'
+  };
+
+  // --- Fascia oraria: blocca i primi due slot ---
+  const cf = await chiama('POST', '/api/admin/chiusure',
+    { dal: g, ora_inizio: slot[0].ora_inizio, ora_fine: slot[2].ora_inizio, motivo: 'prova fascia' }, token);
+  verifica('fascia oraria bloccata creata', cf.stato === 201 && cf.dati.chiusura?.ora_inizio === slot[0].ora_inizio);
+
+  const dopoFascia = await chiama('GET', `/api/disponibilita?data=${g}&ambulatorio_id=1`);
+  const ore = (dopoFascia.dati.slot || []).map((s) => s.ora_inizio);
+  verifica('gli slot dentro la fascia spariscono, gli altri restano',
+    !ore.includes(slot[0].ora_inizio) && !ore.includes(slot[1].ora_inizio) && ore.includes(slot[3].ora_inizio));
+
+  const dentro = await chiama('POST', '/api/prenotazioni', { ...paziente, ambulatorio_id: 1, data: g, ora_inizio: slot[0].ora_inizio });
+  verifica('prenotare dentro la fascia bloccata viene rifiutato', dentro.stato >= 400);
+
+  const fuori = await chiama('POST', '/api/prenotazioni', { ...paziente, ambulatorio_id: 1, data: g, ora_inizio: slot[3].ora_inizio });
+  verifica('prenotare fuori dalla fascia funziona', fuori.stato === 201);
+
+  await chiama('DELETE', `/api/admin/chiusure/${cf.dati.chiusura.id}`, null, token);
+
+  // --- Giornata intera ---
+  const cg = await chiama('POST', '/api/admin/chiusure', { dal: g, motivo: 'prova giorno' }, token);
+  verifica('chiusura di giornata creata', cg.stato === 201);
+
+  const dopoGiorno = await chiama('GET', `/api/disponibilita?data=${g}&ambulatorio_id=1`);
+  verifica('con la giornata chiusa non resta alcuno slot libero',
+    !(dopoGiorno.dati.slot || []).some((s) => s.disponibile));
+
+  const inGiornoChiuso = await chiama('POST', '/api/prenotazioni', { ...paziente, ambulatorio_id: 1, data: g, ora_inizio: slot[4].ora_inizio });
+  verifica('prenotare in un giorno chiuso viene rifiutato', inGiornoChiuso.stato >= 400);
+
+  const rimozione = await chiama('DELETE', `/api/admin/chiusure/${cg.dati.chiusura.id}`, null, token);
+  verifica('la chiusura si elimina', rimozione.stato === 200);
+
+  const dopoRimozione = await chiama('GET', `/api/disponibilita?data=${g}&ambulatorio_id=1`);
+  verifica('eliminata la chiusura, gli slot tornano prenotabili',
+    (dopoRimozione.dati.slot || []).some((s) => s.disponibile));
 }
 
 console.log('\nL\'assistente del pannello');

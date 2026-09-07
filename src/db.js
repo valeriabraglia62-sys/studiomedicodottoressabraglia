@@ -373,7 +373,11 @@ for (const [tabella, colonna, tipo] of [
   ['utenti', 'token_verifica_scade', 'TEXT'],
   // La scheda paziente esistente che l'account rivendica: il collegamento
   // scatta solo dopo la verifica dell'email, non alla registrazione.
-  ['utenti', 'scheda_da_collegare', 'INTEGER']
+  ['utenti', 'scheda_da_collegare', 'INTEGER'],
+  // Una chiusura puo' coprire solo una fascia oraria invece dell'intera
+  // giornata: ora_inizio/ora_fine a NULL = tutto il giorno (com'era prima).
+  ['chiusure', 'ora_inizio', 'TEXT'],
+  ['chiusure', 'ora_fine', 'TEXT']
 ]) {
   const presente = db.prepare(`PRAGMA table_info(${tabella})`).all().some((c) => c.name === colonna);
   if (!presente) db.exec(`ALTER TABLE ${tabella} ADD COLUMN ${colonna} ${tipo}`);
