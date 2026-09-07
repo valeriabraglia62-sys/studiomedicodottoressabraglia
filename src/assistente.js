@@ -2,6 +2,7 @@ import { db } from './db.js';
 import { oggiISO, aggiungiGiorni, formattaDataEstesa } from './orari.js';
 import * as medicine from './medicine.js';
 import * as prenotazioni from './prenotazioni.js';
+import * as attesa from './attesa.js';
 import * as moduli from './moduli.js';
 
 /**
@@ -275,9 +276,49 @@ function aiuto() {
     '• "quante prenotazioni ho oggi", "quanti esami da vedere" — un numero solo\n' +
     '• "cerca Rossi" — trova una persona e apre i pazienti\n' +
     '• "PRE-1234-ABCD" — incolla un codice e ti dico cos\'è e a che punto sta\n' +
+    '• "annulla PRE-1234-ABCD" — annullo l\'appuntamento (con conferma; il paziente riceve l\'email)\n' +
     '• "apri i medicinali" — ti porto sulla scheda giusta\n\n' +
     'Per registrare una richiesta mentre sei al telefono, usa "Al telefono" qui sopra: ' +
     'sono le stesse domande che vede il paziente.');
+}
+
+/**
+ * L'unica azione che modifica qualcosa. Due passaggi: senza "conferma" mostra
+ * l'appuntamento e chiede di ripetere il comando con "conferma" davanti; con
+ * "conferma" annulla per davvero, riusando la stessa strada del pannello
+ * (email al paziente, posto liberato, lista d'attesa avvisata).
+ */
+function annullaAppuntamento(codice, confermato, utente) {
+  const p = prenotazioni.perCodice(codice);
+  if (!p) return risposta(`Il codice ${codice} non risulta fra le prenotazioni.`);
+  if (p.stato !== 'confermata') {
+    return risposta(`${codice} non si può annullare: risulta già "${p.stato}".`);
+  }
+
+  const chi = `${p.paziente_nome} ${p.paziente_cognome}`;
+  const quando = `${formattaDataEstesa(p.data)} alle ${p.ora_inizio}`;
+
+  if (!confermato) {
+    return {
+      testo: `Confermi l'annullamento di **${codice}**?\n\n` +
+        `👤 ${chi}\n📅 ${quando}\n🏥 ${p.ambulatorio_nome}\n\n` +
+        `Scrivi **conferma annulla ${codice}** per procedere. ` +
+        `Il paziente riceverà l'email di annullamento e il posto tornerà libero.`,
+      azioni: AZIONI_BASE,
+      vai: null
+    };
+  }
+
+  try {
+    const aggiornata = prenotazioni.annullaPrenotazione(codice, { da: 'admin', chi: utente?.email || null });
+    const avvisati = attesa.avvisaPerPostoLibero(aggiornata);
+    return risposta(
+      `Fatto: ${codice} annullata. ${chi} riceve l'email di annullamento e ${quando} ` +
+      `è di nuovo prenotabile.` + (avvisati ? `\nHo avvisato ${avvisati} in lista d'attesa.` : ''),
+      { vai: { scheda: 'prenotazioni', cerca: codice } });
+  } catch (err) {
+    return risposta(`Non sono riuscito ad annullare ${codice}: ${err.message}`);
+  }
 }
 
 /**
@@ -290,6 +331,13 @@ function aiuto() {
 export function assiste(domanda, utente) {
   const t = String(domanda || '').trim();
   if (!t) return benvenuto(utente);
+
+  // Annullamento di un appuntamento: e' l'unica azione che l'assistente
+  // esegue, e per questo chiede sempre una conferma esplicita — un "annulla"
+  // battuto in fretta non deve cancellare la visita di nessuno.
+  const annulla = t.match(
+    /^\s*(conferma\s+)?(?:annulla|annullare|cancella|cancellare|disdici|disdire|elimina)\s+(?:la\s+)?(?:prenotazione\s+|visita\s+|l['’]appuntamento\s+)?(PRE-[A-Z0-9]{4}-[A-Z0-9]{4})\b/i);
+  if (annulla) return annullaAppuntamento(annulla[2].toUpperCase(), Boolean(annulla[1]), utente);
 
   const codice = t.match(/\b(PRE|MED|SPE|ESA)-[A-Z0-9]{4}-[A-Z0-9]{4}\b/i);
   if (codice) return cercaCodice(codice[0], utente);

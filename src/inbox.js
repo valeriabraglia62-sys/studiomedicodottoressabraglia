@@ -73,6 +73,40 @@ function eNostraNotifica(mittente) {
   return /^(mailer-daemon|postmaster|no-?reply|noreply)@/.test(indirizzo);
 }
 
+/**
+ * Posta che non e' mai una richiesta di paziente: notifiche di Google
+ * (condivisioni di Fogli e Moduli, inviti, trasferimenti di proprieta'),
+ * newsletter e simili. Prima passavano dal classificatore e, siccome nel
+ * testo c'era "Prenotazione visita" (il nome del Modulo) o "appuntamento"
+ * (una promozione), finivano in "Da confermare" come richieste vere.
+ */
+const LOCALI_AUTOMATICI = [
+  'noreply', 'no-reply', 'donotreply', 'do-not-reply',
+  'drive-shares-dm', 'drive-shares', 'forms-receipts', 'comments-noreply',
+  'calendar-notification', 'notifications', 'notification', 'mailer', 'bounce'
+];
+const DOMINI_AUTOMATICI = [
+  'google.com', 'docs.google.com', 'drive.google.com', 'apps.google.com',
+  'youtube.com', 'facebookmail.com', 'linkedin.com', 'toogoodtogo.it',
+  'sendgrid.net', 'mailchimp.com', 'amazonses.com'
+];
+const OGGETTI_NON_RICHIESTA = [
+  'condiviso con te', 'shared with you', 'ha condiviso un', 'has shared',
+  'invito a rispondere', 'invito ad assumere', 'invitation to', 'ti ha invitato',
+  'assumere la proprieta', 'assumere la proprietà', 'richiesta di accesso',
+  'request for access', 'accesso al documento', 'in regalo', 'newsletter'
+];
+
+function eNotificaAutomatica(mittente, oggetto) {
+  const ind = (mittente || '').toLowerCase();
+  const [locale = '', dominio = ''] = ind.split('@');
+  if (LOCALI_AUTOMATICI.some((p) => locale.includes(p))) return true;
+  if (DOMINI_AUTOMATICI.some((d) => dominio === d || dominio.endsWith(`.${d}`))) return true;
+
+  const ogg = (oggetto || '').toLowerCase();
+  return OGGETTI_NON_RICHIESTA.some((p) => ogg.includes(p));
+}
+
 function estraiNome(mittenteNome, mittente) {
   const base = (mittenteNome || mittente.split('@')[0] || '').replace(/[._]+/g, ' ').trim();
   const parti = base.split(/\s+/).filter(Boolean);
@@ -180,6 +214,14 @@ export function registraEmail({ messageId, mittente, mittenteNome, oggetto, corp
   // passa da quel passo. Chiunque un domani chiami registraEmail da un'altra
   // strada trova comunque la porta chiusa.
   if (eNostraNotifica(mittente)) return { saltata: true };
+
+  // Notifiche automatiche (Google Drive/Moduli, newsletter): non arrivano
+  // nemmeno al classificatore, altrimenti il nome del Modulo "Prenotazione
+  // visita" nel testo le farebbe passare per richieste.
+  if (eNotificaAutomatica(mittente, oggetto)) {
+    if (messageId) stmtSegnaVista.run(messageId, new Date().toISOString(), 'ignorata', null);
+    return { ignorata: true, tipo: 'altro' };
+  }
 
   const tipo = classifica(oggetto, corpo);
 
