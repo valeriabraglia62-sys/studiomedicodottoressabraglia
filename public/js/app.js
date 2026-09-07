@@ -38,9 +38,23 @@ async function api(percorso, opzioni = {}) {
   return dati;
 }
 
-function collegaAccountPaziente() {
+/** Mostra la schermata d'accesso oppure il sito vero. */
+function mostraSchermataPaziente(quale) {
+  $('#accesso-paziente').classList.toggle('nascosto', quale !== 'accesso');
+  $('#sito').classList.toggle('nascosto', quale !== 'sito');
+}
+
+function esciPaziente() {
+  tokenPaziente = '';
+  try { sessionStorage.removeItem(CHIAVE_TOKEN_PAZIENTE); } catch { /* ignora */ }
+  location.reload();
+}
+
+/** Collega la schermata d'accesso: login, registrazione, verifica, menu account. */
+function collegaAccessoPaziente() {
   const statoAccount = $('#stato-account');
   const mostraStato = (testo, tipo = 'ok') => {
+    statoAccount.hidden = false;
     statoAccount.className = `avviso ${tipo}`;
     statoAccount.textContent = testo;
   };
@@ -54,23 +68,26 @@ function collegaAccountPaziente() {
   }
   if (esitoVerifica) history.replaceState(null, '', location.pathname + location.hash);
 
-  const salva = (dati) => {
-    if (dati.utente?.ruolo !== 'paziente') throw new Error('Questo non è un account paziente.');
-    tokenPaziente = dati.token;
-    sessionStorage.setItem(CHIAVE_TOKEN_PAZIENTE, tokenPaziente);
-    mostraStato(`Accesso effettuato come ${dati.utente.nome || dati.utente.email}.`, 'ok');
+  // Un solo modulo per volta: "Crea account" / "Torna all'accesso".
+  const mostraModulo = (quale) => {
+    $('#form-login-paziente').hidden = quale !== 'login';
+    $('#form-registra-paziente').hidden = quale !== 'registra';
+    statoAccount.hidden = true;
   };
-  if (tokenPaziente && !esitoVerifica) {
-    mostraStato('Sessione paziente attiva in questa scheda.', 'ok');
-  }
+  $('#vai-registra').addEventListener('click', (e) => { e.preventDefault(); mostraModulo('registra'); });
+  $('#vai-login').addEventListener('click', (e) => { e.preventDefault(); mostraModulo('login'); });
 
   $('#form-login-paziente').addEventListener('submit', (evento) => {
     evento.preventDefault();
     const form = evento.currentTarget;
     inviaProtetto(form, async () => {
       try {
-        salva(await api('/auth/login', { method: 'POST', body: datiModulo(form) }));
+        const dati = await api('/auth/login', { method: 'POST', body: datiModulo(form) });
+        if (dati.utente?.ruolo !== 'paziente') throw new Error('Questo non è un account paziente.');
+        tokenPaziente = dati.token;
+        try { sessionStorage.setItem(CHIAVE_TOKEN_PAZIENTE, tokenPaziente); } catch { /* ignora */ }
         form.reset();
+        await entraNelSito(dati.utente);
       } catch (err) {
         if (err.dati?.verifica_email) {
           mostraStato('Devi prima confermare l\'email. Controlla la posta o usa "Rinvia il link".', 'attenzione');
@@ -85,7 +102,9 @@ function collegaAccountPaziente() {
     const form = evento.currentTarget;
     inviaProtetto(form, async () => {
       const dati = await api('/auth/register', { method: 'POST', body: datiModulo(form) });
-      mostraStato(dati.message || 'Ti abbiamo inviato un\'email: apri il link per confermare l\'indirizzo.', 'ok');
+      mostraModulo('login');
+      mostraStato(dati.message
+        || 'Ti abbiamo inviato un\'email: apri il link per confermare l\'indirizzo, poi accedi.', 'ok');
       form.reset();
     });
   });
@@ -99,6 +118,35 @@ function collegaAccountPaziente() {
       mostraStato(dati.message || 'Se l\'indirizzo è corretto, l\'email di conferma è ripartita.', 'ok');
     } catch (err) {
       avvisa(err.message, 'errore');
+    }
+  });
+
+  // --- Menu account nella barra in alto (visibile solo da dentro il sito) ---
+  const menu = $('#menu-account');
+  $('#btn-esci-paziente').addEventListener('click', esciPaziente);
+  $('#btn-modifica-account').addEventListener('click', () => {
+    menu.removeAttribute('open');
+    $('#acc-esito').replaceChildren();
+    $('#acc-pwd-attuale').value = '';
+    $('#acc-pwd-nuova').value = '';
+    $('#dialog-account').showModal();
+  });
+
+  $('#acc-salva-pwd').addEventListener('click', async () => {
+    const attuale = $('#acc-pwd-attuale').value;
+    const nuova = $('#acc-pwd-nuova').value;
+    const esito = $('#acc-esito');
+    if (nuova.length < 10) {
+      esito.replaceChildren(nodo('div', 'avviso errore', 'La nuova password deve avere almeno 10 caratteri.'));
+      return;
+    }
+    try {
+      await api('/auth/password', { method: 'POST', body: { attuale, nuova } });
+      esito.replaceChildren(nodo('div', 'avviso ok',
+        'Password cambiata. Per sicurezza ti chiediamo di rientrare con quella nuova.'));
+      setTimeout(esciPaziente, 1800);
+    } catch (err) {
+      esito.replaceChildren(nodo('div', 'avviso errore', err.message));
     }
   });
 }
@@ -849,13 +897,22 @@ function collegaNavigazione() {
 
 // ---- Avvio -----------------------------------------------------------------
 
-async function avvia() {
+let sitoAvviato = false;
+
+/** Entra nel sito vero: la prima volta ne monta anche tutte le parti. */
+async function entraNelSito(utente) {
+  $('#nome-utente-paziente').textContent = utente?.nome || utente?.email || 'Account';
+  $('#acc-email-mostra').textContent = utente?.email || '';
+  mostraSchermataPaziente('sito');
+
+  if (sitoAvviato) return;
+  sitoAvviato = true;
+
   const oggi = isoOggi();
   const [anno, mese] = oggi.split('-').map(Number);
   stato.meseVisibile = { anno, mese: mese - 1 };
 
   collegaNavigazione();
-  collegaAccountPaziente();
   collegaFormPrenotazione();
   collegaFormMedicine();
   collegaFormRicerca();
@@ -880,6 +937,20 @@ async function avvia() {
   } catch (err) {
     avvisa(err.message, 'errore');
   }
+}
+
+async function avvia() {
+  collegaAccessoPaziente();
+
+  if (tokenPaziente) {
+    try {
+      const { utente } = await api('/auth/me');
+      if (utente?.ruolo === 'paziente' && utente.paziente_id) return entraNelSito(utente);
+    } catch { /* token scaduto o non valido: si torna all'accesso */ }
+    tokenPaziente = '';
+    try { sessionStorage.removeItem(CHIAVE_TOKEN_PAZIENTE); } catch { /* ignora */ }
+  }
+  mostraSchermataPaziente('accesso');
 }
 
 avvia();

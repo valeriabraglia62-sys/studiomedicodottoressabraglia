@@ -607,6 +607,43 @@ td select {
 .accesso { display: grid; place-items: center; min-height: 100vh; padding: 1.25rem; }
 .accesso .carta { width: min(400px, 100%); }
 
+/* Schermata d'accesso del paziente */
+.accesso-riquadro { width: min(440px, 100%); }
+.accesso-riquadro .carta { width: 100%; }
+.marchio-centro { justify-content: center; margin: 0 0 1.25rem; }
+#stato-account { margin-top: 1rem; }
+
+/* Menu account nella barra in alto a destra */
+.account-menu { margin-left: auto; position: relative; }
+.account-menu > summary {
+  list-style: none; cursor: pointer; padding: .4rem .7rem;
+  border: 1px solid var(--bordo); border-radius: var(--raggio-piccolo);
+  font-size: .9rem; color: var(--testo); white-space: nowrap;
+}
+.account-menu > summary::-webkit-details-marker { display: none; }
+.account-menu > summary:hover { border-color: var(--verde); color: var(--verde-scuro); }
+.account-tendina {
+  position: absolute; right: 0; top: calc(100% + .35rem); z-index: 20;
+  background: var(--carta); border: 1px solid var(--bordo);
+  border-radius: var(--raggio-piccolo); box-shadow: var(--ombra-alta);
+  padding: .35rem; min-width: 180px; display: grid; gap: .15rem;
+}
+.account-tendina button {
+  text-align: left; background: none; border: 0; cursor: pointer;
+  padding: .55rem .6rem; border-radius: 6px; font: inherit; color: var(--testo);
+}
+.account-tendina button:hover { background: var(--verde-tenue); color: var(--verde-scuro); }
+
+#dialog-account {
+  width: min(460px, 92vw); border: 1px solid var(--bordo);
+  border-radius: var(--raggio); padding: 1.5rem; box-shadow: var(--ombra-alta);
+}
+#dialog-account::backdrop { background: rgba(16, 32, 31, .45); }
+
+@media (max-width: 760px) {
+  .account-menu { order: 3; }
+}
+
 @media (max-width: 760px) {
   .coppia { grid-template-columns: 1fr; }
   .copertina { padding: 2.5rem 0 2rem; }

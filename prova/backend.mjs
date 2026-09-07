@@ -119,6 +119,23 @@ const chiama = async (metodo, percorso, corpo, token) => {
   return { stato: r.status, dati: await r.json().catch(() => ({})) };
 };
 
+/**
+ * Il primo giorno (a partire da +dpartenza) con almeno uno slot libero per
+ * l'ambulatorio 1, e lo slot. Serve perche' i giorni fissi ("oggi + 4")
+ * cadono sul weekend a seconda del giorno in cui girano le prove, e con
+ * l'ambulatorio chiuso non c'e' nessuno slot da prenotare.
+ */
+async function giornoConSlot(partenza = 3, fino = 21) {
+  const { oggiISO, aggiungiGiorni } = await import('../src/orari.js');
+  for (let i = partenza; i <= fino; i++) {
+    const data = aggiungiGiorni(oggiISO(), i);
+    const r = await chiama('GET', `/api/disponibilita?data=${data}&ambulatorio_id=1`);
+    const slot = (r.dati.slot || []).find((s) => s.disponibile);
+    if (slot) return { giorno: data, slot };
+  }
+  return { giorno: null, slot: null };
+}
+
 const { db } = await import('../src/db.js');
 const { config } = await import('../src/config.js');
 let verificaEmailDiretto = null;
@@ -808,14 +825,13 @@ console.log('\nGli annullamenti vecchi non ingombrano l\'elenco');
   // Un annullamento serve il giorno che succede; il giorno dopo e' rumore su un
   // elenco che si guarda di corsa. Sparisce dalla vista, non dall'archivio: chi
   // lo cerca lo ritrova filtrando su "annullate".
-  // Lo slot si chiede adesso invece di pescarlo da slotLiberi: quella lista e'
-  // dell'inizio, e nel frattempo le prove qui sopra ne hanno occupati parecchi.
-  const disponibili = await chiama('GET', `/api/disponibilita?data=${giorno}&ambulatorio_id=1`);
-  const slot = (disponibili.dati.slot || []).find((s) => s.disponibile);
+  // Lo slot si cerca adesso: le prove qui sopra ne hanno occupati parecchi, e
+  // un giorno fisso puo' cadere sul weekend a seconda di quando girano le prove.
+  const { giorno: gg, slot } = await giornoConSlot();
   verifica('c\'e\' uno slot libero per questa prova', Boolean(slot));
 
   const creata = await chiama('POST', '/api/prenotazioni', {
-    ambulatorio_id: 1, data: giorno, ora_inizio: slot.ora_inizio,
+    ambulatorio_id: 1, data: gg, ora_inizio: slot.ora_inizio,
     nome: 'Vecchio', cognome: 'Annullamento', telefono: '3335554444',
     email: 'vecchio.annullamento@example.com', problema: 'Verifica sparizione dall elenco'
   });
@@ -846,9 +862,8 @@ console.log('\nUna visita gia\' fatta sgombera l\'elenco');
 {
   // L'elenco serve a sapere chi deve ancora venire. Una visita di marzo, ad
   // agosto, e' solo una riga fra cui scorrere per arrivare a quelle di domani.
-  const giorno = aggiungiGiorni(oggiISO(), 4);
-  const disponibili = await chiama('GET', `/api/disponibilita?data=${giorno}&ambulatorio_id=1`);
-  const slot = (disponibili.dati.slot || []).find((s) => s.disponibile);
+  const { giorno, slot } = await giornoConSlot();
+  verifica('c\'e\' un giorno con slot per questa prova', Boolean(slot));
 
   const creata = await chiama('POST', '/api/prenotazioni', {
     ambulatorio_id: 1, data: giorno, ora_inizio: slot.ora_inizio,
@@ -1396,11 +1411,16 @@ console.log('\nModuli Google (richieste arrivate a sito spento)');
 {
   const moduli = await import('../src/moduli.js');
 
-  // Uno slot davvero libero: la conferma deve arrivare fino in fondo.
-  const giorno = aggiungiGiorni(oggiISO(), 9);
-  const slot = (await chiama('GET', `/api/disponibilita?data=${giorno}`))
-    .dati.slot.filter((s) => s.disponibile);
-  verifica('c\'e\' uno slot libero per la prova', slot.length >= 2, `liberi: ${slot.length}`);
+  // Un giorno con almeno due slot liberi (la conferma deve arrivare in fondo),
+  // cercato invece che fissato: un giorno fisso puo' cadere sul weekend.
+  let giorno = null;
+  let slot = [];
+  for (let i = 6; i <= 24 && slot.length < 2; i++) {
+    const d = aggiungiGiorni(oggiISO(), i);
+    slot = ((await chiama('GET', `/api/disponibilita?data=${d}`)).dati.slot || []).filter((s) => s.disponibile);
+    if (slot.length >= 2) giorno = d;
+  }
+  verifica('c\'e\' un giorno con due slot liberi per la prova', slot.length >= 2, `liberi: ${slot.length}`);
 
   const primo = slot[0];
   const [gg, mm, aaaa] = [giorno.slice(8), giorno.slice(5, 7), giorno.slice(0, 4)];

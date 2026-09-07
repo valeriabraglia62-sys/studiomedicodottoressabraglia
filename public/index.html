@@ -9,6 +9,45 @@
 </head>
 <body>
 
+<!-- ---- Schermata d'accesso: e' la prima cosa che si vede, come nel pannello.
+     Il sito vero (#sito) resta nascosto finche' non si e' entrati. -->
+<div class="accesso" id="accesso-paziente">
+  <div class="accesso-riquadro">
+    <div class="marchio marchio-centro">
+      <span class="simbolo" aria-hidden="true">✚</span>
+      <span>Studio Medico Dottoressa Braglia<small>Arceto · Casalgrande</small></span>
+    </div>
+
+    <form id="form-login-paziente" class="carta">
+      <h3>Accedi</h3>
+      <div class="campo"><label for="login-email">Email</label><input id="login-email" name="email" type="email" autocomplete="email" required></div>
+      <div class="campo"><label for="login-password">Password</label><input id="login-password" name="password" type="password" autocomplete="current-password" minlength="10" required></div>
+      <button class="bottone largo" type="submit">Accedi</button>
+      <p class="piccolo tenue" style="margin:.7rem 0 0">
+        Non hai un account? <a href="#" id="vai-registra">Crea account</a><br>
+        Non hai ricevuto l'email di conferma? <a href="#" id="rinvia-verifica">Rinvia il link</a>
+      </p>
+    </form>
+
+    <form id="form-registra-paziente" class="carta" hidden>
+      <h3>Crea il tuo account</h3>
+      <div class="coppia"><div class="campo"><label for="reg-nome">Nome</label><input id="reg-nome" name="nome" autocomplete="given-name" required></div>
+        <div class="campo"><label for="reg-cognome">Cognome</label><input id="reg-cognome" name="cognome" autocomplete="family-name" required></div></div>
+      <div class="campo"><label for="reg-telefono">Telefono</label><input id="reg-telefono" name="telefono" type="tel" autocomplete="tel" required></div>
+      <div class="campo"><label for="reg-email">Email</label><input id="reg-email" name="email" type="email" autocomplete="email" required></div>
+      <div class="campo"><label for="reg-password">Password (almeno 10 caratteri)</label><input id="reg-password" name="password" type="password" autocomplete="new-password" minlength="10" required></div>
+      <button class="bottone largo" type="submit">Registrati</button>
+      <p class="piccolo tenue" style="margin:.7rem 0 0">
+        Hai già un account? <a href="#" id="vai-login">Torna all'accesso</a>
+      </p>
+    </form>
+
+    <div id="stato-account" class="avviso attenzione" hidden></div>
+  </div>
+</div>
+
+<div id="sito" class="nascosto">
+
 <header class="testata">
   <div class="contenitore">
     <a class="marchio" href="/">
@@ -23,37 +62,17 @@
       <a href="#gestisci" data-sezione="gestisci">La mia richiesta</a>
       <a href="#ambulatori" data-sezione="ambulatori">Ambulatori</a>
     </nav>
+    <details class="account-menu" id="menu-account">
+      <summary><span id="nome-utente-paziente">Account</span><span aria-hidden="true"> ▾</span></summary>
+      <div class="account-tendina">
+        <button type="button" id="btn-modifica-account">Modifica account</button>
+        <button type="button" id="btn-esci-paziente">Esci</button>
+      </div>
+    </details>
   </div>
 </header>
 
 <main>
-
-<section class="sezione" id="account">
-  <div class="contenitore">
-    <header><h2>Il tuo account paziente</h2>
-      <p class="tenue">Accedi prima di prenotare, inviare o consultare una richiesta.</p></header>
-    <div class="griglia due">
-      <form id="form-login-paziente" class="carta">
-        <h3>Accedi</h3>
-        <div class="campo"><label for="login-email">Email</label><input id="login-email" name="email" type="email" required></div>
-        <div class="campo"><label for="login-password">Password</label><input id="login-password" name="password" type="password" minlength="10" required></div>
-        <button class="bottone" type="submit">Accedi</button>
-        <p class="piccolo tenue" style="margin:.6rem 0 0">Non hai ricevuto l'email di conferma?
-          <a href="#" id="rinvia-verifica">Rinvia il link</a></p>
-      </form>
-      <form id="form-registra-paziente" class="carta">
-        <h3>Crea account</h3>
-        <div class="coppia"><div class="campo"><label for="reg-nome">Nome</label><input id="reg-nome" name="nome" required></div>
-          <div class="campo"><label for="reg-cognome">Cognome</label><input id="reg-cognome" name="cognome" required></div></div>
-        <div class="campo"><label for="reg-telefono">Telefono</label><input id="reg-telefono" name="telefono" type="tel" required></div>
-        <div class="campo"><label for="reg-email">Email</label><input id="reg-email" name="email" type="email" required></div>
-        <div class="campo"><label for="reg-password">Password (almeno 10 caratteri)</label><input id="reg-password" name="password" type="password" minlength="10" required></div>
-        <button class="bottone" type="submit">Registrati</button>
-      </form>
-    </div>
-    <div id="stato-account" class="avviso attenzione">Non hai ancora effettuato l'accesso.</div>
-  </div>
-</section>
 
 <section class="copertina">
   <div class="contenitore">
@@ -406,6 +425,27 @@
        Per urgenze non differibili contatta la Guardia Medica.</p>
   </div>
 </footer>
+
+</div><!-- /#sito -->
+
+<dialog id="dialog-account">
+  <form method="dialog" class="carta" style="margin:0;border:0">
+    <h3>Il tuo account</h3>
+    <p class="piccolo">Email: <strong id="acc-email-mostra"></strong></p>
+    <p class="piccolo tenue">Per cambiare nome, telefono o email, contatta lo studio.</p>
+    <hr style="border:0;border-top:1px solid var(--bordo);margin:1rem 0">
+    <h4 style="margin:.2rem 0 .6rem">Cambia password</h4>
+    <div class="campo"><label for="acc-pwd-attuale">Password attuale</label>
+      <input id="acc-pwd-attuale" type="password" autocomplete="current-password" minlength="10"></div>
+    <div class="campo"><label for="acc-pwd-nuova">Nuova password (almeno 10 caratteri)</label>
+      <input id="acc-pwd-nuova" type="password" autocomplete="new-password" minlength="10"></div>
+    <div id="acc-esito"></div>
+    <div class="azioni" style="margin-top:1rem">
+      <button type="button" id="acc-salva-pwd" class="bottone">Cambia password</button>
+      <button value="chiudi" class="bottone secondario">Chiudi</button>
+    </div>
+  </form>
+</dialog>
 
 <!-- Il riquadro dell'assistente lo costruisce js/chat.js: e' lo stesso che usa
      il pannello dello studio, e tenerlo scritto in due pagine voleva dire
