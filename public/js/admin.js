@@ -381,6 +381,7 @@ const CARICATORI = {
   riepilogo: caricaRiepilogo,
   moduli: caricaModuli,
   prenotazioni: caricaPrenotazioni,
+  chiusure: caricaChiusure,
   medicine: caricaMedicine,
   specialistiche: caricaSpecialistiche,
   esami: caricaEsami,
@@ -1948,6 +1949,111 @@ function collegaCollaboratori() {
   });
 }
 
+// ---- Chiusure -------------------------------------------------------------
+
+function azioniChiusura(c) {
+  const b = nodo('button', 'bottone pericolo piccolo', 'Elimina');
+  b.type = 'button';
+  b.addEventListener('click', async () => {
+    if (!confirm('Eliminare questa chiusura? Gli slot torneranno prenotabili.')) return;
+    b.disabled = true;
+    await protetto(async () => {
+      await api(`/admin/chiusure/${c.id}`, { method: 'DELETE' });
+      await caricaChiusure();
+    });
+    b.disabled = false;
+  });
+  return b;
+}
+
+async function caricaChiusure() {
+  // Il menu a tendina degli ambulatori si riempie qui: quando si apre la scheda
+  // la lista e' gia' stata caricata da riempiAmbulatori().
+  const select = $('#chi-ambulatorio');
+  if (select && !select.children.length) {
+    const tutti = nodo('option', null, 'Tutti');
+    tutti.value = '';
+    select.append(tutti);
+    for (const a of ambulatoriNoti) {
+      const o = nodo('option', null, a.nome);
+      o.value = a.id;
+      select.append(o);
+    }
+  }
+
+  const { chiusure } = await api('/admin/chiusure');
+  const contenitore = $('#elenco-chiusure');
+  if (!chiusure.length) {
+    contenitore.replaceChildren(vuoto('Nessuna chiusura impostata.'));
+    return;
+  }
+
+  contenitore.replaceChildren(tabella(
+    ['Periodo', 'Fascia oraria', 'Ambulatorio', 'Motivo', 'Stato', 'Azioni'],
+    chiusure.map((c) => [
+      c.dal === c.al ? dataEstesa(c.dal) : `${dataEstesa(c.dal)} → ${dataEstesa(c.al)}`,
+      c.ora_inizio ? `${c.ora_inizio} – ${c.ora_fine}` : 'Tutto il giorno',
+      c.ambulatorio_nome || 'Tutti',
+      c.motivo || '—',
+      { nodo: c.passata ? etichetta('annullata', 'passata') : etichetta('confermata', 'attiva') },
+      { nodo: azioniChiusura(c) }
+    ])
+  ));
+}
+
+function collegaChiusure() {
+  const form = $('#form-chiusura');
+  const soloFascia = $('#chi-solo-fascia');
+  const fascia = $('#chi-fascia');
+
+  soloFascia.addEventListener('change', () => {
+    fascia.hidden = !soloFascia.checked;
+    $('#chi-ora-inizio').required = soloFascia.checked;
+    $('#chi-ora-fine').required = soloFascia.checked;
+  });
+
+  form.addEventListener('submit', async (evento) => {
+    evento.preventDefault();
+    const pulsante = $('button[type="submit"]', form);
+    pulsante.disabled = true;
+
+    await protetto(async () => {
+      const dal = $('#chi-dal').value;
+      const body = {
+        dal,
+        al: $('#chi-al').value || dal,
+        ambulatorio_id: $('#chi-ambulatorio').value || null,
+        motivo: $('#chi-motivo').value.trim()
+      };
+      if (soloFascia.checked) {
+        body.ora_inizio = $('#chi-ora-inizio').value;
+        body.ora_fine = $('#chi-ora-fine').value;
+      }
+
+      const esito = await api('/admin/chiusure', { method: 'POST', body });
+      form.reset();
+      fascia.hidden = true;
+
+      const box = nodo('div', 'avviso ok', 'Chiusura aggiunta.');
+      const colpite = esito.prenotazioni_da_avvisare || [];
+      if (colpite.length) {
+        box.className = 'avviso attenzione';
+        box.textContent = `Chiusura aggiunta. Ci sono ${colpite.length} prenotazioni confermate in questo periodo — vanno avvisate a mano:`;
+        const lista = nodo('ul');
+        for (const p of colpite) {
+          lista.append(nodo('li', 'piccolo',
+            `${dataEstesa(p.data)} ${p.ora_inizio} — ${p.nome} ${p.cognome} (${p.telefono}) · ${p.codice}`));
+        }
+        box.append(lista);
+      }
+      $('#esito-chiusura').replaceChildren(box);
+      await caricaChiusure();
+    });
+
+    pulsante.disabled = false;
+  });
+}
+
 // ---- Stato del sistema -----------------------------------------------------
 
 async function caricaSistema() {
@@ -2162,6 +2268,7 @@ async function avvia() {
   collegaAccesso();
   collegaCambioPassword();
   collegaCollaboratori();
+  collegaChiusure();
   collegaModuli();
   collegaFiltri();
 

@@ -81,10 +81,24 @@ export function orariAmbulatorio(ambulatorioId) {
   return out;
 }
 
-/** Ambulatori chiusi in una certa data (ferie, festivi, chiusure straordinarie). */
+/** Chiusure che coprono una certa data: intere giornate o singole fasce orarie. */
 export function chiusureDelGiorno(dataStr) {
-  return db.prepare('SELECT ambulatorio_id, motivo FROM chiusure WHERE ? BETWEEN dal AND al')
-    .all(dataStr);
+  return db.prepare(
+    'SELECT ambulatorio_id, motivo, ora_inizio, ora_fine FROM chiusure WHERE ? BETWEEN dal AND al'
+  ).all(dataStr);
+}
+
+/**
+ * Uno slot [inizioMin, fineMin) e' bloccato da una chiusura?
+ * Una chiusura senza ora vale per tutto il giorno; una con ora blocca solo gli
+ * slot che si sovrappongono alla fascia. ambulatorio_id NULL = tutto lo studio.
+ */
+export function slotBloccatoDaChiusura(chiusure, ambulatorioId, inizioMin, fineMin) {
+  return chiusure.some((c) => {
+    if (c.ambulatorio_id !== null && c.ambulatorio_id !== ambulatorioId) return false;
+    if (!c.ora_inizio || !c.ora_fine) return true;
+    return inizioMin < minutiDaOra(c.ora_fine) && fineMin > minutiDaOra(c.ora_inizio);
+  });
 }
 
 /**
@@ -101,9 +115,10 @@ export function slotDisponibili(dataStr, ambulatorioId = null) {
   const adesso = dataStr === oggi ? minutiCorrentiRoma() : -1;
 
   const chiusure = chiusureDelGiorno(dataStr);
-  // Una chiusura senza ambulatorio vale per tutto lo studio.
-  if (chiusure.some((c) => c.ambulatorio_id === null)) return [];
-  const chiusi = new Set(chiusure.map((c) => c.ambulatorio_id));
+  const interoGiorno = chiusure.filter((c) => !c.ora_inizio || !c.ora_fine);
+  // Una chiusura di intera giornata senza ambulatorio vale per tutto lo studio.
+  if (interoGiorno.some((c) => c.ambulatorio_id === null)) return [];
+  const chiusi = new Set(interoGiorno.map((c) => c.ambulatorio_id));
 
   const ambulatori = (ambulatorioId
     ? [trovaAmbulatorio(ambulatorioId)].filter(Boolean)
@@ -127,6 +142,8 @@ export function slotDisponibili(dataStr, ambulatorioId = null) {
     const fine = minutiDaOra(orario.ora_fine);
     for (let t = minutiDaOra(orario.ora_inizio); t + DURATA_SLOT_MINUTI <= fine; t += DURATA_SLOT_MINUTI) {
       const ora = oraDaMinuti(t);
+      // Fascia oraria bloccata dallo studio: lo slot non esiste, come per una chiusura.
+      if (slotBloccatoDaChiusura(chiusure, amb.id, t, t + DURATA_SLOT_MINUTI)) continue;
       risultato.push({
         ambulatorio_id: amb.id,
         ambulatorio_nome: amb.nome,

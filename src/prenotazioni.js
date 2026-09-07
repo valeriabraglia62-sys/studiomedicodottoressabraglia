@@ -4,7 +4,8 @@ import { config } from './config.js';
 import { accoda } from './outbox.js';
 import {
   DURATA_SLOT_MINUTI, dataValida, giornoSettimana, minutiDaOra, oraDaMinuti,
-  oggiISO, minutiCorrentiRoma, aggiungiGiorni, trovaAmbulatorio, GIORNI_PRENOTABILI
+  oggiISO, minutiCorrentiRoma, aggiungiGiorni, trovaAmbulatorio, GIORNI_PRENOTABILI,
+  chiusureDelGiorno, slotBloccatoDaChiusura
 } from './orari.js';
 import {
   emailConfermaPaziente, emailNuovaPrenotazioneAdmin,
@@ -153,6 +154,11 @@ function validaQuando(dati, ambulatorio, forza) {
     if (dati.data === oggi && inizio <= minutiCorrentiRoma()) {
       throw new ErroreDominio('Questo orario è già passato.');
     }
+    // Giornate o fasce orarie che lo studio ha bloccato per le prenotazioni.
+    if (slotBloccatoDaChiusura(chiusureDelGiorno(dati.data), ambulatorio.id,
+      inizio, inizio + DURATA_SLOT_MINUTI)) {
+      throw new ErroreDominio('In questo periodo le prenotazioni sono sospese: scegli un altro giorno o orario.');
+    }
   }
 
   return { data: dati.data, ora_inizio: dati.ora_inizio, ora_fine: oraDaMinuti(inizio + DURATA_SLOT_MINUTI) };
@@ -181,10 +187,16 @@ export function avvertimenti({ data, ora_inizio, ambulatorio_id }) {
     }
   }
 
-  const chiusura = db.prepare(
-    'SELECT motivo FROM chiusure WHERE ? BETWEEN dal AND al AND (ambulatorio_id IS NULL OR ambulatorio_id = ?)'
-  ).get(data, ambulatorio.id);
-  if (chiusura) note.push(`Giornata di chiusura: ${chiusura.motivo}.`);
+  const inizioMin = minutiDaOra(ora_inizio);
+  const chiusure = chiusureDelGiorno(data).filter((c) =>
+    c.ambulatorio_id === null || c.ambulatorio_id === ambulatorio.id);
+  const bloccante = chiusure.find((c) =>
+    !c.ora_inizio || (inizioMin < minutiDaOra(c.ora_fine) && inizioMin + DURATA_SLOT_MINUTI > minutiDaOra(c.ora_inizio)));
+  if (bloccante) {
+    note.push(bloccante.ora_inizio
+      ? `Fascia bloccata (${bloccante.ora_inizio}-${bloccante.ora_fine})${bloccante.motivo ? `: ${bloccante.motivo}` : ''}.`
+      : `Giornata di chiusura${bloccante.motivo ? `: ${bloccante.motivo}` : ''}.`);
+  }
 
   return note;
 }

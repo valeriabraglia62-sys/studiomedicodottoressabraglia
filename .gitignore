@@ -35,3 +35,6 @@ Thumbs.db
 
 # Impostazioni locali dell'editor
 .claude/settings.local.json
+
+# Database e backup usa-e-getta delle prove
+.prove-tmp/
