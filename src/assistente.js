@@ -302,6 +302,7 @@ function annullaAppuntamento(codice, confermato, utente) {
   const quando = `${formattaDataEstesa(p.data)} alle ${p.ora_inizio}`;
 
   if (!confermato) {
+    segnaAttesaConferma(utente, 'annulla', codice);
     return {
       testo: `Confermi l'annullamento di **${codice}**?\n\n` +
         `👤 ${chi}\n📅 ${quando}\n🏥 ${p.ambulatorio_nome}\n\n` +
@@ -310,6 +311,12 @@ function annullaAppuntamento(codice, confermato, utente) {
       azioni: AZIONI_BASE,
       vai: null
     };
+  }
+
+  if (!consumaAttesaConferma(utente, 'annulla', codice)) {
+    return risposta(
+      `Prima scrivimi **annulla ${codice}** per vedere di che appuntamento si tratta, ` +
+      'poi conferma. (Se l\'avevi già chiesto, sono passati più di 5 minuti: richiedilo.)');
   }
 
   try {
@@ -322,6 +329,32 @@ function annullaAppuntamento(codice, confermato, utente) {
   } catch (err) {
     return risposta(`Non sono riuscito ad annullare ${codice}: ${err.message}`);
   }
+}
+
+// ---- Conferme a due passi ---------------------------------------------------
+//
+// L'assistente non tiene memoria della conversazione, ma per le azioni che
+// cambiano dati (annullare, bloccare) la conferma dev'essere reale: non basta
+// che il testo contenga "conferma", altrimenti un input precompilato salterebbe
+// l'anteprima. Il primo passo lascia qui un gettone per (utente, azione,
+// parametri), valido pochi minuti; il secondo passo lo consuma.
+
+const CONFERME_TTL_MS = 5 * 60 * 1000;
+const conferme = new Map();
+setInterval(() => {
+  const ora = Date.now();
+  for (const [k, scad] of conferme) if (scad < ora) conferme.delete(k);
+}, 60_000).unref?.();
+
+const chiaveConferma = (utente, azione, parametri) =>
+  `${utente?.email || '?'} ${azione} ${norm(parametri)}`;
+const segnaAttesaConferma = (utente, azione, parametri) =>
+  conferme.set(chiaveConferma(utente, azione, parametri), Date.now() + CONFERME_TTL_MS);
+function consumaAttesaConferma(utente, azione, parametri) {
+  const k = chiaveConferma(utente, azione, parametri);
+  const scad = conferme.get(k);
+  conferme.delete(k);
+  return Boolean(scad) && scad > Date.now();
 }
 
 // ---- Chiusure dell'ambulatorio ------------------------------------------------
@@ -424,6 +457,7 @@ function bloccaPrenotazioni(t, confermato, utente) {
   });
 
   if (!confermato) {
+    segnaAttesaConferma(utente, 'blocca', t);
     return {
       testo: `Blocco le prenotazioni per:\n\n**${riepilogoTxt}**\n\n` +
         `Scrivi **conferma blocca ${t.replace(/^\s*blocca\s+/i, '')}** per procedere. ` +
@@ -431,6 +465,12 @@ function bloccaPrenotazioni(t, confermato, utente) {
       azioni: AZIONI_BASE,
       vai: null
     };
+  }
+
+  if (!consumaAttesaConferma(utente, 'blocca', t)) {
+    return risposta(
+      'Prima scrivimi il comando **senza "conferma"** per vedere cosa ho capito ' +
+      '(data, fascia, motivo), poi conferma la stessa riga.');
   }
 
   try {

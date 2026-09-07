@@ -894,6 +894,19 @@ console.log('\nL\'assistente del pannello');
 
   const inventato = await chiedi('annulla PRE-ZZZZ-ZZZZ');
   verifica('annullare un codice inesistente lo dice', inventato.testo.includes('non risulta'));
+
+  // Conferma reale a due passi: "conferma annulla X" da solo, senza aver prima
+  // chiesto "annulla X", non annulla niente.
+  const nuova2 = await chiama('POST', '/api/admin/prenotazioni', {
+    forza: true, ambulatorio_id: 1, data: orari.aggiungiGiorni(orari.oggiISO(), 41), ora_inizio: '10:45',
+    nome: 'Due', cognome: 'Passi', telefono: '3331113334', problema: 'conferma stateful'
+  }, token);
+  const cod2 = nuova2.dati.prenotazione?.codice;
+  const soloConferma = await chiedi(`conferma annulla ${cod2}`);
+  verifica('"conferma annulla" senza il primo passo non annulla',
+    soloConferma.testo.toLowerCase().includes('prima')
+    && (await chiedi(cod2)).testo.includes('Stato: confermata'));
+  await chiama('POST', `/api/admin/prenotazioni/${cod2}/annulla`, {}, token);
 }
 
 console.log('\nL\'assistente non aggira il segreto del medico');
