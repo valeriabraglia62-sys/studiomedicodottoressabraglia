@@ -44,7 +44,10 @@ function mostraSchermataPaziente(quale) {
   $('#sito').classList.toggle('nascosto', quale !== 'sito');
 }
 
-function esciPaziente() {
+async function esciPaziente() {
+  // Prima di dimenticare il token, lo si fa invalidare anche sul server: cosi'
+  // una copia rimasta altrove non resta valida per giorni.
+  try { await api('/auth/logout', { method: 'POST' }); } catch { /* si esce comunque */ }
   tokenPaziente = '';
   try { sessionStorage.removeItem(CHIAVE_TOKEN_PAZIENTE); } catch { /* ignora */ }
   location.reload();

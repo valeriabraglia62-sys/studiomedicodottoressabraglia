@@ -59,8 +59,14 @@ function linkModulo(valore) {
 
 const FILE_ARCHIVIO = path.resolve(ROOT, process.env.DB_FILE || 'data/medstudent.sqlite');
 
+const inProduzione = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+
 export const config = {
   port: Number(process.env.PORT) || 3000,
+  // Su quale interfaccia ascolta il processo. In produzione dietro un reverse
+  // proxy va messo a 127.0.0.1: da fuori si passa sempre dal proxy. Il valore
+  // predefinito 0.0.0.0 tiene funzionante l'accesso dalla rete di studio.
+  bindHost: (process.env.BIND_HOST || '').trim() || '0.0.0.0',
   sessionSecret: requireSecret(),
 
   // Come si chiama lo studio: finisce nel mittente delle email, nel titolo
@@ -224,11 +230,18 @@ export const config = {
   // Chiave per cifrare le copie di sicurezza (AES-256-GCM): 64 caratteri esa =
   // 32 byte. Generala una volta sola con  openssl rand -hex 32  e conservala
   // FUORI dalla macchina e fuori dalla cartella dei backup — senza, un backup
-  // cifrato non si recupera. Se manca, le copie restano in chiaro e il
-  // programma lo segnala a ogni avvio.
+  // cifrato non si recupera.
+  // In produzione (NODE_ENV=production) e' OBBLIGATORIA: senza, il programma
+  // non parte, per non scrivere a lungo dati sanitari in chiaro su disco. Fuori
+  // produzione la sua assenza e' solo un avviso a ogni avvio.
   backupEncryptionKey: (() => {
     const raw = (process.env.BACKUP_ENCRYPTION_KEY || '').trim();
-    if (!raw) return null;
+    if (!raw) {
+      if (inProduzione) {
+        throw new Error('In produzione BACKUP_ENCRYPTION_KEY e\' obbligatoria (openssl rand -hex 32).');
+      }
+      return null;
+    }
     if (!/^[0-9a-fA-F]{64}$/.test(raw)) {
       throw new Error('BACKUP_ENCRYPTION_KEY deve essere 64 caratteri esadecimali (openssl rand -hex 32).');
     }

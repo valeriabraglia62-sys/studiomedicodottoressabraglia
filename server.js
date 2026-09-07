@@ -15,28 +15,33 @@ import { verificaFoglio } from './src/sheets.js';
 import { router } from './src/api.js';
 
 /**
- * Nessun errore deve poter spegnere il server.
+ * Un errore dentro una richiesta non spegne il server: lo cattura il gestore
+ * errori di Express (le rotte async passano da `via()`), il paziente vede un
+ * 500 e gli altri continuano.
  *
- * La versione precedente moriva su una singola variabile non definita durante
- * una prenotazione, e con lei sparivano tutti i dati tenuti in memoria. Ora i
- * dati stanno su disco e il processo resta in piedi: un errore rovina al
- * massimo la singola richiesta, mai il servizio degli altri pazienti.
+ * Un `uncaughtException` o un `unhandledRejection` sono un'altra cosa: l'errore
+ * e' arrivato FUORI dal ciclo delle richieste (un timer, un handler, un bug), e
+ * da li' in poi lo stato del processo non e' piu' affidabile. Si registra, si
+ * chiude in modo ordinato e si esce con codice non-zero: a rimetterlo in piedi
+ * ci pensa il gestore del servizio (systemd / NSSM), che riparte pulito.
  */
-process.on('uncaughtException', (err) => {
-  console.error('[fatale] eccezione non gestita:', err?.name || 'Errore');
-});
-process.on('unhandledRejection', (err) => {
-  console.error('[fatale] promise rifiutata:', err?.name || 'Errore');
-});
+let spegniRef = null;
+function fatale(tipo, err) {
+  console.error(`[fatale] ${tipo}:`, err?.name || 'Errore');
+  if (spegniRef) spegniRef('errore', 1);
+  else process.exit(1);          // errore durante l'avvio: si esce e basta
+}
+process.on('uncaughtException', (err) => fatale('eccezione non gestita', err));
+process.on('unhandledRejection', (err) => fatale('promise rifiutata', err));
 
 const app = express();
 
 const hostConfigurato = (() => {
-  try { return config.pubblico.url ? new URL(config.pubblico.url).host.toLowerCase() : ''; }
+  try { return config.pubblico.url ? new URL(config.pubblico.url).hostname.toLowerCase() : ''; }
   catch { return ''; }
 })();
 const hostAmmessi = new Set([
-  ...config.pubblico.hostAmmessi.map((h) => h.toLowerCase()),
+  ...config.pubblico.hostAmmessi.map((h) => h.toLowerCase().replace(/:\d+$/, '')),
   hostConfigurato
 ].filter(Boolean));
 
@@ -86,12 +91,18 @@ app.use((req, res, next) => {
   res.setHeader('Permissions-Policy', 'geolocation=(), camera=(), microphone=(), payment=()');
 
   if (config.pubblico.https) {
+    // Host fuori dalla allowlist: si rifiuta SEMPRE, non solo nel redirect.
+    // Cosi' un proxy mal configurato o un DNS rebinding verso l'origine non
+    // passa nemmeno quando la richiesta arriva gia' marcata come sicura. Il
+    // monitoraggio locale interroga /salute su localhost e resta escluso.
+    if (hostAmmessi.size && req.path !== '/salute'
+        && !hostAmmessi.has(String(req.hostname || '').toLowerCase())) {
+      return res.status(421).send('Host non ammesso.');
+    }
     // Dietro il proxy la richiesta arriva in chiaro: e' l'intestazione a dire
     // com'e' arrivata dal paziente. Se e' partita in chiaro la rimandiamo al
     // lucchetto, altrimenti password e dati sanitari attraverserebbero reti
     // altrui leggibili da chiunque.
-    // Il controllo di salute lo interroga il monitoraggio locale in HTTP diretto
-    // su localhost: non va mai redirezionato, o ogni sonda fallisce.
     if (!req.secure && req.path !== '/salute') {
       const destinazione = destinazioneRedirectHttps(req.get('host'));
       if (!destinazione) return res.status(421).send('Host non ammesso.');
@@ -131,8 +142,8 @@ const manutenzione = setInterval(() => {
 }, 15 * 60 * 1000);
 manutenzione.unref?.();
 
-const server = app.listen(config.port, async () => {
-  console.log(`\n  ${config.nomeStudio} — servizio attivo sulla porta ${config.port}\n`);
+const server = app.listen(config.port, config.bindHost, async () => {
+  console.log(`\n  ${config.nomeStudio} — servizio attivo su ${config.bindHost}:${config.port}\n`);
 
   avviaWorker(30);
   avviaPromemoria();
@@ -201,7 +212,7 @@ server.headersTimeout = 66000;
 
 let inChiusura = false;
 
-function spegni(segnale) {
+function spegni(segnale, codice = 0) {
   if (inChiusura) return;
   inChiusura = true;
   console.log(`\n[${segnale}] chiusura in corso...`);
@@ -219,15 +230,16 @@ function spegni(segnale) {
   server.close(() => {
     chiudiDb();
     console.log('[chiusura] database salvato. Arrivederci.');
-    process.exit(0);
+    process.exit(codice);
   });
 
   // Se qualche connessione non si chiude, non restiamo appesi all'infinito.
   setTimeout(() => {
     chiudiDb();
-    process.exit(0);
+    process.exit(codice);
   }, 10000).unref();
 }
+spegniRef = spegni;
 
 process.on('SIGINT', () => spegni('SIGINT'));
 process.on('SIGTERM', () => spegni('SIGTERM'));

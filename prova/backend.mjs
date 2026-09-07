@@ -1841,5 +1841,25 @@ console.log('\nTrecento prenotazioni diverse in contemporanea');
   verifica('ogni prenotazione ha le sue consegne in coda', inCoda >= totale, `prenotazioni ${totale}, coda ${inCoda}`);
 }
 
+console.log('\nIn produzione la cifratura dei backup e\' obbligatoria');
+{
+  const { spawnSync } = await import('child_process');
+  const provaAvvio = (extra) => spawnSync(process.execPath,
+    ['-e', 'import("./src/config.js").then(()=>process.exit(0)).catch(()=>process.exit(3))'],
+    {
+      cwd: RADICE,
+      env: { ...process.env, NODE_ENV: 'production', SESSION_SECRET: 'x'.repeat(64), ...extra },
+      encoding: 'utf8'
+    });
+
+  const senzaChiave = provaAvvio({ BACKUP_ENCRYPTION_KEY: '' });
+  verifica('senza BACKUP_ENCRYPTION_KEY il programma non parte in produzione',
+    senzaChiave.status !== 0, `exit ${senzaChiave.status}`);
+
+  const conChiave = provaAvvio({ BACKUP_ENCRYPTION_KEY: 'a'.repeat(64) });
+  verifica('con la chiave parte normalmente in produzione', conChiave.status === 0,
+    `exit ${conChiave.status} ${conChiave.stderr?.slice(0, 120) || ''}`);
+}
+
 console.log(`\n${passati} verifiche superate, ${falliti} fallite\n`);
 process.exit(falliti === 0 ? 0 : 1);
