@@ -1,185 +1,115 @@
 # Da completare prima della messa in produzione
 
-Stato al 31/08/2026. Le voci **[FATTO]** sono già applicate nel codice e testate
-(`npm run prova` → 224/224). Le voci **[TU]** richiedono un'azione tua: privilegi
-di amministratore, le tue credenziali, o una decisione tua.
+Stato dopo il secondo audit Codex (branch `installazione-npm-windows`).
+`node prova/backend.mjs` → **264/264**. `npm audit` → **0 vulnerabilità**.
+
+Le voci **[FATTO]** sono applicate nel codice. Le voci **[TU]** richiedono
+un'azione tua (privilegi di amministratore, credenziali, o una decisione).
 
 ---
 
-## 1. Riavviare il servizio per caricare le ultime modifiche  **[TU]**
+## Da fare adesso — 3 cose
 
-Il servizio `StudioMedico` gira ancora con il codice caricato all'ultimo
-riavvio: ha già account paziente, isolamento dati e i fix dell'audit, ma **non**
-ha ancora *verifica email* e *backup cifrati*. In PowerShell **come amministratore**:
+### 1. Pubblicare la cronologia Git ripulita  **[TU]**
 
-```powershell
-& 'C:\Users\valer\studiomedico\strumenti\nssm.exe' restart StudioMedico
-Start-Sleep 8
-Invoke-WebRequest -UseBasicParsing http://localhost:3000/salute | Select-Object StatusCode
-```
-
-Atteso: `StatusCode 200`. La migrazione del database (nuove colonne per la
-verifica email) parte da sola all'avvio ed è additiva.
-
----
-
-## 2. Cambiare la password dell'amministratore  **[TU] — URGENTE**
-
-La vecchia password del pannello era finita in chiaro nella cronologia Git (ora
-ripulita) ed è debole. Va cambiata. Con **PowerShell amministratore**:
-
-1. Apri `C:\Users\valer\studiomedico\.env` e metti una password nuova e robusta:
-   ```
-   ADMIN_PASSWORD=<una password lunga e non riutilizzata altrove>
-   ADMIN_PASSWORD_RESET=once
-   ```
-2. Riavvia: `& 'C:\Users\valer\studiomedico\strumenti\nssm.exe' restart StudioMedico`
-3. Entra nel pannello con la password nuova: ti chiederà di sceglierne una
-   personale al primo accesso. Tutte le sessioni aperte vengono chiuse.
-4. Rimetti `ADMIN_PASSWORD=` e `ADMIN_PASSWORD_RESET=` **vuote** nel `.env`.
-
-Lo stesso vale per la segreteria con `SEGRETARIA_PASSWORD` / `SEGRETARIA_PASSWORD_RESET=once`.
-
----
-
-## 3. Pubblicare la cronologia Git ripulita  **[TU]**
-
-La cronologia locale è stata riscritta per togliere la password. Su GitHub c'è
-ancora quella vecchia. Da un terminale nella cartella `C:\Users\valer\studiomedico`:
+La vecchia password del pannello era finita in un commit; è stata tolta da
+**tutta** la cronologia locale. Su GitHub c'è ancora. Da `C:\Users\valer\studiomedico`:
 
 ```bash
-git remote add origin https://github.com/valeriabraglia62-sys/studiomedicodottoressabraglia.git
 git push --force origin main installazione-npm-windows
 ```
 
-Dopo il push: se qualcun altro ha una copia del repository, deve **riclonarla**
-(i vecchi commit restano nelle copie già esistenti). Backup della vecchia
-cronologia (per sicurezza) in `%TEMP%\...\scratchpad\repo-pre-rewrite.bundle`.
+Dopo il push, ogni copia esistente del repository va **riclonata** (i vecchi
+commit restano nelle copie già fatte). Backup della cronologia precedente in
+`%TEMP%\...\scratchpad\repo-pre-rewrite-2.bundle`.
 
----
+### 2. Cambiare la password dell'amministratore  **[TU] — URGENTE**
 
-## 4. Cifratura dei backup  **[TU]**
+La vecchia password va cambiata (era in chiaro nella cronologia e potrebbe
+essere riutilizzata altrove). Con **PowerShell amministratore**:
 
-1. Genera la chiave una volta sola (Git Bash o WSL):
-   ```bash
-   openssl rand -hex 32
+1. In `C:\Users\valer\studiomedico\.env`:
    ```
-2. In `C:\Users\valer\studiomedico\.env`:
+   ADMIN_PASSWORD=<una password lunga, nuova, non usata altrove>
+   ADMIN_PASSWORD_RESET=once
    ```
-   BACKUP_ENCRYPTION_KEY=<i 64 caratteri generati>
-   ```
-3. **Salva la chiave anche fuori dalla macchina** (password manager, foglio in
-   cassaforte): senza, un backup cifrato non si recupera più.
-4. Riavvia il servizio. Da lì i backup finiscono cifrati (`*.sqlite.enc`) in
-   `C:\Users\valer\OneDrive - Unimore\StudioMedico-Backup`.
-5. Per rileggere un backup: `node strumenti/decifra-backup.mjs <file.sqlite.enc>`
+2. `& 'C:\Users\valer\studiomedico\strumenti\nssm.exe' restart StudioMedico`
+3. Entra nel pannello con la password nuova → ti fa scegliere quella definitiva.
+   Tutte le sessioni aperte vengono chiuse.
+4. Rimetti `ADMIN_PASSWORD=` e `ADMIN_PASSWORD_RESET=` **vuote** e riavvia.
 
-La cartella di backup è già stata spostata su **OneDrive - Unimore** (account
-organizzativo), fuori dal Desktop così il "backup cartelle note" non la sposta.
+Stesso schema per la segreteria con `SEGRETARIA_PASSWORD` / `SEGRETARIA_PASSWORD_RESET=once`.
 
----
-
-## 5. Permessi sulla cartella dati  **[TU]**
-
-Il servizio gira come `LocalSystem`. Restringi `data\` a SYSTEM e agli
-amministratori. **PowerShell amministratore**:
+### 3. Riavviare per caricare i fix dell'audit  **[TU]**
 
 ```powershell
-$d = 'C:\Users\valer\studiomedico\data'
-icacls $d /inheritance:r /grant "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" /T
+& 'C:\Users\valer\studiomedico\strumenti\nssm.exe' restart StudioMedico
+Invoke-WebRequest -UseBasicParsing http://localhost:3000/salute | Select StatusCode
 ```
 
-(Se in futuro fai girare il servizio con un account dedicato invece di
-LocalSystem, aggiungi quell'account al posto di SYSTEM.)
+---
+
+## Poi — il server sempre acceso (h24)
+
+Il sito sul PC non è online quando il PC è spento. Per il vero 24/7 c'è il kit
+in `strumenti/server/` e la guida **`DEPLOY-SERVER.md`**: server Aruba/Hetzner
+in UE (~5 €/mese) + dominio (~10 €/anno). Sul server la configurazione è già
+fail-closed (HTTPS obbligatorio, backup cifrato obbligatorio, ascolto solo su
+loopback dietro Caddy, codice in sola lettura).
+
+Sul server, dopo il primo avvio, verifica anche:
+
+- [ ] restore di prova: `node strumenti/decifra-backup.mjs <ultimo .enc>` su
+      un'altra macchina, e aprire il file risultante — che la copia si legga davvero.
+- [ ] monitoraggio che non guardi solo `/salute` ma anche: coda `outbox` che si
+      svuota, backup recenti in `data/backup`, spazio disco.
+- [ ] smoke test reale dietro Caddy: registrazione → email → verifica → login →
+      modifica profilo → prenotazione (da sito e da pannello, con e senza email)
+      → upload allegato → annullamento → chiusura → backup e restore.
 
 ---
 
-## 6. BitLocker sul disco  **[TU]**
+## Cosa è già stato fatto  **[FATTO]**
 
-1. Menu Start → cerca **"Crittografia unità BitLocker"** → aprilo.
-2. Sul disco `C:` (dove stanno `studiomedico\data` e i backup locali) → **Attiva BitLocker**.
-3. Scegli **"Salva su un file"** o **"Stampa"** per la chiave di ripristino, e
-   conservala **fuori dal PC** (non sul disco che stai cifrando).
-4. "Crittografa l'intero disco" → avvia. Il PC resta usabile durante la cifratura.
+Sicurezza:
 
-Se BitLocker non compare, il PC potrebbe non avere il chip TPM: in quel caso
-serve abilitarlo dal BIOS/UEFI, oppure usare BitLocker senza TPM via Criteri di
-gruppo. Fammi sapere e ti guido.
+- Account paziente completi: registrazione, **verifica email** obbligatoria,
+  login, isolamento dati (un paziente non vede/modifica le pratiche di un altro)
+- `PATCH /api/paziente/profilo` senza mass-assignment; gli id vengono dalla
+  sessione, mai dal corpo
+- Registrazione che **non rivela** se un'email ha già un account
+- `uncaughtException`/`unhandledRejection` → chiusura ordinata + uscita, così il
+  gestore del servizio riparte pulito
+- `Host` fuori da `HOST_AMMESSI` rifiutato su **ogni** richiesta (non solo nel redirect)
+- Backup cifrati AES-256-GCM; **obbligatori** in produzione (senza chiave non parte)
+- Password bootstrap `.env` che non sovrascrive account esistenti; recovery monouso
+- Cambio/reset/logout revocano le sessioni
+- Assistente pannello: annulla prenotazioni e crea chiusure, con **conferma a
+  due passi reale** (gettone in memoria, non solo la parola "conferma")
+- Chiusure per giorno o fascia oraria, con enforcement server-side
+- Casella: le notifiche automatiche di Google e le newsletter non diventano
+  più richieste da confermare
+- Limite byte sulla posta prima del parsing; nessun dato personale nei log
+- Dipendenze: 0 vulnerabilità (`firebase` rimossa perché inutilizzata, `qs`
+  fissato a 6.16.0 per due CVE recenti)
+- Password rimossa dai documenti e da **tutta** la cronologia Git locale
 
----
+Funzioni:
 
-## 7. Dominio e HTTPS  **[TU] — quando sei pronta**
+- Sito paziente con schermata d'accesso iniziale e menu account in alto a destra
+  (modifica nome/telefono/email, cambio password, esci)
+- Prenotazioni dal pannello: email **facoltativa** (allo sportello, al telefono)
+- Kit di installazione su server Linux (systemd con sandbox, Caddy con HTTPS
+  automatico, deploy con rollback e backup DB pre-deploy, backup offsite via rclone)
 
-Oggi il sito è in HTTP sulla porta 3000 (come prima). Per esporlo su internet in
-sicurezza servono un dominio e un tunnel Cloudflare:
+Ambiente:
 
-1. **Registra un dominio** (es. su Cloudflare stessa, ~10 €/anno) — per esempio
-   `prenotazioni-braglia.it`.
-2. **Cloudflare Tunnel** (gratis): installa `cloudflared` sul PC, crea un tunnel
-   che punta a `http://localhost:3000`, associalo al dominio. Guida:
-   <https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/>
-3. In `C:\Users\valer\studiomedico\.env`:
-   ```
-   SITO_HTTPS=true
-   SITO_URL=https://prenotazioni-braglia.it
-   HOST_AMMESSI=prenotazioni-braglia.it
-   PROXY_DAVANTI=1
-   ```
-   (commenta la riga `SITO_HTTPS=false`)
-4. In Cloudflare, SSL/TLS mode → **Full (strict)**.
-5. Riavvia il servizio.
+- App spostata fuori da OneDrive in `C:\Users\valer\studiomedico`, servizio
+  `StudioMedico` che riparte da solo a ogni avvio/crash
+- Suite di test da 213 a **264** verifiche
 
-Finché il dominio non c'è, lascia `SITO_HTTPS=false`: con l'HTTPS attivo e senza
-`HOST_AMMESSI` l'app rifiuta ogni richiesta.
+## Non applicabile
 
----
-
-## 8. Verifica in due passaggi sull'account dei backup  **[TU]**
-
-I backup vanno su **OneDrive - Unimore**, quindi sull'account Microsoft/Unimore.
-Attiva la 2FA lì:
-
-- Vai su <https://mysignins.microsoft.com/security-info> con l'account Unimore.
-- **Aggiungi metodo** → App Authenticator (Microsoft Authenticator sul telefono)
-  o SMS. Segui la procedura.
-- Se l'ateneo la impone già a livello di tenant, potresti trovarla attiva.
-
-(La 2FA di Gmail dello studio risulta già attiva: bene.)
-
----
-
-## 9. Pulizia file  **[TU]**
-
-Nella cartella del progetto ci sono vecchie copie del `.env` con la password e i
-segreti in chiaro. Eliminale:
-
-```powershell
-Remove-Item 'C:\Users\valer\studiomedico\.env.prima-*'
-```
-
-E, quando il sito nuovo gira bene da qualche giorno, elimina le cartelle messe
-da parte:
-
-- `C:\Users\valer\Desktop\studiomedicodottoressabraglia.DA-ELIMINARE`
-- `C:\Users\valer\OneDrive - Unimore\Desktop\studiomedicodottoressabraglia.DA-ELIMINARE-copia-onedrive`
-
----
-
-## Riepilogo di cosa è già stato fatto  **[FATTO]**
-
-- Account paziente completi: registrazione, login, **verifica email** obbligatoria
-- Isolamento dati: un paziente non accede alle pratiche di un altro (verificato)
-- Password bootstrap `.env` non sovrascrive più account esistenti; recovery monouso
-- Cambio/reset password revoca tutte le sessioni
-- HTTPS fail-closed con allowlist host (pronto, si attiva da `.env`)
-- Redirect basato su Host validato; `/salute` mai redirezionato
-- Chat: alla scadenza 72h i messaggi vengono cancellati davvero
-- Inbox: limite byte prima del parsing MIME
-- Log senza dati personali / codici pratica
-- Moduli Google: lettura incrementale invece dell'intero foglio
-- Token pannello admin in `sessionStorage`
-- Dipendenze: 3 vulnerabilità high risolte (`npm audit` → 0)
-- **Backup cifrati** (AES-256-GCM) — da attivare con la chiave (punto 4)
-- Password rimossa dai documenti e dalla cronologia Git locale
-- App spostata fuori da OneDrive in `C:\Users\valer\studiomedico`, servizio riconfigurato
-- Suite di test: da 213 a **224 verifiche**, tutte verdi
+- **BitLocker**: non disponibile su questo Windows 11 Home. La cifratura che
+  conta (i backup che escono dal PC) è già attiva. Se sposti tutto sul server,
+  la cifratura a riposo la gestisce quello.
