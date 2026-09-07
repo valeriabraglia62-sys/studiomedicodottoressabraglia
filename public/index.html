@@ -431,18 +431,36 @@
 <dialog id="dialog-account">
   <form method="dialog" class="carta" style="margin:0;border:0">
     <h3>Il tuo account</h3>
-    <p class="piccolo">Email: <strong id="acc-email-mostra"></strong></p>
-    <p class="piccolo tenue">Per cambiare nome, telefono o email, contatta lo studio.</p>
-    <hr style="border:0;border-top:1px solid var(--bordo);margin:1rem 0">
+
+    <div class="coppia">
+      <div class="campo"><label for="acc-nome">Nome</label>
+        <input id="acc-nome" autocomplete="given-name"></div>
+      <div class="campo"><label for="acc-cognome">Cognome</label>
+        <input id="acc-cognome" autocomplete="family-name"></div>
+    </div>
+    <div class="campo"><label for="acc-telefono">Telefono</label>
+      <input id="acc-telefono" type="tel" autocomplete="tel"></div>
+    <div class="campo"><label for="acc-email">Email (è anche l'indirizzo con cui accedi)</label>
+      <input id="acc-email" type="email" autocomplete="email"></div>
+    <div class="campo" id="acc-riga-pwd-conferma" hidden>
+      <label for="acc-pwd-conferma">Per cambiare l'email, conferma con la password attuale</label>
+      <input id="acc-pwd-conferma" type="password" autocomplete="current-password">
+    </div>
+    <div id="acc-esito"></div>
+    <div class="azioni" style="margin-top:1rem">
+      <button type="button" id="acc-salva-profilo" class="bottone">Salva modifiche</button>
+      <button value="chiudi" class="bottone secondario">Chiudi</button>
+    </div>
+
+    <hr style="border:0;border-top:1px solid var(--bordo);margin:1.25rem 0">
     <h4 style="margin:.2rem 0 .6rem">Cambia password</h4>
     <div class="campo"><label for="acc-pwd-attuale">Password attuale</label>
       <input id="acc-pwd-attuale" type="password" autocomplete="current-password" minlength="10"></div>
     <div class="campo"><label for="acc-pwd-nuova">Nuova password (almeno 10 caratteri)</label>
       <input id="acc-pwd-nuova" type="password" autocomplete="new-password" minlength="10"></div>
-    <div id="acc-esito"></div>
-    <div class="azioni" style="margin-top:1rem">
-      <button type="button" id="acc-salva-pwd" class="bottone">Cambia password</button>
-      <button value="chiudi" class="bottone secondario">Chiudi</button>
+    <div id="acc-esito-pwd"></div>
+    <div class="azioni" style="margin-top:.75rem">
+      <button type="button" id="acc-salva-pwd" class="bottone secondario">Cambia password</button>
     </div>
   </form>
 </dialog>

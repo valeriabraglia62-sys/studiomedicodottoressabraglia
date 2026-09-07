@@ -540,7 +540,7 @@ function campiPaziente() {
     campoModulo('Nome', campi.nome),
     campoModulo('Cognome', campi.cognome),
     campoModulo('Telefono', campi.telefono),
-    campoModulo('Email', campi.email)
+    campoModulo('Email (se non ce l\'ha, lascia vuoto)', campi.email)
   );
   return { campi, riga };
 }
@@ -682,16 +682,16 @@ function apriChiudi(contenitore, costruisci) {
 /**
  * Prenotazione presa al telefono e scritta a mano dallo studio.
  *
- * Vale la pena ricordarlo qui: al paziente arriva la stessa email di conferma
- * che riceverebbe prenotando dal sito. Chi la scrive deve saperlo mentre la
- * scrive, non scoprirlo dopo — per questo l'email e' un campo obbligatorio e
- * il bottone si chiama "Crea e avvisa".
+ * Se il paziente ha un'email, gli arriva la stessa conferma che riceverebbe
+ * prenotando dal sito, con il codice per disdire. Se non ce l'ha (al banco, al
+ * telefono) si lascia vuoto: la prenotazione si crea lo stesso ed e' lo studio
+ * ad avvisare il paziente a voce.
  */
 function moduloNuovaPrenotazione(chiudi) {
   const carta = nodo('div', 'carta');
   carta.append(nodo('strong', null, '📅 Nuova prenotazione'));
   carta.append(nodo('p', 'piccolo tenue',
-    'Al paziente arriva la solita email di conferma, con il codice per disdire.'));
+    'Con l\'email, al paziente arriva la conferma col codice per disdire. Senza, avvisalo tu.'));
 
   const { campi, riga } = campiPaziente();
   const quando = selettoreQuando();
@@ -703,7 +703,7 @@ function moduloNuovaPrenotazione(chiudi) {
   carta.append(riga, quando.riga, quando.avviso, rigaMotivo);
 
   const azioni = nodo('div', 'azioni');
-  const salva = nodo('button', 'bottone', 'Crea e avvisa il paziente');
+  const salva = nodo('button', 'bottone', 'Crea prenotazione');
   salva.type = 'button';
   salva.addEventListener('click', () => {
     salva.disabled = true;
@@ -717,7 +717,9 @@ function moduloNuovaPrenotazione(chiudi) {
             problema: problema.value, ...quando.valori()
           }
         });
-        avvisa(`Prenotata: ${prenotazione.codice}. Al paziente parte l'email.`, 'ok');
+        avvisa(`Prenotata: ${prenotazione.codice}.` + (prenotazione.paziente_email
+          ? ' Al paziente parte l\'email.'
+          : ' Senza email: avvisa tu il paziente.'), 'ok');
         chiudi();
         await caricaPrenotazioni();
       } finally {

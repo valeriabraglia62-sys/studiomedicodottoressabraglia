@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { db } from './db.js';
 import { config } from './config.js';
 import { hashPassword, verificaPassword, RUOLI_STAFF } from './auth.js';
-import { ErroreDominio } from './prenotazioni.js';
+import { ErroreDominio, telefonoValido, emailValida } from './prenotazioni.js';
 
 /**
  * Accessi personali di chi lavora nello studio.
@@ -159,6 +159,60 @@ export function verificaEmailPaziente(tokenGrezzo) {
     `).run(pazienteId, u.id);
     return pubblico(db.prepare('SELECT * FROM utenti WHERE id = ?').get(u.id));
   })();
+}
+
+/** I dati anagrafici che il paziente puo' vedere e modificare da solo. */
+export function profiloPaziente(pazienteId) {
+  const p = db.prepare('SELECT nome, cognome, telefono, email FROM pazienti WHERE id = ?').get(Number(pazienteId));
+  if (!p) throw new ErroreDominio('Scheda paziente non trovata.', 404);
+  return { nome: p.nome, cognome: p.cognome, telefono: p.telefono || '', email: p.email || '' };
+}
+
+/**
+ * Il paziente aggiorna i propri dati. Nome, cognome e telefono si cambiano
+ * liberamente; l'email e' anche la credenziale d'accesso, quindi per cambiarla
+ * serve la password attuale e non deve gia' essere di un altro account.
+ */
+export function aggiornaProfiloPaziente({ pazienteId, utenteId, nome, cognome, telefono, email, password }) {
+  const p = db.prepare('SELECT * FROM pazienti WHERE id = ?').get(Number(pazienteId));
+  const u = db.prepare('SELECT * FROM utenti WHERE id = ?').get(Number(utenteId));
+  if (!p || !u) throw new ErroreDominio('Account non valido.', 404);
+
+  const nomeP = String(nome ?? '').trim();
+  const cognomeP = String(cognome ?? '').trim();
+  const telP = pulisciTelefono(telefono);
+  const emailP = pulisciEmail(email);
+
+  if (nomeP.length < 2 || cognomeP.length < 2) throw new ErroreDominio('Nome e cognome non validi.', 400);
+  if (!telefonoValido(telP)) throw new ErroreDominio('Numero di telefono non valido.', 400);
+  if (!emailValida(emailP)) throw new ErroreDominio('Indirizzo email non valido.', 400);
+
+  const emailCambia = emailP !== pulisciEmail(u.email);
+  if (emailCambia) {
+    if (!verificaPassword(String(password ?? ''), u.password_hash)) {
+      throw new ErroreDominio('Per cambiare l\'email serve la password attuale.', 403);
+    }
+    if (db.prepare('SELECT id FROM utenti WHERE email = ? AND id <> ?').get(emailP, u.id)) {
+      throw new ErroreDominio('Questa email è già usata da un altro account.', 409);
+    }
+  }
+
+  db.transaction(() => {
+    db.prepare('UPDATE pazienti SET nome = ?, cognome = ?, telefono = ?, email = ? WHERE id = ?')
+      .run(nomeP, cognomeP, telP, emailP, p.id);
+    if (emailCambia) {
+      db.prepare('UPDATE utenti SET email = ?, nome = ? WHERE id = ?')
+        .run(emailP, `${nomeP} ${cognomeP}`, u.id);
+    } else {
+      db.prepare('UPDATE utenti SET nome = ? WHERE id = ?').run(`${nomeP} ${cognomeP}`, u.id);
+    }
+  })();
+
+  return {
+    profilo: { nome: nomeP, cognome: cognomeP, telefono: telP, email: emailP },
+    emailCambiata: emailCambia,
+    emailVecchia: emailCambia ? u.email : null
+  };
 }
 
 /**

@@ -678,6 +678,67 @@ console.log('\nChiusure (giorni e fasce orarie bloccate)');
   await chiama('DELETE', `/api/admin/chiusure/${creata.id}`, null, token);
 }
 
+console.log('\nPrenotazione dallo studio senza email');
+{
+  const { giorno, slot } = await giornoConSlot();
+  const senzaEmail = await chiama('POST', '/api/admin/prenotazioni', {
+    ambulatorio_id: 1, data: giorno, ora_inizio: slot.ora_inizio,
+    nome: 'Nonna', cognome: 'Senzamail', telefono: '3336667788', problema: 'Controllo pressione'
+  }, token);
+  verifica('lo studio prenota anche senza indirizzo email',
+    senzaEmail.stato === 201 && /^PRE-/.test(senzaEmail.dati.prenotazione?.codice || ''),
+    `stato ${senzaEmail.stato} ${senzaEmail.dati.message || ''}`);
+  verifica('e la prenotazione risulta senza email',
+    !senzaEmail.dati.prenotazione?.paziente_email);
+}
+
+console.log('\nIl paziente modifica il proprio profilo');
+{
+  const reg = registraPazienteDiretto({
+    nome: 'Profilo', cognome: 'Prova', telefono: '3339990001',
+    email: 'profilo.prova@example.it', password: 'PasswordProfilo2026!'
+  });
+  verificaEmailDiretto(reg.token);
+  const tok = creaSessioneDiretta(reg.utente.id).token;
+
+  const prof = await chiama('GET', '/api/paziente/profilo', null, tok);
+  verifica('il paziente vede i propri dati',
+    prof.dati.profilo?.nome === 'Profilo' && prof.dati.profilo?.telefono === '3339990001');
+
+  const rinomina = await chiama('PATCH', '/api/paziente/profilo', {
+    nome: 'Profilo', cognome: 'Cambiato', telefono: '3339990009',
+    email: 'profilo.prova@example.it'
+  }, tok);
+  verifica('nome e telefono si cambiano senza password',
+    rinomina.stato === 200 && rinomina.dati.profilo?.cognome === 'Cambiato'
+    && rinomina.dati.profilo?.telefono === '3339990009' && !rinomina.dati.email_cambiata);
+
+  const emailSenzaPwd = await chiama('PATCH', '/api/paziente/profilo', {
+    nome: 'Profilo', cognome: 'Cambiato', telefono: '3339990009',
+    email: 'profilo.nuova@example.it'
+  }, tok);
+  verifica('cambiare email senza la password attuale e\' rifiutato', emailSenzaPwd.stato === 403);
+
+  const emailOk = await chiama('PATCH', '/api/paziente/profilo', {
+    nome: 'Profilo', cognome: 'Cambiato', telefono: '3339990009',
+    email: 'profilo.nuova@example.it', password: 'PasswordProfilo2026!'
+  }, tok);
+  verifica('con la password l\'email si cambia',
+    emailOk.stato === 200 && emailOk.dati.email_cambiata === true
+    && emailOk.dati.profilo?.email === 'profilo.nuova@example.it');
+
+  const loginNuova = await chiama('POST', '/api/auth/login', {
+    email: 'profilo.nuova@example.it', password: 'PasswordProfilo2026!'
+  });
+  verifica('si accede con la nuova email', loginNuova.stato === 200);
+
+  const emailAltrui = await chiama('PATCH', '/api/paziente/profilo', {
+    nome: 'Profilo', cognome: 'Cambiato', telefono: '3339990009',
+    email: 'mario.rossi.prova@example.it', password: 'PasswordProfilo2026!'
+  }, tok);
+  verifica('non si puo\' prendere l\'email di un altro account', emailAltrui.stato === 409);
+}
+
 console.log('\nL\'assistente del pannello');
 {
   const chiedi = async (testo) =>

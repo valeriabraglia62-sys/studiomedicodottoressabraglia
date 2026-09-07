@@ -211,11 +211,17 @@ function validaRichiesta(dati, forza = false) {
   if (nome.length < 2) throw new ErroreDominio('Inserisci un nome valido.');
   if (cognome.length < 2) throw new ErroreDominio('Inserisci un cognome valido.');
   if (!telefonoValido(telefono)) throw new ErroreDominio('Inserisci un numero di telefono valido (8-11 cifre).');
-  // L'email non e' piu' facoltativa: conferma, annullamento e spostamento
+  // Dal sito l'email e' obbligatoria: conferma, annullamento e spostamento
   // vengono comunicati per iscritto, e senza indirizzo il paziente resterebbe
-  // l'unico a non sapere che cosa e' successo al suo appuntamento.
-  if (!email) throw new ErroreDominio('Serve un indirizzo email: le confermiamo lì l\'appuntamento.');
-  if (!emailValida(email)) throw new ErroreDominio('L\'indirizzo email non è valido.');
+  // l'unico a non sapere che cosa e' successo al suo appuntamento. Dal pannello
+  // (origine 'studio', o forzatura) e' facoltativa: al banco o al telefono
+  // spesso non ce l'hanno, e la prenotazione la scrive lo studio, che il
+  // paziente lo avvisa a voce.
+  const scrittaDalloStudio = forza || dati.origine === 'studio';
+  if (!scrittaDalloStudio && !email) {
+    throw new ErroreDominio('Serve un indirizzo email: le confermiamo lì l\'appuntamento.');
+  }
+  if (email && !emailValida(email)) throw new ErroreDominio('L\'indirizzo email non è valido.');
   if (problema.length < 3) throw new ErroreDominio('Descrivi brevemente il motivo della visita.');
 
   const ambulatorio = trovaAmbulatorio(dati.ambulatorio_id);

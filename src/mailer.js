@@ -365,6 +365,16 @@ export const emailVerificaPaziente = ({ to, nome, url }) => componiEmail({
     'senza la conferma l\'account resta inattivo e non è collegato ad alcun dato.'
 });
 
+export const emailIndirizzoCambiato = ({ to, nuovo }) => componiEmail({
+  to,
+  subject: 'Il tuo indirizzo di accesso è stato cambiato',
+  titolo: 'Indirizzo di accesso cambiato',
+  intro: `L'email con cui accedi al sito è stata cambiata in ${esc(nuovo)}. ` +
+    'Da ora usa quella per entrare.',
+  chiusura: 'Se non sei stato tu a farlo, contatta subito lo studio: qualcuno ' +
+    'potrebbe aver avuto accesso al tuo account.'
+});
+
 export const emailAttesaRegistrata = (v) => componiEmail({
   to: v.paziente_email,
   subject: `Sei in lista d'attesa per ${formattaDataEstesa(v.data)}`,

@@ -23,7 +23,7 @@ import * as statistiche from './statistiche.js';
 import * as utenti from './utenti.js';
 import { eseguiBackup, statoBackup } from './backup.js';
 import { statoCoda, riprovaTutto, accoda } from './outbox.js';
-import { verificaConnessioneEmail, emailVerificaPaziente } from './mailer.js';
+import { verificaConnessioneEmail, emailVerificaPaziente, emailIndirizzoCambiato } from './mailer.js';
 import { verificaFoglio } from './sheets.js';
 import { linkGoogleCalendar } from './evento.js';
 
@@ -445,6 +445,21 @@ router.get('/paziente/prenotazioni', richiedePaziente, (req, res) =>
 
 router.get('/paziente/medicine', richiedePaziente, (req, res) =>
   ok(res, { richieste: medicine.perPaziente(req.utente.paziente_id) }));
+
+router.get('/paziente/profilo', richiedePaziente, (req, res) =>
+  ok(res, { profilo: utenti.profiloPaziente(req.utente.paziente_id) }));
+
+router.patch('/paziente/profilo', limiteScrittura, richiedePaziente, (req, res) => {
+  const esito = utenti.aggiornaProfiloPaziente({
+    pazienteId: req.utente.paziente_id,
+    utenteId: req.utente.id,
+    ...(req.body || {})
+  });
+  if (esito.emailCambiata && esito.emailVecchia) {
+    accoda('email', emailIndirizzoCambiato({ to: esito.emailVecchia, nuovo: esito.profilo.email }));
+  }
+  ok(res, { profilo: esito.profilo, email_cambiata: esito.emailCambiata });
+});
 
 // ---- Area amministratore --------------------------------------------------
 

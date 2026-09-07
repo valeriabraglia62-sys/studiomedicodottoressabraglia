@@ -124,18 +124,60 @@ function collegaAccessoPaziente() {
   // --- Menu account nella barra in alto (visibile solo da dentro il sito) ---
   const menu = $('#menu-account');
   $('#btn-esci-paziente').addEventListener('click', esciPaziente);
-  $('#btn-modifica-account').addEventListener('click', () => {
+
+  $('#btn-modifica-account').addEventListener('click', async () => {
     menu.removeAttribute('open');
     $('#acc-esito').replaceChildren();
+    $('#acc-esito-pwd').replaceChildren();
     $('#acc-pwd-attuale').value = '';
     $('#acc-pwd-nuova').value = '';
+    $('#acc-pwd-conferma').value = '';
+    try {
+      const { profilo } = await api('/paziente/profilo');
+      profiloPazienteCorrente = profilo;
+      $('#acc-nome').value = profilo.nome || '';
+      $('#acc-cognome').value = profilo.cognome || '';
+      $('#acc-telefono').value = profilo.telefono || '';
+      $('#acc-email').value = profilo.email || '';
+      $('#acc-riga-pwd-conferma').hidden = true;
+    } catch (err) { avvisa(err.message, 'errore'); return; }
     $('#dialog-account').showModal();
+  });
+
+  // La password serve solo se cambia l'email.
+  $('#acc-email').addEventListener('input', () => {
+    const cambiata = $('#acc-email').value.trim().toLowerCase()
+      !== (profiloPazienteCorrente?.email || '').toLowerCase();
+    $('#acc-riga-pwd-conferma').hidden = !cambiata;
+  });
+
+  $('#acc-salva-profilo').addEventListener('click', async () => {
+    const esito = $('#acc-esito');
+    const body = {
+      nome: $('#acc-nome').value.trim(),
+      cognome: $('#acc-cognome').value.trim(),
+      telefono: $('#acc-telefono').value.trim(),
+      email: $('#acc-email').value.trim(),
+      password: $('#acc-pwd-conferma').value
+    };
+    try {
+      const risp = await api('/paziente/profilo', { method: 'PATCH', body });
+      profiloPazienteCorrente = risp.profilo;
+      $('#nome-utente-paziente').textContent = `${risp.profilo.nome} ${risp.profilo.cognome}`.trim();
+      $('#acc-riga-pwd-conferma').hidden = true;
+      $('#acc-pwd-conferma').value = '';
+      esito.replaceChildren(nodo('div', 'avviso ok', risp.email_cambiata
+        ? 'Dati salvati. Da ora accedi con la nuova email.'
+        : 'Dati salvati.'));
+    } catch (err) {
+      esito.replaceChildren(nodo('div', 'avviso errore', err.message));
+    }
   });
 
   $('#acc-salva-pwd').addEventListener('click', async () => {
     const attuale = $('#acc-pwd-attuale').value;
     const nuova = $('#acc-pwd-nuova').value;
-    const esito = $('#acc-esito');
+    const esito = $('#acc-esito-pwd');
     if (nuova.length < 10) {
       esito.replaceChildren(nodo('div', 'avviso errore', 'La nuova password deve avere almeno 10 caratteri.'));
       return;
@@ -899,10 +941,11 @@ function collegaNavigazione() {
 
 let sitoAvviato = false;
 
+let profiloPazienteCorrente = null;
+
 /** Entra nel sito vero: la prima volta ne monta anche tutte le parti. */
 async function entraNelSito(utente) {
   $('#nome-utente-paziente').textContent = utente?.nome || utente?.email || 'Account';
-  $('#acc-email-mostra').textContent = utente?.email || '';
   mostraSchermataPaziente('sito');
 
   if (sitoAvviato) return;
