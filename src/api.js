@@ -23,7 +23,10 @@ import * as statistiche from './statistiche.js';
 import * as utenti from './utenti.js';
 import { eseguiBackup, statoBackup } from './backup.js';
 import { statoCoda, riprovaTutto, accoda } from './outbox.js';
-import { verificaConnessioneEmail, emailVerificaPaziente, emailIndirizzoCambiato } from './mailer.js';
+import {
+  verificaConnessioneEmail, emailVerificaPaziente, emailIndirizzoCambiato,
+  emailRegistrazioneEsistente
+} from './mailer.js';
 import { verificaFoglio } from './sheets.js';
 import { linkGoogleCalendar } from './evento.js';
 
@@ -327,15 +330,21 @@ const linkVerificaEmail = (token) =>
   `${basePubblica()}/api/auth/verifica-email?token=${encodeURIComponent(token)}`;
 
 router.post('/auth/register', limiteRegistrazione, (req, res) => {
-  const { utente, token } = utenti.registraPaziente(req.body || {});
-  // Nessuna sessione adesso: prima si conferma l'indirizzo dal link.
-  accoda('email', emailVerificaPaziente({
-    to: utente.email, nome: utente.nome, url: linkVerificaEmail(token)
-  }));
+  const esito = utenti.registraPaziente(req.body || {});
+  // Nessuna sessione adesso: prima si conferma l'indirizzo dal link. La
+  // risposta e' la stessa che l'email esista gia' o no; cambia solo quale
+  // email parte, e quella la vede solo il titolare della casella.
+  if (esito.giaRegistrato) {
+    accoda('email', emailRegistrazioneEsistente({ to: esito.email, nome: esito.nome }));
+  } else {
+    accoda('email', emailVerificaPaziente({
+      to: esito.utente.email, nome: esito.utente.nome, url: linkVerificaEmail(esito.token)
+    }));
+  }
   res.status(201).json({
     success: true,
     verifica_inviata: true,
-    message: 'Ti abbiamo inviato un\'email: apri il link per confermare l\'indirizzo e accedere.'
+    message: 'Se l\'indirizzo è corretto, ti abbiamo inviato un\'email: apri il link per confermare e accedere.'
   });
 });
 
@@ -450,10 +459,13 @@ router.get('/paziente/profilo', richiedePaziente, (req, res) =>
   ok(res, { profilo: utenti.profiloPaziente(req.utente.paziente_id) }));
 
 router.patch('/paziente/profilo', limiteScrittura, richiedePaziente, (req, res) => {
+  // Solo i campi previsti, presi uno per uno: gli id vengono SEMPRE dalla
+  // sessione e non si possono sovrascrivere con quello che arriva nel corpo.
+  const { nome, cognome, telefono, email, password } = req.body || {};
   const esito = utenti.aggiornaProfiloPaziente({
     pazienteId: req.utente.paziente_id,
     utenteId: req.utente.id,
-    ...(req.body || {})
+    nome, cognome, telefono, email, password
   });
   if (esito.emailCambiata && esito.emailVecchia) {
     accoda('email', emailIndirizzoCambiato({ to: esito.emailVecchia, nuovo: esito.profilo.email }));

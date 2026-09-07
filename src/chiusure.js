@@ -66,8 +66,10 @@ export function prenotazioniColpite(dal, al, ambulatorioId = null, oraDa = null,
   const clausole = ["p.stato = 'confermata'", 'p.data BETWEEN ? AND ?'];
   const par = [dal, al];
   if (ambulatorioId) { clausole.push('p.ambulatorio_id = ?'); par.push(ambulatorioId); }
-  // Con una fascia oraria, contano solo gli appuntamenti che vi cadono dentro.
-  if (oraDa && oraA) { clausole.push('p.ora_inizio >= ? AND p.ora_inizio < ?'); par.push(oraDa, oraA); }
+  // Con una fascia oraria contano gli appuntamenti che si SOVRAPPONGONO, non
+  // solo quelli che iniziano dentro: una visita 10:15-10:30 e' colpita da una
+  // chiusura 10:20-11:00. Stessa formula di slotBloccatoDaChiusura.
+  if (oraDa && oraA) { clausole.push('p.ora_inizio < ? AND p.ora_fine > ?'); par.push(oraA, oraDa); }
 
   return db.prepare(`
     SELECT p.codice, p.data, p.ora_inizio, pa.nome, pa.cognome, pa.telefono, a.nome AS ambulatorio_nome

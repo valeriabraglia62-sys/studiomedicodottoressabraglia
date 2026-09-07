@@ -90,8 +90,11 @@ export function registraPaziente({ nome, cognome, telefono, email, password }) {
   if (scelta.length < LUNGHEZZA_MINIMA_PASSWORD) {
     throw new ErroreDominio(`La password deve avere almeno ${LUNGHEZZA_MINIMA_PASSWORD} caratteri.`, 400);
   }
+  // Se l'email ha gia' un account non lo si dice a chi registra (svelerebbe
+  // quali indirizzi sono nostri pazienti): la risposta HTTP e' identica a una
+  // registrazione riuscita, e a essere avvisato via email e' il titolare vero.
   if (db.prepare('SELECT id FROM utenti WHERE email = ?').get(indirizzo)) {
-    throw new ErroreDominio('Esiste già un account con questa email.', 409);
+    return { giaRegistrato: true, email: indirizzo, nome: nomePulito };
   }
 
   const schedaEsistente = schedaUnivoca(indirizzo, numero);
@@ -177,6 +180,11 @@ export function aggiornaProfiloPaziente({ pazienteId, utenteId, nome, cognome, t
   const p = db.prepare('SELECT * FROM pazienti WHERE id = ?').get(Number(pazienteId));
   const u = db.prepare('SELECT * FROM utenti WHERE id = ?').get(Number(utenteId));
   if (!p || !u) throw new ErroreDominio('Account non valido.', 404);
+  // Difesa in profondita': la scheda che si tocca deve essere quella collegata
+  // all'account che chiama, e l'account deve essere un paziente.
+  if (u.ruolo !== 'paziente' || Number(u.paziente_id) !== Number(p.id)) {
+    throw new ErroreDominio('Non puoi modificare questa scheda.', 403);
+  }
 
   const nomeP = String(nome ?? '').trim();
   const cognomeP = String(cognome ?? '').trim();

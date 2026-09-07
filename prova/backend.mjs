@@ -647,6 +647,28 @@ console.log('\nChiusure (giorni e fasce orarie bloccate)');
   verifica('eliminata la chiusura, gli slot tornano prenotabili',
     (dopoRimozione.dati.slot || []).some((s) => s.disponibile));
 
+  // --- Le prenotazioni gia' confermate colpite da una fascia sono per
+  //     SOVRAPPOSIZIONE, non solo per l'ora d'inizio dentro la fascia. ---
+  const app = await chiama('POST', '/api/admin/prenotazioni', {
+    ambulatorio_id: 1, data: g, ora_inizio: slot[4].ora_inizio, forza: true,
+    nome: 'Sovrap', cognome: 'Posta', telefono: '3334445550', problema: 'prova overlap'
+  }, token);
+  const codApp = app.dati.prenotazione?.codice;
+  const [hh, min] = slot[4].ora_inizio.split(':').map(Number);
+  // Fascia che PARTE dopo l'inizio della visita ma la sovrappone comunque.
+  const inizioFascia = `${String(hh).padStart(2, '0')}:${String(min + 5).padStart(2, '0')}`;
+  const fineFascia = `${String(hh + 1).padStart(2, '0')}:00`;
+  const conOverlap = await chiama('POST', '/api/admin/chiusure',
+    { dal: g, ora_inizio: inizioFascia, ora_fine: fineFascia, motivo: 'overlap' }, token);
+  const colpite = conOverlap.dati.prenotazioni_da_avvisare || [];
+  verifica('una visita che si sovrappone alla fascia (senza iniziare dentro) risulta colpita',
+    Boolean(codApp) && colpite.some((p) => p.codice === codApp),
+    `visita ${codApp} · colpite ${JSON.stringify(colpite.map((p) => p.codice))}`);
+  if (conOverlap.dati.chiusura?.id) {
+    await chiama('DELETE', `/api/admin/chiusure/${conOverlap.dati.chiusura.id}`, null, token);
+  }
+  if (codApp) await chiama('POST', `/api/admin/prenotazioni/${codApp}/annulla`, {}, token);
+
   // --- L'assistente del pannello crea una chiusura (due passaggi) ---
   const chiediA = async (testo) => (await chiama('POST', '/api/admin/assistente', { testo }, token)).dati;
   const isoBlocco = aggiungiGiorni(oggiISO(), 45);
@@ -690,6 +712,13 @@ console.log('\nPrenotazione dallo studio senza email');
     `stato ${senzaEmail.stato} ${senzaEmail.dati.message || ''}`);
   verifica('e la prenotazione risulta senza email',
     !senzaEmail.dati.prenotazione?.paziente_email);
+
+  // La forzatura salta i vincoli operativi, non la sintassi dell'orario.
+  const oraImpossibile = await chiama('POST', '/api/admin/prenotazioni', {
+    ambulatorio_id: 1, data: giorno, ora_inizio: '99:99', forza: true,
+    nome: 'Ora', cognome: 'Assurda', telefono: '3336667799', problema: 'orario impossibile'
+  }, token);
+  verifica('nemmeno forzando si accetta un orario tipo 99:99', oraImpossibile.stato >= 400);
 }
 
 console.log('\nIl paziente modifica il proprio profilo');
@@ -737,6 +766,40 @@ console.log('\nIl paziente modifica il proprio profilo');
     email: 'mario.rossi.prova@example.it', password: 'PasswordProfilo2026!'
   }, tok);
   verifica('non si puo\' prendere l\'email di un altro account', emailAltrui.stato === 409);
+
+  // Mass-assignment: un paziente prova a passare gli id di un altro nel corpo.
+  const bersaglioReg = registraPazienteDiretto({
+    nome: 'Bersaglio', cognome: 'Ignaro', telefono: '3337778881',
+    email: 'bersaglio.ignaro@example.it', password: 'PasswordBersaglio26!'
+  });
+  verificaEmailDiretto(bersaglioReg.token);
+  const idPazBersaglio = db.prepare('SELECT paziente_id FROM utenti WHERE id = ?').get(bersaglioReg.utente.id).paziente_id;
+
+  const attacco = await chiama('PATCH', '/api/paziente/profilo', {
+    pazienteId: idPazBersaglio, utenteId: bersaglioReg.utente.id, ruolo: 'admin', attivo: 1,
+    nome: 'Hackerato', cognome: 'Da Altri', telefono: '3330000000',
+    email: 'bersaglio.ignaro@example.it'
+  }, tok);
+  const bersDopo = db.prepare('SELECT nome, telefono FROM pazienti WHERE id = ?').get(idPazBersaglio);
+  verifica('gli id nel corpo non toccano la scheda di un altro paziente',
+    bersDopo.nome === 'Bersaglio' && bersDopo.telefono === '3337778881',
+    `${attacco.stato} ${JSON.stringify(bersDopo)}`);
+}
+
+console.log('\nRegistrazione: non svela se l\'email esiste gia\'');
+{
+  const nuovo = await chiama('POST', '/api/auth/register', {
+    nome: 'Prima', cognome: 'Volta', telefono: '3332223330',
+    email: 'prima.volta@example.it', password: 'PasswordPrimaVolta26!'
+  });
+  const ripetuto = await chiama('POST', '/api/auth/register', {
+    nome: 'Seconda', cognome: 'Volta', telefono: '3332223331',
+    email: 'prima.volta@example.it', password: 'AltraPasswordAncora26!'
+  });
+  verifica('la seconda registrazione con la stessa email risponde come la prima',
+    nuovo.stato === ripetuto.stato && nuovo.stato === 201
+    && ripetuto.dati.verifica_inviata === true
+    && !/esiste|gi[àa] regist|409/i.test(JSON.stringify(ripetuto.dati)));
 }
 
 console.log('\nL\'assistente del pannello');

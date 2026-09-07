@@ -123,7 +123,11 @@ export function trovaOCreaPaziente(
  */
 function validaQuando(dati, ambulatorio, forza) {
   if (!dataValida(dati.data)) throw new ErroreDominio('Data non valida.');
-  if (!/^\d{2}:\d{2}$/.test(String(dati.ora_inizio || ''))) throw new ErroreDominio('Orario non valido.');
+  // La sintassi dell'orario si controlla SEMPRE, anche forzando: forza salta i
+  // vincoli operativi (apertura, anticipo, passato), non un "99:99".
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(dati.ora_inizio || ''))) {
+    throw new ErroreDominio('Orario non valido (usa HH:MM, 00:00–23:59).');
+  }
 
   const oggi = oggiISO();
   const inizio = minutiDaOra(dati.ora_inizio);

@@ -365,6 +365,17 @@ export const emailVerificaPaziente = ({ to, nome, url }) => componiEmail({
     'senza la conferma l\'account resta inattivo e non è collegato ad alcun dato.'
 });
 
+export const emailRegistrazioneEsistente = ({ to, nome }) => componiEmail({
+  to,
+  subject: 'Tentativo di registrazione con la tua email',
+  titolo: 'Hai già un account',
+  intro: `Gentile ${esc(nome || '')}, qualcuno ha provato a registrarsi sul sito ` +
+    'con questo indirizzo, che però ha già un account.',
+  chiusura: 'Se sei stato tu, accedi con la tua password: non serve registrarsi di nuovo. ' +
+    'Se hai dimenticato la password usa "Rinvia il link" dalla pagina di accesso. ' +
+    'Se non sei stato tu, puoi ignorare questo messaggio.'
+});
+
 export const emailIndirizzoCambiato = ({ to, nuovo }) => componiEmail({
   to,
   subject: 'Il tuo indirizzo di accesso è stato cambiato',
