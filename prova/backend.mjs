@@ -693,6 +693,36 @@ console.log('\nL\'assistente del pannello');
 
   const boh = await chiedi('qwerty asdf zxcv');
   verifica('una domanda incomprensibile non lo rompe', Boolean(boh.testo) && boh.azioni?.length > 0);
+
+  // --- L'assistente annulla un appuntamento, ma solo con conferma esplicita ---
+  const orari = await import('../src/orari.js');
+  const nuova = await chiama('POST', '/api/admin/prenotazioni', {
+    forza: true, ambulatorio_id: 1, data: orari.aggiungiGiorni(orari.oggiISO(), 40), ora_inizio: '10:30',
+    nome: 'Annulla', cognome: 'Prova', telefono: '3331112222', email: 'annulla.prova@example.it',
+    problema: 'da annullare via assistente'
+  }, token);
+  const cod = nuova.dati.prenotazione?.codice;
+  verifica('creata una prenotazione per la prova di annullamento',
+    nuova.stato === 201 && /^PRE-[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(cod || ''));
+
+  const passo1 = await chiedi(`annulla ${cod}`);
+  verifica('"annulla CODICE" chiede conferma e non annulla subito',
+    passo1.testo.toLowerCase().includes(`conferma annulla ${cod.toLowerCase()}`)
+    && (await chiedi(cod)).testo.includes('Stato: confermata'));
+
+  const passo2 = await chiedi(`conferma annulla ${cod}`);
+  verifica('"conferma annulla CODICE" annulla davvero e porta sulle prenotazioni',
+    passo2.testo.toLowerCase().includes('annullata') && passo2.vai?.scheda === 'prenotazioni');
+
+  verifica('dopo la conferma la prenotazione risulta annullata',
+    (await chiedi(cod)).testo.includes('Stato: annullata'));
+
+  const giaAnnullata = await chiedi(`conferma annulla ${cod}`);
+  verifica('un secondo annullamento viene rifiutato con garbo',
+    /gi[àa]|annull/i.test(giaAnnullata.testo));
+
+  const inventato = await chiedi('annulla PRE-ZZZZ-ZZZZ');
+  verifica('annullare un codice inesistente lo dice', inventato.testo.includes('non risulta'));
 }
 
 console.log('\nL\'assistente non aggira il segreto del medico');
@@ -1055,6 +1085,21 @@ console.log('\nEmail in arrivo (rete di sicurezza)');
   });
   verifica('l\'email che chiede una visita viene salvata', visita.codice?.startsWith('EML-'),
     JSON.stringify(visita));
+
+  // Notifiche automatiche di Google (condivisione di un Foglio o Modulo che si
+  // chiama "Prenotazione visita") e promozioni: nel testo c'e' la parola
+  // giusta, ma non sono richieste di pazienti e non devono finire in "Da
+  // confermare". Prima ci finivano.
+  const moduliMod = await import('../src/moduli.js');
+  const daConfPrima = moduliMod.daConfermare();
+  const spazzatura = [
+    { mittente: 'drive-shares-dm-noreply@google.com', oggetto: 'Foglio di lavoro condiviso con te: "Prenotazione visita (Risposte)"', corpo: 'Ho condiviso un contenuto con te.' },
+    { mittente: 'valeriabraglia62@gmail.com', oggetto: 'Invito a rispondere al modulo "Prenotazione visita"', corpo: 'Ho condiviso un modulo con te.' },
+    { mittente: 'hello@mail.toogoodtogo.it', oggetto: 'Il tuo appuntamento, Valeria: 5 euro in regalo', corpo: 'Apri app e ottieni un buono.' }
+  ].map((e, i) => registraEmail({ messageId: `<spam-${i}@x>`, ...e }));
+  verifica('le notifiche automatiche non entrano fra le richieste',
+    spazzatura.every((r) => r.ignorata === true && !r.codice), JSON.stringify(spazzatura));
+  verifica('e non creano righe in "Da confermare"', moduliMod.daConfermare() === daConfPrima);
 
   const inCoda = await chiama('GET', '/api/admin/email', null, token);
   verifica('le email compaiono nell\'area admin', inCoda.dati.totale === 2, `totale ${inCoda.dati.totale}`);
