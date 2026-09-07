@@ -629,6 +629,36 @@ console.log('\nChiusure (giorni e fasce orarie bloccate)');
   const dopoRimozione = await chiama('GET', `/api/disponibilita?data=${g}&ambulatorio_id=1`);
   verifica('eliminata la chiusura, gli slot tornano prenotabili',
     (dopoRimozione.dati.slot || []).some((s) => s.disponibile));
+
+  // --- L'assistente del pannello crea una chiusura (due passaggi) ---
+  const chiediA = async (testo) => (await chiama('POST', '/api/admin/assistente', { testo }, token)).dati;
+  const isoBlocco = aggiungiGiorni(oggiISO(), 45);
+  const [ay, am, ad] = isoBlocco.split('-');
+  const dataIt = `${ad}/${am}/${ay}`;
+
+  const bloccoVago = await chiediA('blocca giovedì prossimo');
+  verifica('l\'assistente senza una data chiara non blocca niente',
+    bloccoVago.testo.toLowerCase().includes('non ho capito'));
+
+  const c1 = await chiediA(`blocca il ${dataIt} dalle 10:30 alle 12:00 per prova`);
+  verifica('"blocca <data>" chiede conferma e non blocca subito',
+    c1.testo.toLowerCase().includes('conferma blocca'));
+  const primaN = (await chiama('GET', '/api/admin/chiusure', null, token)).dati.chiusure.length;
+
+  const c2 = await chiediA(`conferma blocca il ${dataIt} dalle 10:30 alle 12:00 per prova`);
+  verifica('"conferma blocca ..." crea la chiusura',
+    c2.testo.toLowerCase().includes('fatto') && c2.vai?.scheda === 'chiusure');
+
+  const lista = (await chiama('GET', '/api/admin/chiusure', null, token)).dati.chiusure;
+  verifica('la chiusura creata dall\'assistente compare in elenco', lista.length === primaN + 1);
+  const creata = lista.find((c) => c.dal === isoBlocco);
+  verifica('la chiusura dell\'assistente ha la fascia giusta',
+    creata?.ora_inizio === '10:30' && creata?.ora_fine === '12:00');
+
+  const elenco = await chiediA('che chiusure ci sono');
+  verifica('"che chiusure ci sono" le elenca', elenco.testo.includes('Chiusure impostate'));
+
+  await chiama('DELETE', `/api/admin/chiusure/${creata.id}`, null, token);
 }
 
 console.log('\nL\'assistente del pannello');
