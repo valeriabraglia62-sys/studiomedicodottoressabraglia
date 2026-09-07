@@ -1,0 +1,5 @@
+# Gli script e i file di servizio girano su Linux: sempre a fine riga LF,
+# anche se vengono aperti o modificati da Windows. Con CRLF, bash risponde
+# "bad interpreter: /usr/bin/env bash^M" e systemd non li carica.
+*.sh              text eol=lf
+strumenti/server/* text eol=lf

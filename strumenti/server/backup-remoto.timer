@@ -1,0 +1,10 @@
+[Unit]
+Description=Copia i backup cifrati su OneDrive ogni ora
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

@@ -6,6 +6,9 @@
 # primo "git add -A" senza che nessuno se ne accorgesse.
 .env
 .env.*
+# ...tranne il modello per il server, che non contiene segreti (li mette
+# setup-server.sh) e serve al clone sul server.
+!.env.server.example
 *.key.json
 service-account*.json
 google-credentials.json
