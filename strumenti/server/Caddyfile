@@ -1,0 +1,28 @@
+# Reverse proxy con HTTPS automatico (Let's Encrypt).
+# Caddy prende e rinnova il certificato da solo: non c'e' niente da configurare.
+#
+# __DOMINIO__ e __EMAIL_TLS__ vengono sostituiti da setup-server.sh.
+
+{
+	email __EMAIL_TLS__
+}
+
+__DOMINIO__ {
+	encode gzip
+
+	# L'app sta in ascolto solo su localhost: da fuori si passa sempre da qui.
+	reverse_proxy 127.0.0.1:3000
+
+	# Intestazioni di sicurezza di base (l'app ne mette gia' di sue).
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	# Il controllo di salute non ha bisogno di finire nei log ad ogni minuto.
+	log {
+		output file /var/log/caddy/studiomedico.log
+		format console
+	}
+}

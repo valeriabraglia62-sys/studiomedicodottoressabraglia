@@ -1,0 +1,7 @@
+[Unit]
+Description=Copia i backup cifrati su OneDrive
+
+[Service]
+Type=oneshot
+User=__APP_USER__
+ExecStart=/usr/bin/env bash __APP_DIR__/strumenti/server/backup-remoto.sh
