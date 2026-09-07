@@ -3,8 +3,8 @@
 # Copia i backup CIFRATI del database su OneDrive (o altro cloud), ogni ora.
 # Cosi' se il server sparisce, l'archivio no.
 #
-# Prima di usarlo, una volta sola, come utente studiomedico:
-#   sudo -u studiomedico rclone config
+# Prima di usarlo, una volta sola:
+#   sudo -u studiomedico RCLONE_CONFIG=/opt/studiomedico/data/rclone.conf rclone config
 #   -> crea un remote chiamato 'onedrive' (tipo: Microsoft OneDrive),
 #      collegato all'account organizzativo dello studio.
 #
@@ -12,6 +12,7 @@
 #
 set -euo pipefail
 
+export RCLONE_CONFIG="${RCLONE_CONFIG:-/opt/studiomedico/data/rclone.conf}"
 SORGENTE="/opt/studiomedico/data/backup"
 REMOTO="${RCLONE_REMOTO:-onedrive:StudioMedico-Backup}"
 

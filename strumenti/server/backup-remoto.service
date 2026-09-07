@@ -4,4 +4,7 @@ Description=Copia i backup cifrati su OneDrive
 [Service]
 Type=oneshot
 User=__APP_USER__
+# La cartella del codice e' di root e in sola lettura: la config di rclone va
+# dove l'utente di servizio puo' scrivere.
+Environment=RCLONE_CONFIG=__APP_DIR__/data/rclone.conf
 ExecStart=/usr/bin/env bash __APP_DIR__/strumenti/server/backup-remoto.sh

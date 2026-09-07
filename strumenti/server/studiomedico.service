@@ -16,16 +16,19 @@ StartLimitIntervalSec=60
 StartLimitBurst=5
 Environment=NODE_ENV=production
 
-# Il servizio scrive solo dentro la sua cartella e nei log di sistema.
+# Il codice resta in sola lettura: il processo puo' scrivere SOLO dove servono
+# davvero il database, i backup e i log. Cosi' una compromissione applicativa
+# non puo' modificare il codice per ripresentarsi al riavvio.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=__APP_DIR__
+ReadWritePaths=__APP_DIR__/data __APP_DIR__/logs
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
 LockPersonality=true
+RestrictNamespaces=true
 
 [Install]
 WantedBy=multi-user.target

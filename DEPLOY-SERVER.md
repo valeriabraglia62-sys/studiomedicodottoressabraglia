@@ -42,17 +42,30 @@ ssh root@91.99.12.34
 
 (usa l'IP vero; se hai scelto la password, incollala quando la chiede).
 
-## 4. Installa il sito — un comando
+## 4. Scarica il codice, controllalo, poi installa
 
-Ancora collegato al server, incolla questo (cambia dominio ed email):
+Non eseguire mai `curl | bash` come root: prima si guarda cosa si sta per
+eseguire. Ancora collegato al server:
 
 ```bash
-DOMINIO=prenotazioni-braglia.it \
-EMAIL_TLS=tuo@email.it \
-bash <(curl -fsSL https://raw.githubusercontent.com/valeriabraglia62-sys/studiomedicodottoressabraglia/main/strumenti/server/setup-server.sh)
+apt-get update && apt-get install -y git
+git clone --branch main https://github.com/valeriabraglia62-sys/studiomedicodottoressabraglia.git /opt/studiomedico
+cd /opt/studiomedico
+
+# Controlla che sia il commit che ti aspetti (confrontalo con GitHub):
+git log -1 --format='%H  %ci  %s'
+
+# Dai un'occhiata allo script prima di lanciarlo (q per uscire):
+less strumenti/server/setup-server.sh
 ```
 
-Fa tutto: Node, Caddy (HTTPS automatico), utente di servizio, scarica il
+Se è tutto a posto, lancialo (cambia dominio ed email):
+
+```bash
+DOMINIO=prenotazioni-braglia.it EMAIL_TLS=tuo@email.it bash strumenti/server/setup-server.sh
+```
+
+Fa tutto: Node, Caddy (HTTPS automatico), utente di servizio, riusa il
 codice, installa, avvia. Alla fine stampa **la chiave di cifratura dei
 backup**: **annotala su carta, fuori dal server.**
 
@@ -112,7 +125,7 @@ poi sul server svuota `ADMIN_PASSWORD` nel `.env` e `systemctl restart studiomed
 ## 8. Backup automatici verso OneDrive (consigliato)
 
 ```bash
-sudo -u studiomedico rclone config
+sudo -u studiomedico RCLONE_CONFIG=/opt/studiomedico/data/rclone.conf rclone config
 ```
 
 Scegli `n` (new remote), nome **`onedrive`**, tipo **Microsoft OneDrive**,

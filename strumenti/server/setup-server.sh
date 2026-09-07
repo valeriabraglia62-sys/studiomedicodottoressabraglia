@@ -26,7 +26,7 @@ echo ">> Aggiorno il sistema e installo gli strumenti di base"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y ca-certificates curl gnupg git build-essential python3 ufw \
-  unattended-upgrades debian-goodies
+  unattended-upgrades sqlite3
 
 echo ">> Aggiornamenti di sicurezza automatici"
 dpkg-reconfigure -f noninteractive unattended-upgrades || true
@@ -37,9 +37,14 @@ ufw allow 80/tcp
 ufw allow 443/tcp
 ufw --force enable
 
-echo ">> Installo Node.js ${NODE_MAJOR} LTS"
+echo ">> Installo Node.js ${NODE_MAJOR} LTS (repository APT firmato, senza curl|bash)"
 if ! command -v node >/dev/null || [ "$(node -v | cut -c2-3)" != "${NODE_MAJOR}" ]; then
-  curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
+  install -d -m 0755 /etc/apt/keyrings
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" \
+    > /etc/apt/sources.list.d/nodesource.list
+  apt-get update -y
   apt-get install -y nodejs
 fi
 node -v
@@ -55,20 +60,26 @@ if ! command -v caddy >/dev/null; then
   apt-get install -y caddy
 fi
 
-echo ">> Creo l'utente di servizio '${APP_USER}' e scarico il codice"
+echo ">> Creo l'utente di servizio '${APP_USER}' e sistemo il codice"
 id -u "$APP_USER" >/dev/null 2>&1 || useradd --system --create-home --home-dir "$APP_DIR" --shell /usr/sbin/nologin "$APP_USER"
 if [ ! -d "$APP_DIR/.git" ]; then
   rm -rf "$APP_DIR"
   git clone --branch "$BRANCH" "$REPO" "$APP_DIR"
 fi
-chown -R "$APP_USER:$APP_USER" "$APP_DIR"
+
+# Il CODICE resta di root e in sola lettura per il servizio: cosi' una
+# compromissione dell'app non puo' riscriverlo. Solo data/ e logs/ sono
+# scrivibili dall'utente di servizio. Gli aggiornamenti (deploy.sh) girano
+# come root, che e' quindi l'utente "di deploy", separato da quello runtime.
+chown -R root:root "$APP_DIR"
+install -d -o "$APP_USER" -g "$APP_USER" -m 700 "$APP_DIR/data" "$APP_DIR/data/backup" "$APP_DIR/logs"
 
 echo ">> Installo le dipendenze del progetto"
-sudo -u "$APP_USER" bash -lc "cd '$APP_DIR' && npm ci --omit=dev"
+( cd "$APP_DIR" && npm ci --omit=dev )
 
 echo ">> Preparo il file di configurazione (.env)"
 if [ ! -f "$APP_DIR/.env" ]; then
-  install -o "$APP_USER" -g "$APP_USER" -m 600 "$APP_DIR/.env.server.example" "$APP_DIR/.env"
+  install -o root -g "$APP_USER" -m 640 "$APP_DIR/.env.server.example" "$APP_DIR/.env"
   SECRET="$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')"
   BK_KEY="$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')"
   sed -i \
