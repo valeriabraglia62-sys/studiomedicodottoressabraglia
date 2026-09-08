@@ -191,6 +191,16 @@ console.log('\nDati pubblici');
   const { dati } = await chiama('GET', '/api/ambulatori');
   verifica('elenco ambulatori', dati.ambulatori?.length === 2, JSON.stringify(dati).slice(0, 120));
   verifica('durata slot esposta al frontend', dati.durata_slot === 15, `ricevuto ${dati.durata_slot}`);
+
+  // Orario ritoccato: Arceto la mattina apre alle 11:00, Casalgrande la sera alle 17:30.
+  const arceto = dati.ambulatori.find((a) => a.id === 1);
+  const casal = dati.ambulatori.find((a) => a.id === 2);
+  const mattinaArceto = [1, 2, 4, 5].map((g) => arceto.orari?.[g]?.inizio);
+  verifica('Arceto la mattina apre alle 11:00 (niente 10:30 e 10:45)',
+    mattinaArceto.every((h) => h === '11:00'), JSON.stringify(mattinaArceto));
+  const seraCasal = [1, 4].map((g) => casal.orari?.[g]?.inizio);
+  verifica('Casalgrande la sera apre alle 17:30 (niente 17:00 e 17:15)',
+    seraCasal.every((h) => h === '17:30'), JSON.stringify(seraCasal));
 }
 
 // Primo giorno utile con almeno uno slot libero, cosi' la prova non dipende
