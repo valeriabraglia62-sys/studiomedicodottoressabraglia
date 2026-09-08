@@ -588,9 +588,10 @@ function gestisciPrenota(stato, t) {
         const p = creaPrenotazione({ ...d, origine: 'chatbot' });
         Object.assign(stato, { flusso: 'menu', passo: null, dati: {} });
         return risposta(
-          `✅ Prenotazione confermata!\n\n**Codice: ${p.codice}**\n` +
+          `✅ Richiesta inviata!\n\n**Codice: ${p.codice}**\n` +
           `${formattaDataEstesa(p.data)} alle ${p.ora_inizio}\n${p.ambulatorio_nome}\n${p.ambulatorio_indirizzo}\n\n` +
-          `Conserva il codice: ti serve per annullare. Ti abbiamo inviato una email di conferma.`,
+          `Non è ancora confermata: lo studio la conferma a breve e ti arriva una email. ` +
+          `Conserva il codice: ti serve per controllarla o ritirarla.`,
           MENU.azioni, { prenotazione: p.codice });
       } catch (err) {
         if (err instanceof ErroreDominio) {
@@ -712,13 +713,19 @@ function gestisciStato(stato, t) {
     stato.dati = { codice: p.codice };
     stato.passo = 'azione';
 
-    const etichettaStato = p.stato === 'annullata' ? '❌ Annullata' : '✅ Confermata';
+    const etichettaStato = {
+      annullata: '❌ Annullata',
+      rifiutata: '❌ Non accolta dallo studio',
+      in_attesa: '⏳ In attesa di conferma'
+    }[p.stato] || '✅ Confermata';
+    const chiusa = p.stato === 'annullata' || p.stato === 'rifiutata';
     return risposta(
       `${etichettaStato}\n\n📅 ${formattaDataEstesa(p.data)}\n🕐 ${p.ora_inizio}\n🏥 ${p.ambulatorio_nome}\n` +
       `👤 ${p.paziente_nome} ${p.paziente_cognome}\n📝 ${p.problema}`,
-      p.stato === 'annullata'
+      chiusa
         ? [{ id: 'menu', etichetta: 'Torna al menu' }]
-        : [{ id: 'disdici', etichetta: '❌ Annulla la prenotazione' }, { id: 'menu', etichetta: 'Va bene così' }]);
+        : [{ id: 'disdici', etichetta: p.stato === 'in_attesa' ? '❌ Ritira la richiesta' : '❌ Annulla la prenotazione' },
+          { id: 'menu', etichetta: 'Va bene così' }]);
   }
 
   if (stato.passo === 'azione') {

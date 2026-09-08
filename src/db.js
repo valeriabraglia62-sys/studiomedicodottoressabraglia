@@ -92,10 +92,13 @@ CREATE TABLE IF NOT EXISTS prenotazioni (
 );
 
 -- Il vincolo che rende impossibile la doppia prenotazione dello stesso slot.
--- E' parziale: uno slot annullato torna liberamente disponibile.
+-- E' parziale: uno slot annullato o rifiutato torna liberamente disponibile.
+-- Copre anche 'in_attesa': una richiesta ancora da confermare tiene occupato
+-- il posto, cosi' due pazienti non chiedono lo stesso orario e lo studio non
+-- si ritrova a smaltire richieste doppie sullo stesso slot.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_slot_unico
   ON prenotazioni(ambulatorio_id, data, ora_inizio)
-  WHERE stato = 'confermata';
+  WHERE stato IN ('confermata', 'in_attesa');
 
 CREATE INDEX IF NOT EXISTS idx_prenotazioni_data     ON prenotazioni(data);
 CREATE INDEX IF NOT EXISTS idx_prenotazioni_paziente ON prenotazioni(paziente_id);
@@ -321,6 +324,13 @@ for (const [tabella, colonna, tipo] of [
   ['prenotazioni', 'ora_originale', 'TEXT'],
   ['prenotazioni', 'riprogrammata_il', 'TEXT'],
   ['prenotazioni', 'riprogrammata_da', 'TEXT'],
+  // Le visite chieste dal sito o dal chatbot nascono 'in_attesa': sono
+  // richieste, non prenotazioni gia' valide, e lo studio le conferma o le
+  // rifiuta dal pannello. Qui si tiene chi e quando le ha confermate, e il
+  // perche' di un rifiuto — che finisce nell'email al paziente.
+  ['prenotazioni', 'confermata_il', 'TEXT'],
+  ['prenotazioni', 'confermata_da', 'TEXT'],
+  ['prenotazioni', 'motivo_rifiuto', 'TEXT'],
   // Chi ha annullato, di persona. Diverso da annullata_da, che vale solo
   // 'admin' o 'paziente' e serve a dire al paziente se e' stato lo studio o lui
   // stesso: quella distinzione finisce nell'email e non si tocca.
@@ -381,6 +391,24 @@ for (const [tabella, colonna, tipo] of [
 ]) {
   const presente = db.prepare(`PRAGMA table_info(${tabella})`).all().some((c) => c.name === colonna);
   if (!presente) db.exec(`ALTER TABLE ${tabella} ADD COLUMN ${colonna} ${tipo}`);
+}
+
+// idx_slot_unico prima copriva solo 'confermata'. Da quando le visite dal sito
+// nascono 'in_attesa', il vincolo deve valere anche per quelle, altrimenti due
+// pazienti possono chiedere lo stesso slot. Su un database gia' esistente
+// l'indice non viene ricreato da CREATE INDEX IF NOT EXISTS: va rifatto qui.
+// A vuoto non fa niente: dopo la prima volta la definizione contiene gia'
+// 'in_attesa' e la si lascia com'e'.
+{
+  const def = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_slot_unico'"
+  ).get();
+  if (def && !/in_attesa/.test(def.sql)) {
+    db.exec("DROP INDEX idx_slot_unico");
+    db.exec(`CREATE UNIQUE INDEX idx_slot_unico
+      ON prenotazioni(ambulatorio_id, data, ora_inizio)
+      WHERE stato IN ('confermata', 'in_attesa')`);
+  }
 }
 
 // Gli account che esistevano prima della verifica email — il medico, la

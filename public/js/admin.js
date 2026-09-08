@@ -421,6 +421,10 @@ async function caricaRiepilogo() {
     ['Da confermare', riepilogo.moduli_da_confermare, {
       scheda: 'moduli', filtri: { '#mod-stato': 'nuova' }
     }],
+    ['Richieste di visita', riepilogo.richieste_visita_da_confermare, {
+      scheda: 'prenotazioni',
+      filtri: { '#pren-dal': '', '#pren-al': '', '#pren-stato': 'in_attesa', '#pren-cerca': '' }
+    }],
     ['Visite future', riepilogo.prenotazioni_future, {
       scheda: 'prenotazioni',
       filtri: { '#pren-dal': oggiISO(), '#pren-al': '', '#pren-stato': 'confermata', '#pren-cerca': '' }
@@ -782,7 +786,10 @@ function schedaPrenotazione(p) {
     nodo('div', 'piccolo tenue',
       `${dataEstesa(p.data)} alle ${p.ora_inizio} · ${p.ambulatorio_nome} · ${p.codice}`)
   );
-  const testoStato = { confermata: 'Confermata', annullata: 'Annullata' }[p.stato] || p.stato;
+  const testoStato = {
+    confermata: 'Confermata', annullata: 'Annullata',
+    in_attesa: 'Da confermare', rifiutata: 'Rifiutata'
+  }[p.stato] || p.stato;
   testata.append(sinistra, etichetta(p.stato, spostata ? 'Riprogrammata' : testoStato));
   carta.append(testata);
 
@@ -804,9 +811,62 @@ function schedaPrenotazione(p) {
       `prima era ${dataBreve(p.data_originale)} alle ${p.ora_originale}`));
   }
 
-  // Annullata: si legge e basta. Riaprirla vorrebbe dire mandare al paziente
-  // una seconda email che smentisce la prima.
+  // Richiesta dal sito ancora da valutare: lo studio la conferma (entra in
+  // agenda, al paziente parte la conferma) o la rifiuta con un motivo (resta
+  // scritta, il posto torna libero, la lista d'attesa viene avvisata).
+  if (p.stato === 'in_attesa') {
+    carta.append(nodo('div', 'piccolo tenue',
+      `Richiesta il ${quando(p.creata_il)}${p.origine ? ` · da ${p.origine}` : ''}`));
+
+    const azioni = nodo('div', 'azioni');
+    const conferma = nodo('button', 'bottone', 'Conferma');
+    conferma.type = 'button';
+    conferma.addEventListener('click', () => {
+      if (!confirm(`Confermare la richiesta ${p.codice}? Al paziente parte l'email di conferma.`)) return;
+      conferma.disabled = true;
+      protetto(async () => {
+        try {
+          await api(`/admin/prenotazioni/${p.codice}/conferma`, { method: 'POST' });
+          avvisa(`${p.codice}: confermata. Al paziente parte l'email.`, 'ok');
+          await caricaPrenotazioni();
+        } finally {
+          conferma.disabled = false;
+        }
+      });
+    });
+
+    const rifiuta = nodo('button', 'bottone pericolo', 'Rifiuta');
+    rifiuta.type = 'button';
+    rifiuta.addEventListener('click', () => {
+      const motivo = prompt('Motivo del rifiuto (finisce nell\'email al paziente):');
+      if (motivo === null) return;
+      if (motivo.trim().length < 3) return avvisa('Serve un motivo per il rifiuto.', 'errore');
+      rifiuta.disabled = true;
+      protetto(async () => {
+        try {
+          await api(`/admin/prenotazioni/${p.codice}/rifiuta`, { method: 'POST', body: { motivo } });
+          avvisa(`${p.codice}: rifiutata. Al paziente parte l'email.`, 'ok');
+          await caricaPrenotazioni();
+        } finally {
+          rifiuta.disabled = false;
+        }
+      });
+    });
+
+    azioni.append(conferma, rifiuta);
+    carta.append(azioni);
+    return carta;
+  }
+
+  // Annullata o rifiutata: si legge e basta. Riaprirla vorrebbe dire mandare al
+  // paziente una seconda email che smentisce la prima.
   if (p.stato !== 'confermata') {
+    if (p.stato === 'rifiutata') {
+      carta.append(nodo('div', 'piccolo tenue',
+        `Rifiutata il ${quando(p.annullata_il)}${p.annullata_utente ? ` da ${p.annullata_utente}` : ''}`
+        + (p.motivo_rifiuto ? ` · ${p.motivo_rifiuto}` : '')));
+      return carta;
+    }
     // Si scrive chi ha annullato per nome quando lo sappiamo. Le prenotazioni
     // annullate prima che esistesse annullata_utente non ce l'hanno, e per
     // quelle resta il vecchio "da admin", che almeno dice il lato.
@@ -1793,7 +1853,10 @@ function rigaVisitaFascicolo(p) {
 
   const testa = nodo('div');
   testa.style.cssText = 'display:flex;flex-wrap:wrap;gap:.5rem;justify-content:space-between;align-items:center';
-  const testoStato = { confermata: 'Confermata', annullata: 'Annullata' }[p.stato] || p.stato;
+  const testoStato = {
+    confermata: 'Confermata', annullata: 'Annullata',
+    in_attesa: 'Da confermare', rifiutata: 'Rifiutata'
+  }[p.stato] || p.stato;
   testa.append(
     nodo('span', null, `${dataEstesa(p.data)} alle ${p.ora_inizio} · ${p.ambulatorio_nome}`),
     etichetta(p.stato, spostata ? 'Riprogrammata' : testoStato)

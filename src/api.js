@@ -65,7 +65,16 @@ function limite({ max, secondi }) {
   };
 }
 
-const limiteScrittura = limite({ max: 30, secondi: 60 });
+// Prenotazioni, richieste di medicinali, iscrizioni alla lista d'attesa: le
+// scritture che un paziente fa davvero. Il conteggio e' per IP, e dietro una
+// sola uscita NAT — la rete di uno studio, il wifi di una famiglia, la
+// dorsale mobile di un operatore — ci stanno decine di pazienti diversi.
+// Trenta al minuto lasciavano fuori i momenti di punta (l'apertura delle
+// agende, il giorno dopo un ponte); centoventi reggono quei picchi e fermano
+// comunque uno script che martella da una sorgente sola. Il freno vero contro
+// gli abusi resta altrove: l'account verificato per prenotare, e idx_slot_unico
+// che comunque non lascia scrivere due volte lo stesso posto.
+const limiteScrittura = limite({ max: 120, secondi: 60 });
 const limiteLogin = limite({ max: 20, secondi: 300 });
 const limiteChat = limite({ max: 60, secondi: 60 });
 
@@ -198,8 +207,11 @@ router.get('/prenotazioni/:codice', richiedeAccount, (req, res) => {
   if (!p) throw new ErroreDominio('Prenotazione non trovata. Controlla il codice.', 404);
   ok(res, {
     prenotazione: pubblica(p),
-    annullabile: p.stato === 'confermata'
-      && prenotazioni.minutiAllAppuntamento(p) >= config.cancellazioneMinutiMinimi
+    // Una richiesta ancora in attesa si ritira sempre; una prenotazione
+    // confermata solo fino a poco prima dell'appuntamento.
+    annullabile: p.stato === 'in_attesa'
+      || (p.stato === 'confermata'
+        && prenotazioni.minutiAllAppuntamento(p) >= config.cancellazioneMinutiMinimi)
   });
 });
 
@@ -525,6 +537,8 @@ admin.get('/riepilogo', (_req, res) => {
         `SELECT COUNT(*) n FROM prenotazioni WHERE data = ? AND stato = 'confermata'`, oggi),
       prenotazioni_future: conta(
         `SELECT COUNT(*) n FROM prenotazioni WHERE data > ? AND stato = 'confermata'`, oggi),
+      richieste_visita_da_confermare: conta(
+        `SELECT COUNT(*) n FROM prenotazioni WHERE stato = 'in_attesa'`),
       medicine_da_evadere: conta(
         `SELECT COUNT(*) n FROM richieste_medicine WHERE stato = 'nuova'`),
       // Resta nel riepilogo anche se il pannello non lo mostra piu': dice
@@ -557,6 +571,21 @@ admin.post('/prenotazioni/:codice/annulla', (req, res) => {
     da: 'admin',
     chi: req.utente?.email || null
   });
+  ok(res, { prenotazione: p, avvisati: attesa.avvisaPerPostoLibero(p) });
+});
+
+/**
+ * Le due risposte a una richiesta di visita arrivata dal sito: la si conferma
+ * (entra in agenda, al paziente parte la conferma) o la si rifiuta con un
+ * motivo (resta scritta, il posto torna libero, chi era in lista d'attesa
+ * viene avvisato).
+ */
+admin.post('/prenotazioni/:codice/conferma', (req, res) => {
+  ok(res, { prenotazione: prenotazioni.confermaPrenotazione(req.params.codice, req.utente.email) });
+});
+
+admin.post('/prenotazioni/:codice/rifiuta', (req, res) => {
+  const p = prenotazioni.rifiutaPrenotazione(req.params.codice, req.body?.motivo, req.utente.email);
   ok(res, { prenotazione: p, avvisati: attesa.avvisaPerPostoLibero(p) });
 });
 

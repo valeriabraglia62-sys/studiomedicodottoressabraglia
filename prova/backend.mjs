@@ -235,15 +235,16 @@ let codicePrenotazione = null;
   codicePrenotazione = dati.prenotazione?.codice;
   verifica('codice non indovinabile', /^PRE-[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(codicePrenotazione || ''), codicePrenotazione);
 
-  const calendario = dati.prenotazione?.calendario || '';
-  const attesi = `${giorno.replace(/-/g, '')}T${slotLiberi[0].ora_inizio.replace(':', '')}00`;
-  verifica('il paziente riceve il link per Google Calendar',
-    calendario.startsWith('https://calendar.google.com/') && calendario.includes(attesi),
-    calendario.slice(0, 120));
+  // Dal sito la visita nasce come richiesta, non come prenotazione confermata:
+  // niente link al calendario finche' lo studio non la conferma.
+  verifica('la visita dal sito nasce come richiesta da confermare',
+    dati.prenotazione?.stato === 'in_attesa', dati.prenotazione?.stato);
+  verifica('la richiesta non in attesa non propone il calendario',
+    dati.prenotazione?.calendario === null, String(dati.prenotazione?.calendario).slice(0, 80));
 
   const dopo = await chiama('GET', `/api/disponibilita?data=${giorno}&ambulatorio_id=1`);
   const ancoraLibero = dopo.dati.slot.find((s) => s.ora_inizio === slotLiberi[0].ora_inizio)?.disponibile;
-  verifica('lo slot risulta occupato subito dopo', ancoraLibero === false);
+  verifica('lo slot risulta occupato subito dopo, anche se solo richiesto', ancoraLibero === false);
 }
 
 console.log('\nControlli sui dati');
@@ -625,6 +626,90 @@ let token = null;
 
   const finto = await chiama('GET', '/api/admin/prenotazioni', null, 'token-inventato');
   verifica('un token inventato non apre nulla', finto.stato === 401);
+}
+
+console.log('\nRichieste di visita: lo studio conferma o rifiuta');
+{
+  const { oggiISO, aggiungiGiorni } = await import('../src/orari.js');
+  let g = null;
+  let liberi = [];
+  for (let i = 35 + Math.floor(Math.random() * 5); i <= 55 && !g; i++) {
+    const d = aggiungiGiorni(oggiISO(), i);
+    const r = await chiama('GET', `/api/disponibilita?data=${d}&ambulatorio_id=1`);
+    const s = (r.dati.slot || []).filter((x) => x.disponibile);
+    if (s.length >= 4) { g = d; liberi = s; }
+  }
+  verifica('trovato un giorno libero per le richieste di visita', Boolean(g));
+
+  const datiPaziente = {
+    nome: 'Richi', cognome: 'Esta', telefono: '3330001122',
+    email: 'richi.esta.prova@example.it', problema: 'mal di schiena da giorni'
+  };
+
+  // --- Conferma -----------------------------------------------------------
+  const creata = await chiama('POST', '/api/prenotazioni', {
+    ambulatorio_id: 1, data: g, ora_inizio: liberi[0].ora_inizio, ...datiPaziente
+  });
+  const codConf = creata.dati.prenotazione?.codice;
+  verifica('la richiesta di visita nasce in attesa',
+    creata.stato === 201 && creata.dati.prenotazione?.stato === 'in_attesa',
+    `${creata.stato} ${creata.dati.prenotazione?.stato}`);
+
+  const nonAncora = await chiama('GET', `/api/prenotazioni/${codConf}`);
+  verifica('il paziente puo\' ritirare la richiesta finche\' e\' in attesa',
+    nonAncora.dati.annullabile === true && nonAncora.dati.prenotazione?.calendario === null);
+
+  const inElenco = await chiama('GET', '/api/admin/prenotazioni?stato=in_attesa', null, token);
+  verifica('la richiesta compare fra quelle da confermare',
+    (inElenco.dati.prenotazioni || []).some((p) => p.codice === codConf));
+
+  const riepConf = await chiama('GET', '/api/admin/riepilogo', null, token);
+  verifica('il riepilogo conta le richieste di visita da confermare',
+    riepConf.dati.riepilogo?.richieste_visita_da_confermare >= 1);
+
+  const conferma = await chiama('POST', `/api/admin/prenotazioni/${codConf}/conferma`, {}, token);
+  verifica('lo studio conferma la richiesta',
+    conferma.stato === 200 && conferma.dati.prenotazione?.stato === 'confermata',
+    `${conferma.stato} ${conferma.dati.prenotazione?.stato}`);
+
+  const dopoConf = await chiama('GET', `/api/prenotazioni/${codConf}`);
+  const cal = dopoConf.dati.prenotazione?.calendario || '';
+  const attesi = `${g.replace(/-/g, '')}T${liberi[0].ora_inizio.replace(':', '')}00`;
+  verifica('dopo la conferma arriva il link per Google Calendar',
+    cal.startsWith('https://calendar.google.com/') && cal.includes(attesi), cal.slice(0, 120));
+
+  const giaConf = await chiama('POST', `/api/admin/prenotazioni/${codConf}/conferma`, {}, token);
+  verifica('una richiesta gia\' confermata non si riconferma', giaConf.stato === 400);
+
+  // --- Rifiuto ----------------------------------------------------------
+  const daRifiutare = await chiama('POST', '/api/prenotazioni', {
+    ambulatorio_id: 1, data: g, ora_inizio: liberi[1].ora_inizio, ...datiPaziente
+  });
+  const codRif = daRifiutare.dati.prenotazione?.codice;
+
+  const senzaMotivo = await chiama('POST', `/api/admin/prenotazioni/${codRif}/rifiuta`, {}, token);
+  verifica('il rifiuto senza motivo viene respinto', senzaMotivo.stato === 400);
+
+  const occupatoOra = await chiama('GET', `/api/disponibilita?data=${g}&ambulatorio_id=1`);
+  verifica('la richiesta da rifiutare intanto tiene lo slot',
+    occupatoOra.dati.slot.find((s) => s.ora_inizio === liberi[1].ora_inizio)?.disponibile === false);
+
+  const rifiuto = await chiama('POST', `/api/admin/prenotazioni/${codRif}/rifiuta`,
+    { motivo: 'In quella giornata il medico non e\' in ambulatorio.' }, token);
+  verifica('lo studio rifiuta la richiesta con un motivo',
+    rifiuto.stato === 200 && rifiuto.dati.prenotazione?.stato === 'rifiutata',
+    `${rifiuto.stato} ${rifiuto.dati.prenotazione?.stato}`);
+
+  const tornatoLibero = await chiama('GET', `/api/disponibilita?data=${g}&ambulatorio_id=1`);
+  verifica('rifiutata la richiesta, lo slot torna disponibile',
+    tornatoLibero.dati.slot.find((s) => s.ora_inizio === liberi[1].ora_inizio)?.disponibile === true);
+
+  const rifiutaAncora = await chiama('POST', `/api/admin/prenotazioni/${codRif}/rifiuta`,
+    { motivo: 'di nuovo' }, token);
+  verifica('una richiesta gia\' rifiutata non si rifiuta due volte', rifiutaAncora.stato === 400);
+
+  const annullaRifiutata = await chiama('POST', `/api/prenotazioni/${codRif}/annulla`, { conferma: true });
+  verifica('il paziente non annulla una richiesta gia\' rifiutata', annullaRifiutata.stato === 400);
 }
 
 console.log('\nChiusure (giorni e fasce orarie bloccate)');
@@ -1843,8 +1928,12 @@ console.log('\nTrecento pazienti sullo stesso orario');
   verifica('le altre 299 ricevono "orario occupato"', occupati === 299, `occupati: ${occupati}`);
   verifica('nessun errore imprevisto', imprevisti.length === 0, imprevisti[0]);
 
+  // Le visite create qui nascono 'in_attesa' (nessuna origine 'studio'): il
+  // vincolo idx_slot_unico copre anche quello stato, quindi la riga per lo
+  // slot resta comunque una sola.
   const righe = db.prepare(
-    `SELECT COUNT(*) n FROM prenotazioni WHERE data = ? AND ora_inizio = ? AND stato = 'confermata'`
+    `SELECT COUNT(*) n FROM prenotazioni
+      WHERE data = ? AND ora_inizio = ? AND stato IN ('confermata', 'in_attesa')`
   ).get(giorno, oraContesa).n;
   verifica('nel database esiste una sola riga per quello slot', righe === 1, `righe: ${righe}`);
 

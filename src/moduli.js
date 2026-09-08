@@ -284,7 +284,9 @@ export function conferma(codice, correzioni = {}, chiConferma = null) {
       ora_inizio: correzioni.ora_inizio ?? m.ora_chiesta,
       ambulatorio_id: correzioni.ambulatorio_id ?? m.ambulatorio_id,
       problema: correzioni.problema ?? m.testo
-    })
+    // Qui e' una persona dello studio che sta accogliendo la richiesta: nasce
+    // gia' 'confermata', non 'in_attesa' come quelle che arrivano dal sito.
+    }, { confermata: true })
     : creaRichiesta({
       ...d,
       // Senza questo il modulo degli esami genererebbe una richiesta di

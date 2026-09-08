@@ -526,7 +526,9 @@ function collegaFormPrenotazione() {
       $('#modulo-prenotazione').classList.add('nascosto');
       stato.slotScelto = null;
       mostraConferma(prenotazione);
-      avvisa('Prenotazione confermata.', 'ok');
+      avvisa(prenotazione.stato === 'in_attesa'
+        ? 'Richiesta inviata: lo studio la conferma a breve.'
+        : 'Prenotazione confermata.', 'ok');
       await caricaMese();
       if (stato.dataScelta) scegliGiorno(stato.dataScelta);
     });
@@ -548,13 +550,20 @@ function bottoneCalendario(p, classe = 'bottone secondario piccolo') {
 }
 
 function mostraConferma(p) {
+  const inAttesa = p.stato === 'in_attesa';
   const box = nodo('div', 'avviso ok');
-  box.append(nodo('strong', null, `Prenotazione confermata — codice ${p.codice}`));
+  box.append(nodo('strong', null,
+    `${inAttesa ? 'Richiesta inviata' : 'Prenotazione confermata'} — codice ${p.codice}`));
   box.append(nodo('p', 'piccolo',
     `${dataEstesa(p.data)} alle ${p.ora_inizio} · ${p.ambulatorio.nome}, ${p.ambulatorio.indirizzo}`));
   box.append(nodo('p', 'piccolo',
-    'Conserva il codice: ti serve per controllare o annullare la prenotazione.' +
-    (p.paziente.email ? ' Ti abbiamo inviato una email di conferma.' : '')));
+    (inAttesa
+      ? 'Non è ancora confermata: lo studio la conferma a breve' +
+        (p.paziente.email ? ' e ti arriva una email' : '') + '. '
+      : '') +
+    'Conserva il codice: ti serve per controllare o ' +
+    (inAttesa ? 'ritirare la richiesta.' : 'annullare la prenotazione.') +
+    (!inAttesa && p.paziente.email ? ' Ti abbiamo inviato una email di conferma.' : '')));
 
   const copia = nodo('button', 'bottone secondario piccolo', 'Copia il codice');
   copia.type = 'button';
@@ -756,10 +765,17 @@ function schedaPrenotazione(p, annullabile) {
   box.append(nodo('p', 'piccolo tenue', `${p.ambulatorio.nome} — ${p.ambulatorio.indirizzo}`));
   box.append(nodo('p', 'piccolo', `${p.paziente.nome} ${p.paziente.cognome} · ${p.problema}`));
 
-  if (p.stato !== 'confermata') return box;
+  const inAttesa = p.stato === 'in_attesa';
+  if (p.stato !== 'confermata' && !inAttesa) return box;
+
+  if (inAttesa) {
+    box.append(nodo('div', 'avviso attenzione',
+      'In attesa di conferma dallo studio: quando è confermata ricevi una email. ' +
+      'Fino ad allora l\'orario resta tuo ma la visita non è ancora in agenda.'));
+  }
 
   const azioni = nodo('div', 'azioni');
-  azioni.append(bottoneCalendario(p, 'bottone secondario'));
+  if (!inAttesa) azioni.append(bottoneCalendario(p, 'bottone secondario'));
 
   if (!annullabile) {
     box.append(nodo('div', 'avviso attenzione',
@@ -768,17 +784,22 @@ function schedaPrenotazione(p, annullabile) {
     return box;
   }
 
-  const pulsante = nodo('button', 'bottone pericolo', 'Annulla la prenotazione');
+  const pulsante = nodo('button', 'bottone pericolo',
+    inAttesa ? 'Ritira la richiesta' : 'Annulla la prenotazione');
   pulsante.type = 'button';
   pulsante.addEventListener('click', async () => {
-    if (!confirm('Vuoi davvero annullare questa prenotazione?')) return;
+    if (!confirm(inAttesa
+      ? 'Vuoi davvero ritirare questa richiesta?'
+      : 'Vuoi davvero annullare questa prenotazione?')) return;
     pulsante.disabled = true;
     try {
       const { prenotazione } = await api(`/prenotazioni/${p.codice}/annulla`, {
         method: 'POST', body: { conferma: true }
       });
       $('#esito-ricerca').replaceChildren(schedaPrenotazione(prenotazione, false));
-      avvisa('Prenotazione annullata. Il posto è tornato disponibile.', 'ok');
+      avvisa(inAttesa
+        ? 'Richiesta ritirata. Il posto è tornato disponibile.'
+        : 'Prenotazione annullata. Il posto è tornato disponibile.', 'ok');
       caricaMese();
     } catch (err) {
       avvisa(err.message, 'errore');

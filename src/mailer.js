@@ -153,6 +153,67 @@ export const emailNuovaPrenotazioneAdmin = (p) => componiEmail({
   ]
 });
 
+/**
+ * Le visite chieste dal sito o dal chatbot nascono come richieste: lo studio
+ * deve ancora confermarle. Queste tre email accompagnano quel giro — la
+ * ricevuta al paziente, l'avviso allo studio, l'eventuale no.
+ *
+ * La conferma vera, quando arriva, e' la stessa emailConfermaPaziente di
+ * sempre: a quel punto la visita e' in agenda come tutte le altre.
+ */
+export const emailRichiestaVisitaRicevutaPaziente = (p) => componiEmail({
+  to: p.paziente_email,
+  subject: `Richiesta di visita ricevuta — ${formattaDataEstesa(p.data)} alle ${p.ora_inizio}`,
+  titolo: 'Richiesta ricevuta',
+  intro: `Gentile ${esc(p.paziente_nome)}, abbiamo ricevuto la sua richiesta di visita. ` +
+    'Non è ancora confermata: le arriverà una seconda email appena lo studio la conferma.',
+  righe: [
+    ['Giorno richiesto', formattaDataEstesa(p.data)],
+    ['Orario richiesto', `${p.ora_inizio} — ${p.ora_fine}`],
+    ['Ambulatorio', p.ambulatorio_nome],
+    ['Indirizzo', p.ambulatorio_indirizzo],
+    ['Motivo', p.problema],
+    ['Codice richiesta', p.codice]
+  ],
+  chiusura: `Conservi il codice <strong>${esc(p.codice)}</strong>: le serve per controllare o ritirare la richiesta. ` +
+    'Fino alla conferma quell\'orario resta suo, ma la visita non è ancora in agenda.'
+});
+
+export const emailRichiestaVisitaDaConfermareAdmin = (p) => componiEmail({
+  to: NOTIFY_EMAIL,
+  subject: `Da confermare: ${p.paziente_nome} ${p.paziente_cognome} — ${p.data} ${p.ora_inizio}`,
+  titolo: 'Nuova richiesta di visita da confermare',
+  intro: 'È arrivata una richiesta di visita dal sito. Va confermata o rifiutata dal pannello, ' +
+    'in "Prenotazioni".',
+  righe: [
+    ['Paziente', `${p.paziente_nome} ${p.paziente_cognome}`],
+    ['Telefono', p.paziente_telefono],
+    ['Email', p.paziente_email],
+    ['Data', formattaDataEstesa(p.data)],
+    ['Orario', `${p.ora_inizio} — ${p.ora_fine}`],
+    ['Ambulatorio', p.ambulatorio_nome],
+    ['Motivo', p.problema],
+    ['Codice', p.codice],
+    ['Origine', p.origine]
+  ]
+});
+
+export const emailRichiestaVisitaRifiutataPaziente = (p) => componiEmail({
+  to: p.paziente_email,
+  subject: `Richiesta di visita non accolta — ${formattaDataEstesa(p.data)}`,
+  titolo: 'Richiesta non accolta',
+  intro: `Gentile ${esc(p.paziente_nome)}, purtroppo la sua richiesta di visita per ` +
+    `${formattaDataEstesa(p.data)} alle ${p.ora_inizio} non può essere accolta.`,
+  righe: [
+    ['Giorno richiesto', formattaDataEstesa(p.data)],
+    ['Orario richiesto', p.ora_inizio],
+    ['Ambulatorio', p.ambulatorio_nome],
+    ['Motivo', p.motivo_rifiuto]
+  ],
+  chiusura: 'Può richiedere un altro giorno o orario dal nostro sito, oppure ci telefoni ' +
+    `allo ${esc(p.ambulatorio_telefono)} per trovare un'alternativa.`
+});
+
 export const emailAnnullamentoPaziente = (p) => componiEmail({
   to: p.paziente_email,
   subject: `Prenotazione annullata — ${formattaDataEstesa(p.data)}`,

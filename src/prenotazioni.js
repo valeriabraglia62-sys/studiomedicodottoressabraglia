@@ -11,7 +11,9 @@ import {
   emailConfermaPaziente, emailNuovaPrenotazioneAdmin,
   emailAnnullamentoPaziente, emailAnnullamentoAdmin,
   emailPrenotazioneRiprogrammata, emailPrenotazioneRiprogrammataAdmin,
-  emailAnagraficaDiscordante
+  emailAnagraficaDiscordante,
+  emailRichiestaVisitaRicevutaPaziente, emailRichiestaVisitaDaConfermareAdmin,
+  emailRichiestaVisitaRifiutataPaziente
 } from './mailer.js';
 
 /** Errore con messaggio pensato per essere mostrato al paziente. */
@@ -253,9 +255,20 @@ const SLOT_OCCUPATO = 'Questo orario è appena stato prenotato da un altro pazie
 /**
  * Crea la prenotazione. Dato, email e sincronizzazione col foglio vengono
  * scritti in un'unica transazione: o riesce tutto, o non resta traccia di nulla.
+ *
+ * Chi la scrive decide anche se nasce gia' valida o come semplice richiesta:
+ *  - lo studio dal pannello (`forza`, o origine 'studio') mette in agenda una
+ *    prenotazione 'confermata', com'e' sempre stato;
+ *  - una richiesta da modulo che una persona conferma dal pannello passa
+ *    `confermata: true`: e' lo studio che se ne fa carico;
+ *  - tutto il resto — sito, chatbot — nasce 'in_attesa': e' una richiesta, e
+ *    lo studio la conferma o la rifiuta a mano. Il paziente riceve un "abbiamo
+ *    ricevuto", non un "confermato".
  */
-export function creaPrenotazione(datiGrezzi, { forza = false } = {}) {
+export function creaPrenotazione(datiGrezzi, { forza = false, confermata = false } = {}) {
   const d = validaRichiesta(datiGrezzi, forza);
+  const nasceConfermata = forza || confermata || d.origine === 'studio';
+  const stato = nasceConfermata ? 'confermata' : 'in_attesa';
 
   const transazione = db.transaction(() => {
     const paziente = trovaOCreaPaziente(d, { contesto: 'una prenotazione di visita' });
@@ -264,17 +277,22 @@ export function creaPrenotazione(datiGrezzi, { forza = false } = {}) {
 
     const info = db.prepare(`
       INSERT INTO prenotazioni
-        (codice, ambulatorio_id, data, ora_inizio, ora_fine, paziente_id, problema, origine, creata_il)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (codice, ambulatorio_id, data, ora_inizio, ora_fine, paziente_id, problema, stato, origine, creata_il)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(codice, d.ambulatorio.id, d.data, d.ora_inizio, d.ora_fine,
-      paziente.id, d.problema, d.origine, adesso);
+      paziente.id, d.problema, stato, d.origine, adesso);
 
     const prenotazione = dettaglio(info.lastInsertRowid);
 
     accoda('sheet_prenotazione', prenotazione);
-    accoda('email', emailNuovaPrenotazioneAdmin(prenotazione));
-    if (prenotazione.paziente_email) {
-      accoda('email', emailConfermaPaziente(prenotazione));
+    if (nasceConfermata) {
+      accoda('email', emailNuovaPrenotazioneAdmin(prenotazione));
+      if (prenotazione.paziente_email) accoda('email', emailConfermaPaziente(prenotazione));
+    } else {
+      accoda('email', emailRichiestaVisitaDaConfermareAdmin(prenotazione));
+      if (prenotazione.paziente_email) {
+        accoda('email', emailRichiestaVisitaRicevutaPaziente(prenotazione));
+      }
     }
 
     return prenotazione;
@@ -328,13 +346,86 @@ export function minutiAllAppuntamento(p) {
   return giorniDiff * 1440 + minutiDaOra(p.ora_inizio) - minutiCorrentiRoma();
 }
 
+/**
+ * Lo studio accetta una richiesta 'in_attesa': diventa una prenotazione vera.
+ *
+ * Da qui in poi e' identica a una nata dal pannello — entra in agenda, nei
+ * promemoria, nei conteggi — e il paziente riceve la conferma con il link al
+ * calendario, la stessa email di sempre.
+ */
+export function confermaPrenotazione(codice, chi = null) {
+  const p = perCodice(codice);
+  if (!p) throw new ErroreDominio('Prenotazione non trovata. Controlla il codice.', 404);
+  if (p.stato === 'confermata') throw new ErroreDominio('Questa richiesta è già stata confermata.');
+  if (p.stato !== 'in_attesa') throw new ErroreDominio('Questa richiesta non è più in attesa: è stata annullata o rifiutata.');
+
+  const transazione = db.transaction(() => {
+    db.prepare(
+      `UPDATE prenotazioni SET stato = 'confermata', confermata_il = ?, confermata_da = ? WHERE id = ?`
+    ).run(new Date().toISOString(), chi || null, p.id);
+
+    const aggiornata = dettaglio(p.id);
+    accoda('sheet_prenotazione', aggiornata);
+    if (aggiornata.paziente_email) accoda('email', emailConfermaPaziente(aggiornata));
+    return aggiornata;
+  });
+
+  try {
+    return transazione();
+  } catch (err) {
+    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || /UNIQUE constraint/i.test(err.message)) {
+      throw new ErroreDominio(
+        'In quell\'ambulatorio, a quell\'ora, c\'è già un altro paziente. Sposta la richiesta o rifiutala.', 409);
+    }
+    throw err;
+  }
+}
+
+/**
+ * Lo studio non accetta una richiesta 'in_attesa'.
+ *
+ * Non e' un annullamento: la visita non c'e' mai stata. Resta scritta col suo
+ * motivo, cosi' al fascicolo si vede cosa era stato chiesto e perche' e' stato
+ * detto di no; il posto torna libero e chi era in lista d'attesa per quel
+ * giorno va avvisato (lo fa il chiamante, come per gli annullamenti).
+ */
+export function rifiutaPrenotazione(codice, motivo, chi = null) {
+  const p = perCodice(codice);
+  if (!p) throw new ErroreDominio('Prenotazione non trovata. Controlla il codice.', 404);
+  if (p.stato !== 'in_attesa') {
+    throw new ErroreDominio(p.stato === 'confermata'
+      ? 'Questa richiesta è già stata confermata: per disdirla usa "Annulla".'
+      : 'Questa richiesta è già stata annullata o rifiutata.');
+  }
+  const testo = testoPulito(motivo, 300);
+  if (testo.length < 3) throw new ErroreDominio('Scrivi un motivo per il rifiuto: finisce nell\'email al paziente.');
+
+  const transazione = db.transaction(() => {
+    db.prepare(
+      `UPDATE prenotazioni
+          SET stato = 'rifiutata', motivo_rifiuto = ?, annullata_da = 'admin',
+              annullata_il = ?, annullata_utente = ?
+        WHERE id = ?`
+    ).run(testo, new Date().toISOString(), chi || null, p.id);
+
+    const aggiornata = dettaglio(p.id);
+    accoda('sheet_prenotazione', aggiornata);
+    if (aggiornata.paziente_email) accoda('email', emailRichiestaVisitaRifiutataPaziente(aggiornata));
+    return aggiornata;
+  });
+
+  return transazione();
+}
+
 export function annullaPrenotazione(codice, { da = 'paziente', chi = null } = {}) {
   const p = perCodice(codice);
   if (!p) throw new ErroreDominio('Prenotazione non trovata. Controlla il codice.', 404);
   if (p.stato === 'annullata') throw new ErroreDominio('Questa prenotazione è già stata annullata.');
+  if (p.stato === 'rifiutata') throw new ErroreDominio('Questa richiesta è stata rifiutata dallo studio.');
 
-  // Il limite vale per il paziente; lo studio può annullare sempre.
-  if (da !== 'admin') {
+  // Il limite vale per il paziente su una prenotazione confermata; una richiesta
+  // ancora 'in_attesa' si ritira sempre, e lo studio può annullare sempre.
+  if (da !== 'admin' && p.stato === 'confermata') {
     const mancanti = minutiAllAppuntamento(p);
     if (mancanti < config.cancellazioneMinutiMinimi) {
       throw new ErroreDominio(
@@ -451,7 +542,8 @@ export function elencoAdmin({ dal, al, stato, ambulatorio_id, cerca, pagina = 1,
   // il filtro su "Annullate", e la storia resta scritta. Nascondere e cancellare
   // si somigliano solo finche' non serve rispondere a "ma io non avevo disdetto".
   if (!stato) {
-    dove.push("(p.stato <> 'annullata' OR date(p.annullata_il) >= date('now', '-1 day'))");
+    dove.push(
+      "(p.stato NOT IN ('annullata', 'rifiutata') OR date(p.annullata_il) >= date('now', '-1 day'))");
   }
 
   /**
@@ -469,7 +561,7 @@ export function elencoAdmin({ dal, al, stato, ambulatorio_id, cerca, pagina = 1,
    * cercarla mesi dopo. Chi la vuole nell'elenco la ritrova mettendo le date.
    */
   if (!stato && !dal && !al && !cerca) {
-    dove.push("(p.stato <> 'confermata' OR p.data >= date('now', '-1 day'))");
+    dove.push("(p.stato NOT IN ('confermata', 'in_attesa') OR p.data >= date('now', '-1 day'))");
   }
   if (ambulatorio_id) { dove.push('p.ambulatorio_id = ?'); par.push(ambulatorio_id); }
   if (cerca) {

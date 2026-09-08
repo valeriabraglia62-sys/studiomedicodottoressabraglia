@@ -125,10 +125,13 @@ export function slotDisponibili(dataStr, ambulatorioId = null) {
     : listaAmbulatori()
   ).filter((a) => !chiusi.has(a.id));
 
+  // Anche le richieste ancora da confermare ('in_attesa') tengono lo slot:
+  // proporlo come libero vorrebbe dire far chiedere a due pazienti lo stesso
+  // orario e poi doverne deludere uno.
   const occupati = new Set(
     db.prepare(
       `SELECT ambulatorio_id, ora_inizio FROM prenotazioni
-        WHERE data = ? AND stato = 'confermata'`
+        WHERE data = ? AND stato IN ('confermata', 'in_attesa')`
     ).all(dataStr).map((p) => `${p.ambulatorio_id}|${p.ora_inizio}`)
   );
 
