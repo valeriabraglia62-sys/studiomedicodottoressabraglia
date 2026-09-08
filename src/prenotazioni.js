@@ -63,9 +63,18 @@ export function emailValida(e) {
  * e puo' distinguere un cambio di numero da uno scambio di persona.
  */
 export function trovaOCreaPaziente(
-  { nome, cognome, email, telefono },
+  { nome, cognome, email, telefono, pazienteId },
   { contesto = 'il sito' } = {}
 ) {
+  // Chi ha gia' un account collegato a una scheda la porta con se': si usa
+  // quella e basta. Ricostruirla per nome+telefono, se un dato non combacia
+  // alla lettera, creerebbe un doppione e il paziente non ritroverebbe piu'
+  // le sue prenotazioni col codice.
+  if (pazienteId) {
+    const scheda = db.prepare('SELECT * FROM pazienti WHERE id = ?').get(Number(pazienteId));
+    if (scheda) return scheda;
+  }
+
   const tel = normalizzaTelefono(telefono);
   const mail = email ? String(email).trim().toLowerCase() : null;
 
@@ -233,6 +242,7 @@ function validaRichiesta(dati, forza = false) {
 
   return {
     nome, cognome, email, telefono, problema, ambulatorio,
+    pazienteId: dati.pazienteId || null,
     ...validaQuando(dati, ambulatorio, forza),
     origine: dati.origine || 'sito'
   };

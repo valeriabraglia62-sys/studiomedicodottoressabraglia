@@ -718,8 +718,8 @@ function collegaFormRicerca() {
     evento.preventDefault();
     const codice = campo.value.trim().toUpperCase();
 
-    if (!/^(PRE|MED)-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(codice)) {
-      segnalaCampo(campo, 'Il codice ha la forma PRE-XXXX-XXXX o MED-XXXX-XXXX.');
+    if (!/^(PRE|MED|SPE|ESA)-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(codice)) {
+      segnalaCampo(campo, 'Il codice ha la forma PRE-XXXX-XXXX (o MED, SPE, ESA).');
       return;
     }
     segnalaCampo(campo, '');

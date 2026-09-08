@@ -299,6 +299,29 @@ console.log('\nRicerca e annullamento');
   verifica('un paziente non legge la pratica di un altro', incrociata.stato === 404);
   tokenPaziente = tokenProprietario;
 
+  // La prenotazione da sito si aggancia alla scheda dell'account (dalla
+  // sessione), non a una scheda ricreata per nome/telefono: cosi' il paziente
+  // ritrova sempre il suo codice. Si registra un paziente con un nome nella
+  // scheda diverso da quello che poi arriva nella prenotazione.
+  const rp = registraPazienteDiretto({
+    nome: 'Nomescheda', cognome: 'Diversa', telefono: '3337779990',
+    email: 'aggancio.scheda@example.it', password: 'PasswordAggancio26!'
+  });
+  verificaEmailDiretto(rp.token);
+  const idScheda = db.prepare('SELECT paziente_id FROM utenti WHERE id = ?').get(rp.utente.id).paziente_id;
+  const tRp = creaSessioneDiretta(rp.utente.id).token;
+  const gg2 = await chiama('GET', `/api/disponibilita?data=${giorno}&ambulatorio_id=1`);
+  const sl2 = (gg2.dati.slot || []).find((s) => s.disponibile);
+  const pren2 = await chiama('POST', '/api/prenotazioni',
+    { ambulatorio_id: 1, data: giorno, ora_inizio: sl2.ora_inizio, problema: 'aggancio scheda' }, tRp);
+  const cod2 = pren2.dati.prenotazione?.codice;
+  const idPren = cod2 ? db.prepare('SELECT paziente_id FROM prenotazioni WHERE codice = ?').get(cod2).paziente_id : null;
+  verifica('la prenotazione da sito e\' agganciata alla scheda dell\'account',
+    idPren === idScheda, `scheda account ${idScheda}, scheda prenotazione ${idPren}`);
+  const ritrovo = await chiama('GET', `/api/prenotazioni/${cod2}`, null, tRp);
+  verifica('e il paziente la ritrova col suo codice', ritrovo.stato === 200
+    && ritrovo.dati.prenotazione?.codice === cod2);
+
   const nonConfermata = await chiama('POST', `/api/prenotazioni/${codicePrenotazione}/annulla`, {});
   verifica('annullare richiede conferma esplicita', nonConfermata.stato === 400);
 

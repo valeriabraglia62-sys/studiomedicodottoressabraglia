@@ -56,7 +56,8 @@ export function iscrivi(dati) {
   }
 
   const transazione = db.transaction(() => {
-    const paziente = trovaOCreaPaziente({ nome, cognome, email, telefono: dati.telefono },
+    const paziente = trovaOCreaPaziente(
+      { nome, cognome, email, telefono: dati.telefono, pazienteId: dati.pazienteId },
       { contesto: 'una iscrizione alla lista d\'attesa' });
 
     const gia = db.prepare(

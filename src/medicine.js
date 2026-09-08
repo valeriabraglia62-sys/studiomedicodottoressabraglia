@@ -169,7 +169,7 @@ export function creaRichiesta(dati) {
 
   const transazione = db.transaction(() => {
     const paziente = telefonoValido(telefono)
-      ? trovaOCreaPaziente({ nome, cognome, email, telefono },
+      ? trovaOCreaPaziente({ nome, cognome, email, telefono, pazienteId: dati.pazienteId },
         { contesto: `una richiesta di ${TIPI[tipo].cosaChiede}` })
       : null;
 

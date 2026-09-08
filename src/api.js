@@ -179,7 +179,11 @@ router.get('/calendario', (req, res) => {
 router.post('/prenotazioni', limiteScrittura, richiedePaziente, (req, res) => {
   const proprietario = schedaPaziente(req);
   const p = prenotazioni.creaPrenotazione({
-    ...req.body,
+    ambulatorio_id: req.body?.ambulatorio_id,
+    data: req.body?.data,
+    ora_inizio: req.body?.ora_inizio,
+    problema: req.body?.problema,
+    pazienteId: req.utente.paziente_id,
     nome: proprietario.nome, cognome: proprietario.cognome,
     email: proprietario.email, telefono: proprietario.telefono,
     origine: 'sito'
@@ -215,8 +219,12 @@ router.post('/prenotazioni/:codice/annulla', limiteScrittura, richiedeAccount, (
 
 router.post('/attesa', limiteScrittura, richiedePaziente, (req, res) => {
   const proprietario = schedaPaziente(req);
-  const v = attesa.iscrivi({ ...req.body, nome: proprietario.nome, cognome: proprietario.cognome,
-    email: proprietario.email, telefono: proprietario.telefono });
+  const v = attesa.iscrivi({
+    ambulatorio_id: req.body?.ambulatorio_id, data: req.body?.data, problema: req.body?.problema,
+    pazienteId: req.utente.paziente_id,
+    nome: proprietario.nome, cognome: proprietario.cognome,
+    email: proprietario.email, telefono: proprietario.telefono
+  });
   res.status(201).json({ success: true, attesa: { codice: v.codice, data: v.data } });
 });
 
@@ -250,7 +258,10 @@ function pubblica(p) {
 
 router.post('/medicine', limiteScrittura, richiedePaziente, (req, res) => {
   const proprietario = schedaPaziente(req);
-  const r = medicine.creaRichiesta({ ...req.body,
+  const r = medicine.creaRichiesta({
+    tipo: req.body?.tipo, farmaci: req.body?.farmaci, note: req.body?.note,
+    ambulatorio_id: req.body?.ambulatorio_id, conAllegato: req.body?.conAllegato,
+    pazienteId: req.utente.paziente_id,
     nome: proprietario.nome, cognome: proprietario.cognome,
     email: proprietario.email, telefono: proprietario.telefono, origine: 'sito' });
   res.status(201).json({
