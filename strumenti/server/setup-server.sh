@@ -1,21 +1,23 @@
 #!/usr/bin/env bash
 #
-# Installazione del sito su un server Linux nuovo (Hetzner, Ubuntu 24.04).
+# Installazione del sito su un server Linux nuovo (VPS Aruba, Ubuntu 24.04).
 # Da eseguire UNA SOLA VOLTA, come root, appena creato il server.
 #
-#   1. crea il server su Hetzner (vedi DEPLOY-SERVER.md)
-#   2. fai puntare il dominio all'IP del server (record A)
+#   1. crea il VPS (vedi DEPLOY-SERVER.md)
+#   2. nel pannello DNS Aruba: record A  @  ->  IP del server
+#                              record A  www ->  IP del server
 #   3. copia questo file sul server e lancialo:
-#        DOMINIO=prenotazioni.tuodominio.it EMAIL_TLS=tuo@email.it \
-#        REPO=https://github.com/valeriabraglia62-sys/studiomedicodottoressabraglia.git \
 #        bash setup-server.sh
+#
+#   Il dominio e l'email del certificato hanno gia' il valore giusto qui sotto;
+#   per usarne altri:  DOMINIO=altro.it EMAIL_TLS=tu@mail.it bash setup-server.sh
 #
 # Dopo, gli aggiornamenti si fanno con  strumenti/server/deploy.sh
 #
 set -euo pipefail
 
-DOMINIO="${DOMINIO:?Serve DOMINIO=... (il dominio pubblico del sito)}"
-EMAIL_TLS="${EMAIL_TLS:?Serve EMAIL_TLS=... (email per gli avvisi del certificato)}"
+DOMINIO="${DOMINIO:-studiomedicobragliavaleria.it}"
+EMAIL_TLS="${EMAIL_TLS:-auslvaleria@gmail.com}"
 REPO="${REPO:-https://github.com/valeriabraglia62-sys/studiomedicodottoressabraglia.git}"
 BRANCH="${BRANCH:-main}"
 APP_USER="studiomedico"
@@ -84,7 +86,7 @@ if [ ! -f "$APP_DIR/.env" ]; then
   BK_KEY="$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')"
   sed -i \
     -e "s|^SITO_URL=.*|SITO_URL=https://${DOMINIO}|" \
-    -e "s|^HOST_AMMESSI=.*|HOST_AMMESSI=${DOMINIO}|" \
+    -e "s|^HOST_AMMESSI=.*|HOST_AMMESSI=${DOMINIO},www.${DOMINIO}|" \
     -e "s|^SESSION_SECRET=.*|SESSION_SECRET=${SECRET}|" \
     -e "s|^BACKUP_ENCRYPTION_KEY=.*|BACKUP_ENCRYPTION_KEY=${BK_KEY}|" \
     "$APP_DIR/.env"

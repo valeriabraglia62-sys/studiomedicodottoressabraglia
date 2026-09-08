@@ -52,10 +52,11 @@ Invoke-WebRequest -UseBasicParsing http://localhost:3000/salute | Select StatusC
 ## Poi — il server sempre acceso (h24)
 
 Il sito sul PC non è online quando il PC è spento. Per il vero 24/7 c'è il kit
-in `strumenti/server/` e la guida **`DEPLOY-SERVER.md`**: server Aruba/Hetzner
-in UE (~5 €/mese) + dominio (~10 €/anno). Sul server la configurazione è già
-fail-closed (HTTPS obbligatorio, backup cifrato obbligatorio, ascolto solo su
-loopback dietro Caddy, codice in sola lettura).
+in `strumenti/server/` e la guida **`DEPLOY-SERVER.md`**: VPS Aruba in Italia
+(~5 €/mese). Il dominio `studiomedicobragliavaleria.it` è già acquistato e già
+scritto negli script del kit. Sul server la configurazione è già fail-closed
+(HTTPS obbligatorio, backup cifrato obbligatorio, ascolto solo su loopback
+dietro Caddy, codice in sola lettura).
 
 Sul server, dopo il primo avvio, verifica anche:
 

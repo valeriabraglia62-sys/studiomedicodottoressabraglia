@@ -1,10 +1,17 @@
 # Reverse proxy con HTTPS automatico (Let's Encrypt).
 # Caddy prende e rinnova il certificato da solo: non c'e' niente da configurare.
 #
-# __DOMINIO__ e __EMAIL_TLS__ vengono sostituiti da setup-server.sh.
+# I segnaposto (dominio ed email del certificato) li riempie setup-server.sh.
+# Dominio previsto: studiomedicobragliavaleria.it (con www che redirige alla radice).
 
 {
 	email __EMAIL_TLS__
+}
+
+# www -> radice: un indirizzo solo, quello ufficiale. Il certificato per www
+# Caddy lo prende comunque, serve per fare il redirect in HTTPS.
+www.__DOMINIO__ {
+	redir https://__DOMINIO__{uri} permanent
 }
 
 __DOMINIO__ {
