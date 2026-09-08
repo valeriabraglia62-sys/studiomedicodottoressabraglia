@@ -452,7 +452,7 @@ const AMBULATORI_INIZIALI = [
     nome: 'Ambulatorio di Arceto',
     indirizzo: 'Via Piazza Castello, 10 - Arceto',
     telefono: '3291545236',
-    orari: { 1: ['11:00', '13:00'], 2: ['11:00', '13:00'], 3: ['17:00', '19:00'], 4: ['11:00', '13:00'], 5: ['11:00', '13:00'] }
+    orari: { 1: ['11:00', '13:00'], 2: ['11:00', '13:00'], 3: ['17:30', '19:00'], 4: ['11:00', '13:00'], 5: ['11:00', '13:00'] }
   },
   {
     id: 2,
@@ -480,16 +480,16 @@ const seed = db.transaction(() => {
 });
 seed();
 
-// Orario di apertura ritoccato dopo il primo rilascio: Arceto, nei giorni con
-// la mattina, apre alle 11:00 invece che alle 10:30 (via gli slot 10:30 e
-// 10:45); Casalgrande, la sera, apre alle 17:30 invece che alle 17:00 (via
-// 17:00 e 17:15). Si aggiorna solo dove c'e' ancora il valore vecchio: dopo la
-// prima volta non trova piu' niente da cambiare.
+// Orario di apertura ritoccato dopo il primo rilascio: la mattina di Arceto
+// apre alle 11:00 invece che alle 10:30 (via gli slot 10:30 e 10:45); le sere
+// (Arceto il mercoledi', Casalgrande lunedi' e giovedi') aprono alle 17:30
+// invece che alle 17:00 (via 17:00 e 17:15). Si aggiorna solo dove c'e' ancora
+// il valore vecchio: dopo la prima volta non trova piu' niente da cambiare.
 db.prepare(
   "UPDATE orari SET ora_inizio = '11:00' WHERE ambulatorio_id = 1 AND ora_inizio = '10:30' AND ora_fine = '13:00'"
 ).run();
 db.prepare(
-  "UPDATE orari SET ora_inizio = '17:30' WHERE ambulatorio_id = 2 AND ora_inizio = '17:00' AND ora_fine = '19:00'"
+  "UPDATE orari SET ora_inizio = '17:30' WHERE ora_inizio = '17:00' AND ora_fine = '19:00'"
 ).run();
 
 export function chiudiDb() {
