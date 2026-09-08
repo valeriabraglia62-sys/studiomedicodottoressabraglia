@@ -198,6 +198,27 @@ export const emailRichiestaVisitaDaConfermareAdmin = (p) => componiEmail({
   ]
 });
 
+export const emailRichiestaVisitaConfermataConModifiche = (p) => componiEmail({
+  to: p.paziente_email,
+  subject: `Visita confermata — ${formattaDataEstesa(p.data)} alle ${p.ora_inizio}`,
+  titolo: 'Visita confermata con una modifica',
+  intro: `Gentile ${esc(p.paziente_nome)}, la sua richiesta è stata confermata dallo studio, ` +
+    'con una modifica rispetto a quanto aveva chiesto. Qui sotto il giorno e l\'ora definitivi.',
+  righe: [
+    ['Aveva chiesto', `${formattaDataEstesa(p.data_precedente)} alle ${p.ora_precedente}` +
+      (p.ambulatorio_precedente && p.ambulatorio_precedente !== p.ambulatorio_nome
+        ? ` — ${p.ambulatorio_precedente}` : '')],
+    ['Confermata per', `${formattaDataEstesa(p.data)} alle ${p.ora_inizio}`],
+    ['Ambulatorio', p.ambulatorio_nome],
+    ['Indirizzo', p.ambulatorio_indirizzo],
+    ['Motivo', p.problema],
+    ['Codice prenotazione', p.codice]
+  ],
+  azione: { testo: 'Aggiungi al mio Google Calendar', url: linkGoogleCalendar(p) },
+  chiusura: `Conservi il codice <strong>${esc(p.codice)}</strong>: le serve per consultare o annullare la visita. ` +
+    'Se il nuovo orario non le va bene ci telefoni: troviamo un\'alternativa.'
+});
+
 export const emailRichiestaVisitaRifiutataPaziente = (p) => componiEmail({
   to: p.paziente_email,
   subject: `Richiesta di visita non accolta — ${formattaDataEstesa(p.data)}`,

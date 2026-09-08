@@ -811,49 +811,79 @@ function schedaPrenotazione(p) {
       `prima era ${dataBreve(p.data_originale)} alle ${p.ora_originale}`));
   }
 
-  // Richiesta dal sito ancora da valutare: lo studio la conferma (entra in
-  // agenda, al paziente parte la conferma) o la rifiuta con un motivo (resta
-  // scritta, il posto torna libero, la lista d'attesa viene avvisata).
+  // Richiesta dal sito ancora da valutare. Tre strade, tutte disponibili
+  // subito: confermarla com'e'; modificarla (altro giorno, ora o ambulatorio)
+  // e confermarla in un colpo solo; annullarla con un motivo — resta scritta,
+  // il posto torna libero, la lista d'attesa viene avvisata.
   if (p.stato === 'in_attesa') {
     carta.append(nodo('div', 'piccolo tenue',
       `Richiesta il ${quando(p.creata_il)}${p.origine ? ` · da ${p.origine}` : ''}`));
 
+    const eseguiConferma = (body, testoOk) => protetto(async () => {
+      try {
+        await api(`/admin/prenotazioni/${p.codice}/conferma`, { method: 'POST', body });
+        avvisa(testoOk, 'ok');
+        await caricaPrenotazioni();
+      } catch (err) {
+        avvisa(err.message, 'errore');
+      }
+    });
+
+    // Modifica: stesso selettore dello spostamento, ma qui conferma la
+    // richiesta invece di spostare una prenotazione gia' valida.
+    const modifica = nodo('details');
+    modifica.style.marginTop = '.75rem';
+    modifica.append(nodo('summary', 'piccolo tenue', 'Modifica giorno, ora o ambulatorio'));
+    let quandoNuovo = null;
+    modifica.addEventListener('toggle', () => {
+      if (!modifica.open || quandoNuovo) return;
+      quandoNuovo = selettoreQuando({
+        ambulatorio_id: p.ambulatorio_id, data: p.data, ora: p.ora_inizio
+      });
+      const conferma = nodo('button', 'bottone', 'Modifica e conferma');
+      conferma.type = 'button';
+      conferma.addEventListener('click', () => {
+        conferma.disabled = true;
+        eseguiConferma(quandoNuovo.valori(),
+          `${p.codice}: confermata con modifiche. Al paziente parte l'email.`)
+          .finally(() => { conferma.disabled = false; });
+      });
+      const az = nodo('div', 'azioni');
+      az.append(conferma);
+      modifica.append(quandoNuovo.riga, quandoNuovo.avviso, az);
+    });
+    carta.append(modifica);
+
     const azioni = nodo('div', 'azioni');
+
     const conferma = nodo('button', 'bottone', 'Conferma');
     conferma.type = 'button';
     conferma.addEventListener('click', () => {
       if (!confirm(`Confermare la richiesta ${p.codice}? Al paziente parte l'email di conferma.`)) return;
       conferma.disabled = true;
-      protetto(async () => {
-        try {
-          await api(`/admin/prenotazioni/${p.codice}/conferma`, { method: 'POST' });
-          avvisa(`${p.codice}: confermata. Al paziente parte l'email.`, 'ok');
-          await caricaPrenotazioni();
-        } finally {
-          conferma.disabled = false;
-        }
-      });
+      eseguiConferma({}, `${p.codice}: confermata. Al paziente parte l'email.`)
+        .finally(() => { conferma.disabled = false; });
     });
 
-    const rifiuta = nodo('button', 'bottone pericolo', 'Rifiuta');
-    rifiuta.type = 'button';
-    rifiuta.addEventListener('click', () => {
-      const motivo = prompt('Motivo del rifiuto (finisce nell\'email al paziente):');
+    const annulla = nodo('button', 'bottone pericolo', 'Annulla');
+    annulla.type = 'button';
+    annulla.addEventListener('click', () => {
+      const motivo = prompt('Motivo (finisce nell\'email al paziente):');
       if (motivo === null) return;
-      if (motivo.trim().length < 3) return avvisa('Serve un motivo per il rifiuto.', 'errore');
-      rifiuta.disabled = true;
+      if (motivo.trim().length < 3) return avvisa('Serve un motivo.', 'errore');
+      annulla.disabled = true;
       protetto(async () => {
         try {
           await api(`/admin/prenotazioni/${p.codice}/rifiuta`, { method: 'POST', body: { motivo } });
-          avvisa(`${p.codice}: rifiutata. Al paziente parte l'email.`, 'ok');
+          avvisa(`${p.codice}: annullata. Al paziente parte l'email.`, 'ok');
           await caricaPrenotazioni();
         } finally {
-          rifiuta.disabled = false;
+          annulla.disabled = false;
         }
       });
     });
 
-    azioni.append(conferma, rifiuta);
+    azioni.append(conferma, annulla);
     carta.append(azioni);
     return carta;
   }

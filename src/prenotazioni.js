@@ -13,7 +13,7 @@ import {
   emailPrenotazioneRiprogrammata, emailPrenotazioneRiprogrammataAdmin,
   emailAnagraficaDiscordante,
   emailRichiestaVisitaRicevutaPaziente, emailRichiestaVisitaDaConfermareAdmin,
-  emailRichiestaVisitaRifiutataPaziente
+  emailRichiestaVisitaRifiutataPaziente, emailRichiestaVisitaConfermataConModifiche
 } from './mailer.js';
 
 /** Errore con messaggio pensato per essere mostrato al paziente. */
@@ -349,24 +349,59 @@ export function minutiAllAppuntamento(p) {
 /**
  * Lo studio accetta una richiesta 'in_attesa': diventa una prenotazione vera.
  *
- * Da qui in poi e' identica a una nata dal pannello — entra in agenda, nei
- * promemoria, nei conteggi — e il paziente riceve la conferma con il link al
- * calendario, la stessa email di sempre.
+ * Se `correzioni` porta un altro giorno, un'altra ora o un altro ambulatorio,
+ * la conferma li applica: il paziente aveva chiesto le 11:00, lo studio lo
+ * mette alle 11:15 e conferma in un colpo solo — non serve prima accettare e
+ * poi spostare. In quel caso l'email al paziente e' quella "confermata con
+ * modifiche", che gli dice cosa aveva chiesto e cosa gli e' stato fissato;
+ * senza modifiche e' la conferma di sempre, col link al calendario.
+ *
+ * Da qui in poi la prenotazione e' identica a una nata dal pannello — entra
+ * in agenda, nei promemoria, nei conteggi.
  */
-export function confermaPrenotazione(codice, chi = null) {
+export function confermaPrenotazione(codice, chi = null, correzioni = {}, { forza = false } = {}) {
   const p = perCodice(codice);
   if (!p) throw new ErroreDominio('Prenotazione non trovata. Controlla il codice.', 404);
   if (p.stato === 'confermata') throw new ErroreDominio('Questa richiesta è già stata confermata.');
   if (p.stato !== 'in_attesa') throw new ErroreDominio('Questa richiesta non è più in attesa: è stata annullata o rifiutata.');
 
+  const ambulatorio = trovaAmbulatorio(correzioni.ambulatorio_id || p.ambulatorio_id);
+  if (!ambulatorio) throw new ErroreDominio('Ambulatorio non valido.');
+
+  const quando = validaQuando({
+    data: correzioni.data || p.data,
+    ora_inizio: correzioni.ora_inizio || p.ora_inizio
+  }, ambulatorio, forza);
+
+  const problema = String(correzioni.problema ?? '').trim()
+    ? testoPulito(correzioni.problema, 500)
+    : p.problema;
+
+  const cambiata = quando.data !== p.data || quando.ora_inizio !== p.ora_inizio
+    || ambulatorio.id !== p.ambulatorio_id;
+
   const transazione = db.transaction(() => {
     db.prepare(
-      `UPDATE prenotazioni SET stato = 'confermata', confermata_il = ?, confermata_da = ? WHERE id = ?`
-    ).run(new Date().toISOString(), chi || null, p.id);
+      `UPDATE prenotazioni
+          SET stato = 'confermata', ambulatorio_id = ?, data = ?, ora_inizio = ?, ora_fine = ?,
+              problema = ?, confermata_il = ?, confermata_da = ?
+        WHERE id = ?`
+    ).run(ambulatorio.id, quando.data, quando.ora_inizio, quando.ora_fine, problema,
+      new Date().toISOString(), chi || null, p.id);
 
     const aggiornata = dettaglio(p.id);
+    if (cambiata) {
+      // Servono all'email per dire "aveva chiesto ... / confermata per ...".
+      aggiornata.data_precedente = p.data;
+      aggiornata.ora_precedente = p.ora_inizio;
+      aggiornata.ambulatorio_precedente = p.ambulatorio_nome;
+    }
     accoda('sheet_prenotazione', aggiornata);
-    if (aggiornata.paziente_email) accoda('email', emailConfermaPaziente(aggiornata));
+    if (aggiornata.paziente_email) {
+      accoda('email', cambiata
+        ? emailRichiestaVisitaConfermataConModifiche(aggiornata)
+        : emailConfermaPaziente(aggiornata));
+    }
     return aggiornata;
   });
 
@@ -375,7 +410,7 @@ export function confermaPrenotazione(codice, chi = null) {
   } catch (err) {
     if (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || /UNIQUE constraint/i.test(err.message)) {
       throw new ErroreDominio(
-        'In quell\'ambulatorio, a quell\'ora, c\'è già un altro paziente. Sposta la richiesta o rifiutala.', 409);
+        'In quell\'ambulatorio, a quell\'ora, c\'è già un altro paziente. Scegli un altro orario.', 409);
     }
     throw err;
   }

@@ -581,7 +581,11 @@ admin.post('/prenotazioni/:codice/annulla', (req, res) => {
  * viene avvisato).
  */
 admin.post('/prenotazioni/:codice/conferma', (req, res) => {
-  ok(res, { prenotazione: prenotazioni.confermaPrenotazione(req.params.codice, req.utente.email) });
+  ok(res, {
+    prenotazione: prenotazioni.confermaPrenotazione(
+      req.params.codice, req.utente.email, req.body || {},
+      { forza: Boolean(req.body?.forza) })
+  });
 });
 
 admin.post('/prenotazioni/:codice/rifiuta', (req, res) => {

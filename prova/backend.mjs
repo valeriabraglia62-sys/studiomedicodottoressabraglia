@@ -681,6 +681,21 @@ console.log('\nRichieste di visita: lo studio conferma o rifiuta');
   const giaConf = await chiama('POST', `/api/admin/prenotazioni/${codConf}/conferma`, {}, token);
   verifica('una richiesta gia\' confermata non si riconferma', giaConf.stato === 400);
 
+  // --- Modifica e conferma in un colpo solo ---------------------------
+  const daModificare = await chiama('POST', '/api/prenotazioni', {
+    ambulatorio_id: 1, data: g, ora_inizio: liberi[2].ora_inizio, ...datiPaziente
+  });
+  const codMod = daModificare.dati.prenotazione?.codice;
+  const confModif = await chiama('POST', `/api/admin/prenotazioni/${codMod}/conferma`,
+    { ambulatorio_id: 1, data: g, ora_inizio: liberi[3].ora_inizio }, token);
+  verifica('lo studio modifica l\'orario e conferma in un passaggio',
+    confModif.stato === 200 && confModif.dati.prenotazione?.stato === 'confermata'
+    && confModif.dati.prenotazione?.ora_inizio === liberi[3].ora_inizio,
+    `${confModif.stato} ${confModif.dati.prenotazione?.ora_inizio} atteso ${liberi[3].ora_inizio}`);
+  const slotDopoModif = await chiama('GET', `/api/disponibilita?data=${g}&ambulatorio_id=1`);
+  verifica('l\'orario chiesto in origine torna libero dopo la modifica',
+    slotDopoModif.dati.slot.find((s) => s.ora_inizio === liberi[2].ora_inizio)?.disponibile === true);
+
   // --- Rifiuto ----------------------------------------------------------
   const daRifiutare = await chiama('POST', '/api/prenotazioni', {
     ambulatorio_id: 1, data: g, ora_inizio: liberi[1].ora_inizio, ...datiPaziente
