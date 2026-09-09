@@ -1,4 +1,3 @@
-import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
@@ -7,7 +6,6 @@ export const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
-const bool = (v, def = false) => (v === undefined ? def : /^(1|true|si|sì|yes)$/i.test(String(v).trim()));
 const lista = (v) => String(v || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
 
 function requireSecret() {
@@ -83,37 +81,6 @@ export const config = {
     pass: (process.env.EMAIL_PASS || '').trim(),
     get enabled() {
       return Boolean(this.user && this.pass && this.user !== 'your-email@gmail.com');
-    }
-  },
-
-  sheets: {
-    enabled: bool(process.env.GOOGLE_SHEETS_ENABLED),
-    /**
-     * Un foglio per tipo di richiesta, come sono separati i Moduli.
-     *
-     * Prima specialistiche ed esami finivano nel foglio dei medicinali, perche'
-     * per il programma sono la stessa cosa: chi guardava il foglio ci trovava
-     * "Visita cardiologica di controllo" nella colonna "Medicinali", e per
-     * capire di cosa si trattasse doveva leggere il prefisso del codice.
-     *
-     * I due fogli nuovi possono mancare, e non e' un guasto: finche' l'ID non
-     * c'e' le righe restano in coda e partono da sole il giorno che si aggiunge.
-     * GOOGLE_SHEET_ID resta accettato come ripiego per visite e medicinali,
-     * cosi' una vecchia configurazione a foglio unico non si rompe.
-     */
-    fogli: {
-      prenotazione: (process.env.GOOGLE_SHEET_ID_PRENOTAZIONI || process.env.GOOGLE_SHEET_ID || '').trim(),
-      medicina: (process.env.GOOGLE_SHEET_ID_MEDICINE || process.env.GOOGLE_SHEET_ID || '').trim(),
-      specialistica: (process.env.GOOGLE_SHEET_ID_SPECIALISTICHE || '').trim(),
-      esami: (process.env.GOOGLE_SHEET_ID_ESAMI || '').trim()
-    },
-    credentialsFile: path.resolve(ROOT, process.env.GOOGLE_SERVICE_ACCOUNT_FILE || './google-credentials.json'),
-    get ready() {
-      // I due fogli storici bastano a dire che il collegamento e' in piedi: se
-      // mancassero quelli nuovi si spegnerebbe anche cio' che gia' funziona.
-      return this.enabled
-        && Boolean(this.fogli.prenotazione && this.fogli.medicina)
-        && fs.existsSync(this.credentialsFile);
     }
   },
 

@@ -25,7 +25,6 @@ import {
   verificaConnessioneEmail, emailVerificaPaziente, emailIndirizzoCambiato,
   emailRegistrazioneEsistente
 } from './mailer.js';
-import { verificaFoglio } from './sheets.js';
 import { linkGoogleCalendar } from './evento.js';
 
 /** Cattura anche gli errori asincroni: senza questo un await fallito sfugge a Express. */
@@ -776,7 +775,6 @@ admin.get('/sistema', via(async (_req, res) => {
   ok(res, {
     coda: statoCoda(),
     email: await verificaConnessioneEmail(),
-    foglio: await verificaFoglio(),
     backup: statoBackup()
   });
 }));

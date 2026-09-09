@@ -220,59 +220,6 @@ CREATE TABLE IF NOT EXISTS email_processate (
   riferimento TEXT
 );
 
--- Ogni email che arriva e non e' una nostra notifica viene salvata qui, sempre,
--- anche quando non si capisce cosa chieda. E' la rete di sicurezza: meglio una
--- richiesta da smistare a mano che una richiesta persa.
-CREATE TABLE IF NOT EXISTS richieste_email (
-  id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  codice       TEXT NOT NULL UNIQUE,
-  message_id   TEXT,
-  mittente     TEXT NOT NULL,
-  mittente_nome TEXT,
-  oggetto      TEXT,
-  corpo        TEXT NOT NULL,
-  tipo         TEXT NOT NULL DEFAULT 'altro',   -- prenotazione | medicina | altro
-  stato        TEXT NOT NULL DEFAULT 'nuova',   -- nuova | gestita | archiviata
-  collegata_a  TEXT,                            -- codice della richiesta generata
-  ricevuta_il  TEXT NOT NULL,
-  gestita_il   TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_richieste_email_stato ON richieste_email(stato);
-
--- Richieste arrivate dai Moduli Google mentre il sito era spento.
---
--- I computer di Google sono sempre accesi: il paziente compila il modulo a
--- qualsiasi ora e Google scrive la riga nel foglio. Quando il sito si riaccende
--- legge le righe nuove e le parcheggia qui, cosi' come sono arrivate, senza
--- validarle: una richiesta parcheggiata male si aggiusta a mano, una richiesta
--- rifiutata all'ingresso sarebbe persa per sempre.
---
--- Diventano prenotazioni vere solo quando qualcuno dello studio le conferma.
-CREATE TABLE IF NOT EXISTS richieste_modulo (
-  id             INTEGER PRIMARY KEY AUTOINCREMENT,
-  codice         TEXT NOT NULL UNIQUE,
-  -- Impronta della riga originale: rileggere il foglio non duplica nulla.
-  chiave         TEXT NOT NULL UNIQUE,
-  tipo           TEXT NOT NULL,                  -- prenotazione | medicina
-  nome           TEXT,
-  cognome        TEXT,
-  telefono       TEXT,
-  email          TEXT,
-  data_chiesta   TEXT,                           -- YYYY-MM-DD, se riconosciuta
-  ora_chiesta    TEXT,                           -- HH:MM, se riconosciuta
-  ambulatorio_id INTEGER REFERENCES ambulatori(id),
-  testo          TEXT,                           -- motivo della visita o medicinali
-  note           TEXT,
-  riga_json      TEXT NOT NULL,                  -- la riga integrale, come l'ha scritta Google
-  stato          TEXT NOT NULL DEFAULT 'nuova',  -- nuova | confermata | rifiutata
-  collegata_a    TEXT,                           -- codice della prenotazione generata
-  motivo_rifiuto TEXT,
-  ricevuta_il    TEXT NOT NULL,
-  gestita_il     TEXT,
-  gestita_da     TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_modulo_stato ON richieste_modulo(stato, ricevuta_il);
-
 CREATE TABLE IF NOT EXISTS chat_sessioni (
   id              TEXT PRIMARY KEY,
   stato_json      TEXT,
@@ -358,11 +305,6 @@ for (const [tabella, colonna, tipo] of [
   // Il valore predefinito e' 'medicina' perche' tutto quello che c'era prima di
   // questa colonna era una richiesta di medicinali.
   ['richieste_medicine', 'tipo', "TEXT NOT NULL DEFAULT 'medicina'"],
-  // Chiudere una pratica manda il messaggio nel cestino di Gmail. Qui resta
-  // scritto quando e' successo: serve a non rincorrere all'infinito un'email
-  // gia' spostata, e a poter dire, guardando una riga, se di quel messaggio
-  // esiste ancora una copia nella casella o solo questa qui.
-  ['richieste_email', 'cestinata_il', 'TEXT'],
   // Quando questa persona ha smesso di essere in carico allo studio: ha
   // cambiato medico, si e' trasferita, non c'e' piu'.
   //

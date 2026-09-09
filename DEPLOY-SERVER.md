@@ -86,24 +86,17 @@ Fa tutto: Node, Caddy (HTTPS automatico per `studiomedicobragliavaleria.it` e
 `www`), firewall, utente di servizio, installa e avvia. Alla fine stampa **la
 chiave di cifratura dei backup**: **annotala su carta, fuori dal server.**
 
-## 5. Configura le caselle email e Google
+## 5. Configura la casella email
 
 ```bash
 nano /opt/studiomedico/.env
 ```
 
-Riempi almeno: `EMAIL_USER`, `EMAIL_PASS` (password per le app Google),
-`ADMIN_EMAIL`, `ADMIN_PASSWORD` (una password provvisoria, solo per il primo
-accesso). Se usi Fogli/Moduli Google, riempi anche quelli e carica il file
-delle credenziali:
+Riempi almeno: `EMAIL_USER`, `EMAIL_PASS` (password per le app Google, 16
+caratteri, da <https://myaccount.google.com/apppasswords>), `ADMIN_EMAIL`,
+`ADMIN_PASSWORD` (una password provvisoria, solo per il primo accesso). Poi:
 
-```powershell
-# da un altro terminale sul TUO PC:
-scp "C:\Users\valer\studiomedico\google-credentials.json" root@195.231.xx.xx:/opt/studiomedico/
-```
 ```bash
-# sul server:
-chown studiomedico:studiomedico /opt/studiomedico/google-credentials.json
 systemctl restart studiomedico
 ```
 

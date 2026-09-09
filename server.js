@@ -9,7 +9,6 @@ import { avviaBackup, fermaBackup } from './src/backup.js';
 import { avviaBattito, fermaBattito } from './src/battito.js';
 import { pulisciChatVecchie } from './src/chatbot.js';
 import { verificaConnessioneEmail } from './src/mailer.js';
-import { verificaFoglio } from './src/sheets.js';
 import { router } from './src/api.js';
 
 /**
@@ -155,11 +154,9 @@ const server = app.listen(config.port, config.bindHost, async () => {
   }
 
   const email = await verificaConnessioneEmail();
-  const foglio = await verificaFoglio();
   const stato = (e) => (e.ok ? 'attivo' : `non attivo (${e.motivo})`);
 
   console.log(`  Email          ${stato(email)}`);
-  console.log(`  Foglio Google  ${stato(foglio)}`);
   console.log(`  Apertura       ${config.pubblico.https
     ? `su internet con lucchetto${config.pubblico.url ? ` — ${config.pubblico.url}` : ''}`
     : 'solo rete locale (SITO_HTTPS=false)'}`);

@@ -1391,51 +1391,6 @@ console.log('\nIl fascicolo del paziente');
       .get('rifiuto.prova@example.com').n === 0);
 }
 
-console.log('\nOgni tipo di richiesta va sul suo Foglio Google');
-{
-  // Prima finivano tutte e tre sul foglio dei medicinali, dove nella colonna
-  // "Medicinali" ci si ritrovava scritto "Visita cardiologica di controllo".
-  const sheets = await import('../src/sheets.js');
-  const inCoda = (tipo) => db.prepare(
-    "SELECT COUNT(*) n FROM outbox WHERE tipo = ?").get(`sheet_${tipo}`).n;
-
-  const prima = { medicina: inCoda('medicina'), specialistica: inCoda('specialistica'), esami: inCoda('esami') };
-
-  for (const [tipo, cosa] of [
-    ['medicina', 'Tachipirina'],
-    ['specialistica', 'Visita dermatologica'],
-    ['esami', 'Emocromo']
-  ]) {
-    const creata = await chiama('POST', '/api/medicine', {
-      nome: 'Foglio', cognome: 'Giusto', telefono: '3336667777',
-      email: 'foglio.giusto@example.com', farmaci: cosa, tipo
-    });
-    verifica(`la richiesta ${tipo} nasce`, creata.stato === 201, JSON.stringify(creata.dati).slice(0, 90));
-    verifica(`e finisce in coda per il foglio ${tipo}`, inCoda(tipo) === prima[tipo] + 1,
-      `prima ${prima[tipo]}, ora ${inCoda(tipo)}`);
-  }
-
-  // Le colonne dei tre fogli: il numero della ricetta sta in fondo, non in
-  // mezzo, altrimenti nel foglio dei medicinali — che esiste da mesi — tutte le
-  // righe gia' scritte si troverebbero sotto l'intestazione sbagliata.
-  const colonne = sheets.SCHEDE_PROVA;
-  verifica('il numero della ricetta e\' l\'ultima colonna',
-    ['medicina', 'specialistica', 'esami'].every((t) => {
-      const i = colonne[t].intestazioni;
-      return i[i.length - 1].toLowerCase().includes('numero');
-    }), JSON.stringify(colonne.medicina.intestazioni));
-
-  verifica('le prime colonne restano quelle di prima',
-    colonne.medicina.intestazioni.slice(0, 11).join('|')
-      === 'Codice|Stato|Paziente|Telefono|Email|Medicinali|Note|Ambulatorio|Origine|Creata il|Aggiornata il',
-    colonne.medicina.intestazioni.join('|'));
-
-  verifica('ogni foglio chiama le cose col loro nome',
-    colonne.specialistica.intestazioni.includes('Visita richiesta')
-    && colonne.esami.intestazioni.includes('Esami richiesti'),
-    JSON.stringify(colonne.esami.intestazioni));
-}
-
 console.log('\nNulla va perso quando i servizi esterni sono spenti');
 {
   const inAttesa = db.prepare(`SELECT COUNT(*) n FROM outbox WHERE stato = 'in_attesa'`).get().n;

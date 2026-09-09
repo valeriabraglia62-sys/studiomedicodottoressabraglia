@@ -1882,7 +1882,7 @@ function collegaChiusure() {
 // ---- Stato del sistema -----------------------------------------------------
 
 async function caricaSistema() {
-  const { coda, email, foglio } = await api('/admin/sistema');
+  const { coda, email } = await api('/admin/sistema');
   const contenitore = $('#stato-sistema');
 
   const servizio = (titolo, attivo, dettaglio) => {
@@ -1896,16 +1896,15 @@ async function caricaSistema() {
     return carta;
   };
 
-  const griglia = nodo('div', 'griglia due');
+  const griglia = nodo('div');
   griglia.append(
-    servizio('Invio email', email.ok, email.ok ? 'Collegamento verificato.' : email.motivo),
-    servizio('Foglio Google', foglio.ok, foglio.ok ? `Foglio "${foglio.titolo}"` : foglio.motivo)
+    servizio('Invio email', email.ok, email.ok ? 'Collegamento verificato.' : email.motivo)
   );
 
   const cartaCoda = nodo('div', 'carta');
   cartaCoda.append(nodo('h3', null, 'Coda delle consegne'));
   cartaCoda.append(nodo('p', 'piccolo tenue',
-    'Email e righe del Foglio Google passano da qui. Se un servizio è spento restano in attesa e partono da sole: non si perde nulla.'));
+    'Le email ai pazienti passano da qui. Se l\'invio è spento restano in attesa e partono da sole appena torna: non si perde nulla.'));
 
   const numeri = nodo('div', 'griglia tre');
   for (const [chiave, didascalia] of [

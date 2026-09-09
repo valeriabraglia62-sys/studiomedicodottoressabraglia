@@ -1,7 +1,7 @@
 import { db } from './db.js';
 
 /**
- * Coda di consegna verso i servizi esterni (email, Foglio Google).
+ * Coda di consegna verso i servizi esterni (le email ai pazienti).
  *
  * Regola fondamentale: la riga di outbox viene scritta nella STESSA transazione
  * del dato a cui si riferisce. O si salvano entrambi o nessuno dei due. Cosi' e'
@@ -138,7 +138,7 @@ export async function elaboraCoda() {
         const esito = await gestore(JSON.parse(riga.payload));
 
         // Il gestore puo' segnalare "non ora": la riga resta in attesa senza
-        // contare come errore (es. Foglio Google non ancora configurato).
+        // contare come errore.
         if (esito && esito.rimanda) {
           const attesa = esito.minuti ?? 5;
           stmtRiprova.run(riga.tentativi, esito.motivo || 'in attesa di configurazione',
@@ -188,7 +188,7 @@ export function statoCoda() {
   };
 }
 
-/** Rimette in coda tutto subito, es. dopo aver configurato il Foglio Google. */
+/** Rimette in coda tutto subito, es. dopo un'interruzione del servizio email. */
 export function riprovaTutto() {
   return db.prepare(
     `UPDATE outbox SET prossimo_tentativo = ?, tentativi = 0

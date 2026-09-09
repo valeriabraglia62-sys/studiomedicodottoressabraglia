@@ -41,3 +41,6 @@ Thumbs.db
 
 # Database e backup usa-e-getta delle prove
 .prove-tmp/
+
+# Script operativo specifico di questo PC (percorsi e IP fissi), non versionato
+strumenti/backup-pull-da-server.ps1

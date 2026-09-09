@@ -78,19 +78,6 @@ const ATTESA_ALLEGATI_MINUTI = 4;
 
 const tipoValido = (t) => (Object.hasOwn(TIPI, String(t || '')) ? String(t) : 'medicina');
 
-/**
- * Su quale Foglio Google va scritta questa richiesta.
- *
- * Uno per tipo, come sono separati i Moduli. Prima ci andavano tutte e tre sul
- * foglio dei medicinali, dove nella colonna "Medicinali" ci si ritrovava
- * scritto "Visita cardiologica di controllo" e per capire di cosa si trattasse
- * bisognava leggere il prefisso del codice.
- *
- * Le richieste vecchie non hanno il tipo scritto: sono tutte medicinali, perche'
- * prima esistevano solo quelle.
- */
-const codaFoglio = (richiesta) => `sheet_${tipoValido(richiesta.tipo)}`;
-
 export const ETICHETTE_STATO = {
   nuova: 'Da vedere',
   confermata: 'Confermata',
@@ -183,7 +170,6 @@ export function creaRichiesta(dati) {
 
     const richiesta = dettaglio(info.lastInsertRowid);
 
-    accoda(codaFoglio(richiesta), richiesta);
     // allegatiDi dice al mailer di andare a prendere i file al momento
     // dell'invio, non adesso: adesso non ce n'e' ancora nessuno.
     accoda('email',
@@ -265,7 +251,6 @@ function applica(richiesta, campi, chi) {
   ).run(...Object.values(campi), new Date().toISOString(), new Date().toISOString(), chi || null, richiesta.id);
 
   const aggiornata = dettaglio(richiesta.id);
-  accoda(codaFoglio(aggiornata), aggiornata);
   return aggiornata;
 }
 

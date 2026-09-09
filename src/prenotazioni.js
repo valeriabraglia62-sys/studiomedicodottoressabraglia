@@ -284,7 +284,6 @@ export function creaPrenotazione(datiGrezzi, { forza = false, confermata = false
 
     const prenotazione = dettaglio(info.lastInsertRowid);
 
-    accoda('sheet_prenotazione', prenotazione);
     if (nasceConfermata) {
       accoda('email', emailNuovaPrenotazioneAdmin(prenotazione));
       if (prenotazione.paziente_email) accoda('email', emailConfermaPaziente(prenotazione));
@@ -396,7 +395,6 @@ export function confermaPrenotazione(codice, chi = null, correzioni = {}, { forz
       aggiornata.ora_precedente = p.ora_inizio;
       aggiornata.ambulatorio_precedente = p.ambulatorio_nome;
     }
-    accoda('sheet_prenotazione', aggiornata);
     if (aggiornata.paziente_email) {
       accoda('email', cambiata
         ? emailRichiestaVisitaConfermataConModifiche(aggiornata)
@@ -444,7 +442,6 @@ export function rifiutaPrenotazione(codice, motivo, chi = null) {
     ).run(testo, new Date().toISOString(), chi || null, p.id);
 
     const aggiornata = dettaglio(p.id);
-    accoda('sheet_prenotazione', aggiornata);
     if (aggiornata.paziente_email) accoda('email', emailRichiestaVisitaRifiutataPaziente(aggiornata));
     return aggiornata;
   });
@@ -480,7 +477,6 @@ export function annullaPrenotazione(codice, { da = 'paziente', chi = null } = {}
     ).run(da, new Date().toISOString(), chi || null, p.id);
 
     const aggiornata = dettaglio(p.id);
-    accoda('sheet_prenotazione', aggiornata);
     accoda('email', emailAnnullamentoAdmin(aggiornata));
     if (aggiornata.paziente_email) accoda('email', emailAnnullamentoPaziente(aggiornata));
     return aggiornata;
@@ -540,7 +536,6 @@ export function riprogramma(codice, correzioni = {}, chi = null, { forza = false
     aggiornata.ora_precedente = p.ora_inizio;
     aggiornata.ambulatorio_precedente = p.ambulatorio_nome;
 
-    accoda('sheet_prenotazione', aggiornata);
     // L'indirizzo adesso e' obbligatorio, ma le prenotazioni prese prima di
     // questa regola possono non averlo: senza il controllo finirebbe in coda
     // una email senza destinatario, che riprova e fallisce all'infinito.
