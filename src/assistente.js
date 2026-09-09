@@ -4,7 +4,6 @@ import * as medicine from './medicine.js';
 import * as prenotazioni from './prenotazioni.js';
 import * as attesa from './attesa.js';
 import * as chiusure from './chiusure.js';
-import * as moduli from './moduli.js';
 
 /**
  * L'assistente del pannello: risponde a chi lavora, non ai pazienti.
@@ -41,8 +40,7 @@ const soloMedico = (utente) => utente?.ruolo === 'admin';
 /** Le schede del pannello, con le parole per chiamarle a voce. */
 const SCHEDE = [
   { id: 'riepilogo', nome: 'Oggi', parole: ['oggi', 'riepilog', 'cruscott'] },
-  { id: 'moduli', nome: 'Da confermare', parole: ['modul', 'da confermare', 'google'] },
-  { id: 'prenotazioni', nome: 'Prenotazioni', parole: ['prenotazion', 'agenda', 'appuntament'] },
+  { id: 'prenotazioni', nome: 'Prenotazioni', parole: ['prenotazion', 'agenda', 'appuntament', 'da confermare'] },
   { id: 'medicine', nome: 'Medicinali', parole: ['medicin', 'farmac', 'ricett'] },
   { id: 'specialistiche', nome: 'Visite specialistiche', parole: ['specialist'] },
   { id: 'esami', nome: 'Esami del sangue', parole: ['esami', 'esame', 'analisi', 'sangue'] },
@@ -62,7 +60,7 @@ const risposta = (testo, extra = {}) => ({ testo, azioni: AZIONI_BASE, vai: null
 /** Il saluto: dice subito la cosa piu' urgente, senza farsela chiedere. */
 export function benvenuto(utente) {
   const n = numeri();
-  const daVedere = n.medicine + n.specialistiche + n.esami + n.moduli;
+  const daVedere = n.medicine + n.specialistiche + n.esami + n.daConfermare;
 
   const apertura = daVedere === 0
     ? 'Non c\'è niente in sospeso: tutto evaso.'
@@ -88,10 +86,10 @@ function numeri() {
     medicine: perTipo('medicina'),
     specialistiche: perTipo('specialistica'),
     esami: perTipo('esami'),
-    // Le email non si contano piu': non c'e' piu' una scheda dove andarle a
-    // leggere, perche' diventano richieste da sole e poi si cestinano da sole.
-    // Un numero senza un posto dove portare e' solo un numero.
-    moduli: moduli.daConfermare(),
+    // Le richieste di visita arrivate dal sito che lo studio non ha ancora
+    // confermato o rifiutato. Stanno nella scheda Prenotazioni, filtro
+    // "Da confermare".
+    daConfermare: conta("SELECT COUNT(*) n FROM prenotazioni WHERE stato = 'in_attesa'"),
     pazienti: conta('SELECT COUNT(*) n FROM pazienti WHERE dimesso_il IS NULL')
   };
 }
@@ -105,7 +103,7 @@ function riepilogo() {
     `💊 Medicinali da vedere: ${n.medicine}`,
     `🩺 Visite specialistiche da vedere: ${n.specialistiche}`,
     `🧪 Esami da vedere: ${n.esami}`,
-    `📝 Da confermare: ${n.moduli}`
+    `📝 Richieste di visita da confermare: ${n.daConfermare}`
   ];
   return risposta(`**Come va oggi**\n\n${righe.join('\n')}`);
 }
@@ -121,14 +119,13 @@ function riepilogo() {
 function daVedere() {
   const n = numeri();
   const code = [
-    { n: n.moduli, testo: 'da confermare', scheda: 'moduli' },
+    { n: n.daConfermare, testo: 'richieste di visita da confermare', scheda: 'prenotazioni' },
     { n: n.medicine, testo: 'di medicinali', scheda: 'medicine' },
     { n: n.specialistiche, testo: 'di visite specialistiche', scheda: 'specialistiche' },
     { n: n.esami, testo: 'di esami del sangue', scheda: 'esami' }
   ].filter((c) => c.n > 0);
 
   const sempre = [
-    { scheda: 'moduli', etichetta: '📝 Da confermare' },
     { scheda: 'prenotazioni', etichetta: '📅 Prenotazioni' },
     { scheda: 'medicine', etichetta: '💊 Medicinali' }
   ].map((s) => ({ id: `apri ${s.scheda}`, etichetta: s.etichetta }));
@@ -586,10 +583,10 @@ function quantiSono(t) {
   if (contiene(t, 'medicin', 'farmac', 'ricett')) {
     return risposta(`Richieste di medicinali da vedere: ${n.medicine}.`);
   }
-  if (contiene(t, 'modul', 'confermare', 'email', 'mail', 'posta')) {
-    return risposta(`Da confermare ce ne sono ${n.moduli}. ` +
-      'Li dentro finiscono sia le richieste dai Moduli Google sia le prenotazioni ' +
-      'arrivate per email.');
+  if (contiene(t, 'confermare', 'in attesa', 'richiest')) {
+    return risposta(`Richieste di visita da confermare: ${n.daConfermare}. ` +
+      'Le trovi nella scheda Prenotazioni, filtro "Da confermare": da lì le confermi, ' +
+      'le modifichi o le annulli.');
   }
   if (contiene(t, 'pazient', 'person', 'anagrafic')) {
     return risposta(`In archivio ci sono ${n.pazienti} pazienti.`);

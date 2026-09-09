@@ -15,8 +15,6 @@ import * as medicine from './medicine.js';
 import * as chatbot from './chatbot.js';
 import * as assistente from './assistente.js';
 import * as pazienti from './pazienti.js';
-import * as inbox from './inbox.js';
-import * as moduli from './moduli.js';
 import * as attesa from './attesa.js';
 import * as chiusure from './chiusure.js';
 import * as statistiche from './statistiche.js';
@@ -541,11 +539,6 @@ admin.get('/riepilogo', (_req, res) => {
         `SELECT COUNT(*) n FROM prenotazioni WHERE stato = 'in_attesa'`),
       medicine_da_evadere: conta(
         `SELECT COUNT(*) n FROM richieste_medicine WHERE stato = 'nuova'`),
-      // Resta nel riepilogo anche se il pannello non lo mostra piu': dice
-      // quante email il programma non ha ancora chiuso, ed e' il modo per
-      // accorgersi che la pulizia automatica si e' inceppata.
-      email_da_leggere: conta(`SELECT COUNT(*) n FROM richieste_email WHERE stato = 'nuova'`),
-      moduli_da_confermare: moduli.daConfermare(),
       pazienti: conta('SELECT COUNT(*) n FROM pazienti'),
       consegne_in_attesa: statoCoda().in_attesa
     },
@@ -682,16 +675,6 @@ admin.get('/allegati/:id', (req, res) => {
   res.send(a.contenuto);
 });
 
-admin.get('/email', (req, res) => ok(res, inbox.elencoEmail(req.query)));
-
-admin.patch('/email/:codice', (req, res) => {
-  ok(res, { email: inbox.segnaEmail(req.params.codice, req.body?.stato) });
-});
-
-admin.post('/email/controlla', via(async (_req, res) => {
-  ok(res, { esito: await inbox.controllaCasella() });
-}));
-
 admin.get('/pazienti', (req, res) => ok(res, {
   pazienti: pazienti.elenco({
     cerca: req.query.cerca,
@@ -794,35 +777,11 @@ admin.get('/sistema', via(async (_req, res) => {
     coda: statoCoda(),
     email: await verificaConnessioneEmail(),
     foglio: await verificaFoglio(),
-    casella: inbox.statoCasella(),
-    moduli: moduli.statoModuli(),
-    // Gli indirizzi dei due moduli servono proprio quando il pannello non si
-    // apre, quindi averli solo qui non basterebbe: stanno anche nell'email che
-    // avvisa dell'assenza. Qui ci sono per poterli copiare con calma prima che
-    // servano, che e' l'unico momento in cui si puo' farlo.
-    moduli_link: config.moduli.link,
     backup: statoBackup()
   });
 }));
 
 admin.post('/sistema/riprova-consegne', (_req, res) => ok(res, { rimesse_in_coda: riprovaTutto() }));
-
-// ---- Richieste arrivate dai Moduli Google ---------------------------------
-// Sono arrivate a sito spento e aspettano che una persona le confermi.
-
-admin.get('/moduli', (req, res) => ok(res, moduli.elenco(req.query)));
-
-admin.post('/moduli/controlla', via(async (_req, res) => {
-  ok(res, { esito: await moduli.controllaModuli() });
-}));
-
-admin.post('/moduli/:codice/conferma', (req, res) => {
-  const esito = moduli.conferma(req.params.codice, req.body || {}, req.utente.email);
-  ok(res, { richiesta: esito.richiesta, generata: { codice: esito.generata.codice } });
-});
-
-admin.post('/moduli/:codice/rifiuta', (req, res) =>
-  ok(res, { richiesta: moduli.rifiuta(req.params.codice, req.body?.motivo, req.utente.email) }));
 
 // ---- Collaboratori --------------------------------------------------------
 // Chi entra nello studio e chi non entra piu' lo decide solo il medico.

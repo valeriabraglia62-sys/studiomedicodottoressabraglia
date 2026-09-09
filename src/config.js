@@ -19,44 +19,6 @@ function requireSecret() {
   );
 }
 
-/**
- * L'indirizzo pubblico di un Modulo Google, quello che si puo' dare a un
- * paziente.
- *
- * Accetta sia l'identificativo del modulo sia un indirizzo intero, perche' chi
- * lo configura copia quello che ha sotto mano. E quello che ha sotto mano, se
- * ha appena aperto il modulo per modificarlo, e' il link di modifica: finisce
- * per /edit e si porta dietro parametri come ouid, che e' l'identificativo
- * dell'account Google di chi possiede il modulo.
- *
- * Quel link non deve arrivare a un paziente. Quindi non lo si usa com'e': si
- * tiene solo l'identificativo del modulo e si ricostruisce l'indirizzo di
- * compilazione. Un errore di configurazione qui non si vedrebbe finche' non e'
- * troppo tardi, perche' a chi ha gia' i permessi il link di modifica si apre
- * benissimo.
- */
-function linkModulo(valore) {
-  const v = String(valore || '').trim();
-  if (!v) return null;
-
-  // Un link accorciato di Google (forms.gle) e' gia' quello di compilazione e
-  // non contiene identificativi da ripulire: si lascia com'e'.
-  if (/^https?:\/\/forms\.gle\//i.test(v)) return v;
-
-  const daIndirizzo = v.match(/\/forms\/d\/(e\/)?([A-Za-z0-9_-]+)/);
-  const id = daIndirizzo ? daIndirizzo[2] : (/^[A-Za-z0-9_-]{20,}$/.test(v) ? v : null);
-  if (!id) return null;
-
-  // Il pezzo "/e/" va tenuto, e non e' un dettaglio: gli identificativi che
-  // cominciano con 1FAIpQL sono quelli del modulo pubblicato e vivono solo
-  // sotto /forms/d/e/. Ricostruire l'indirizzo senza quel pezzo darebbe una
-  // pagina che non si apre — e il guaio si vedrebbe solo il giorno in cui il
-  // sito e' spento e qualcuno prova a usarlo davvero.
-  const pubblicato = Boolean(daIndirizzo?.[1]) || id.startsWith('1FAIpQL');
-
-  return `https://docs.google.com/forms/d/${pubblicato ? 'e/' : ''}${id}/viewform`;
-}
-
 const FILE_ARCHIVIO = path.resolve(ROOT, process.env.DB_FILE || 'data/medstudent.sqlite');
 
 const inProduzione = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
@@ -124,13 +86,6 @@ export const config = {
     }
   },
 
-  inbox: {
-    enabled: bool(process.env.INBOX_POLLING_ENABLED),
-    intervalSeconds: Math.max(30, Number(process.env.INBOX_POLL_INTERVAL_SECONDS) || 120),
-    massimoByteMessaggio: Math.max(1024 * 1024,
-      Number(process.env.INBOX_MAX_MESSAGE_BYTES) || 15 * 1024 * 1024)
-  },
-
   sheets: {
     enabled: bool(process.env.GOOGLE_SHEETS_ENABLED),
     /**
@@ -159,58 +114,6 @@ export const config = {
       return this.enabled
         && Boolean(this.fogli.prenotazione && this.fogli.medicina)
         && fs.existsSync(this.credentialsFile);
-    }
-  },
-
-  // Moduli Google: la porta d'ingresso che resta aperta anche a sito spento.
-  // I fogli delle risposte sono documenti a parte rispetto a quelli dello
-  // specchio: qui si legge soltanto, non si scrive mai, cosi' non c'e' modo di
-  // rovinare le risposte dei pazienti.
-  moduli: {
-    enabled: bool(process.env.GOOGLE_MODULI_ENABLED),
-    intervalSeconds: Math.max(60, Number(process.env.GOOGLE_MODULI_INTERVAL_SECONDS) || 300),
-    fogli: {
-      prenotazione: {
-        id: (process.env.GOOGLE_MODULO_PRENOTAZIONI_ID || '').trim(),
-        // Nome della scheda delle risposte. Google la chiama cosi' da sola.
-        scheda: (process.env.GOOGLE_MODULO_PRENOTAZIONI_SCHEDA || 'Risposte del modulo 1').trim()
-      },
-      medicina: {
-        id: (process.env.GOOGLE_MODULO_MEDICINE_ID || '').trim(),
-        scheda: (process.env.GOOGLE_MODULO_MEDICINE_SCHEDA || 'Risposte del modulo 1').trim()
-      },
-      specialistica: {
-        id: (process.env.GOOGLE_MODULO_SPECIALISTICHE_ID || '').trim(),
-        scheda: (process.env.GOOGLE_MODULO_SPECIALISTICHE_SCHEDA || 'Risposte del modulo 1').trim()
-      },
-      esami: {
-        id: (process.env.GOOGLE_MODULO_ESAMI_ID || '').trim(),
-        scheda: (process.env.GOOGLE_MODULO_ESAMI_SCHEDA || 'Risposte del modulo 1').trim()
-      }
-    },
-
-    // Gli indirizzi da dare ai pazienti quando il sito non risponde. Sono i
-    // moduli veri e propri, ospitati da Google: restano raggiungibili anche se
-    // questa macchina e' spenta, ed e' esattamente il motivo per cui esistono.
-    //
-    // Diversi dagli identificativi qui sopra, che sono i fogli delle risposte:
-    // quelli servono al programma per leggere, questi servono alle persone per
-    // scrivere. Vanno tenuti separati anche perche' un foglio di risposte non
-    // va mai dato in mano a un paziente.
-    link: {
-      prenotazione: linkModulo(process.env.MODULO_PRENOTAZIONI_LINK),
-      medicina: linkModulo(process.env.MODULO_MEDICINE_LINK),
-      specialistica: linkModulo(process.env.MODULO_SPECIALISTICHE_LINK),
-      esami: linkModulo(process.env.MODULO_ESAMI_LINK)
-    },
-
-    get ready() {
-      // Basta un foglio configurato: i moduli si aggiungono uno alla volta, e
-      // pretenderli tutti e quattro spegnerebbe anche quelli gia' funzionanti
-      // il giorno in cui se ne aggiunge uno nuovo.
-      return this.enabled
-        && Object.values(this.fogli).some((f) => f.id)
-        && fs.existsSync(path.resolve(ROOT, process.env.GOOGLE_SERVICE_ACCOUNT_FILE || './google-credentials.json'));
     }
   },
 

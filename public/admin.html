@@ -82,7 +82,6 @@
 
     <div class="schede" id="schede">
       <button type="button" data-scheda="riepilogo" class="attiva">Oggi</button>
-      <button type="button" data-scheda="moduli">Da confermare<span id="conta-moduli" hidden></span></button>
       <button type="button" data-scheda="prenotazioni">Prenotazioni</button>
       <button type="button" data-scheda="chiusure">Chiusure</button>
       <button type="button" data-scheda="medicine">Medicinali</button>
@@ -102,30 +101,6 @@
       </div>
     </section>
 
-    <!-- Richieste arrivate dai moduli mentre il sito era spento -->
-    <section data-pannello="moduli" class="nascosto">
-      <div class="carta" style="margin-bottom:1.25rem">
-        <p class="piccolo tenue" style="margin:0">
-          Qui arrivano le richieste che i pazienti hanno compilato sul modulo
-          quando il sito era spento. Controlla che i dati siano giusti, correggili
-          se serve, poi conferma: da quel momento diventano prenotazioni vere e
-          al paziente parte l'email con il codice.
-        </p>
-      </div>
-      <div class="filtri">
-        <div class="campo">
-          <label for="mod-stato">Stato</label>
-          <select id="mod-stato">
-            <option value="nuova">Da confermare</option>
-            <option value="confermata">Confermate</option>
-            <option value="rifiutata">Scartate</option>
-            <option value="">Tutte</option>
-          </select>
-        </div>
-        <button type="button" class="bottone" id="mod-controlla">Controlla i moduli ora</button>
-      </div>
-      <div id="elenco-moduli"></div>
-    </section>
 
     <!-- Prenotazioni -->
     <section data-pannello="prenotazioni" class="nascosto">
@@ -244,13 +219,6 @@
       <div id="elenco-esami"></div>
     </section>
 
-    <!-- Email -->
-    <!-- La scheda "Email ricevute" non c'e' piu': le richieste di medicinali
-         arrivate per email diventano richieste da sole, quelle di prenotazione
-         finiscono in "Da confermare", e i messaggi vanno nel cestino di Gmail
-         da soli quando la pratica e' chiusa. Non restava niente da fare a mano.
-         Il bottone per leggere la casella subito e' in "Stato del sistema". -->
-
     <!-- Pazienti -->
     <section data-pannello="pazienti" class="nascosto">
       <div class="filtri">
@@ -341,9 +309,6 @@
     </section>
 
     <section data-pannello="sistema" class="nascosto">
-      <div class="filtri">
-        <button type="button" class="bottone" id="mail-controlla">Controlla la casella ora</button>
-      </div>
       <div id="stato-sistema"></div>
     </section>
 

@@ -306,8 +306,7 @@ function durataLeggibile(minuti) {
  * Si manda al ritorno e non durante, per il motivo piu' banale: mentre e' giu'
  * il programma non gira e non puo' mandare niente. Serve a non far passare
  * inosservata un'interruzione notturna: se i pazienti hanno trovato la pagina
- * chiusa per sei ore, qualcuno deve saperlo e andare a guardare cosa e'
- * arrivato dai Moduli nel frattempo.
+ * chiusa per ore, qualcuno deve saperlo.
  */
 export const emailSitoTornato = ({ spentoDa, tornatoIl, minuti }) => componiEmail({
   to: NOTIFY_EMAIL,
@@ -318,20 +317,9 @@ export const emailSitoTornato = ({ spentoDa, tornatoIl, minuti }) => componiEmai
   righe: [
     ['Ultimo segno di vita', momentoLeggibile(spentoDa)],
     ['Tornato attivo', momentoLeggibile(tornatoIl)],
-    ['Quanto e\' durata', durataLeggibile(minuti)],
-    // I moduli stanno su Google e restano aperti anche a macchina spenta: sono
-    // l'unica porta che regge durante un blackout. Vanno scritti qui perche' e'
-    // il momento in cui servono — se ricapita, questi indirizzi si girano ai
-    // pazienti per telefono o per messaggio, senza doverli andare a cercare.
-    // Quelli non ancora configurati spariscono da soli: la tabella salta le
-    // righe vuote, e un'etichetta senza indirizzo sotto sarebbe peggio di niente.
-    ['Modulo prenotazioni', config.moduli.link.prenotazione],
-    ['Modulo medicinali', config.moduli.link.medicina],
-    ['Modulo visite specialistiche', config.moduli.link.specialistica],
-    ['Modulo esami del sangue', config.moduli.link.esami]
+    ['Quanto e\' durata', durataLeggibile(minuti)]
   ],
-  chiusura: 'Le richieste arrivate dai Moduli Google in quelle ore sono state raccolte ' +
-    'e stanno in "Da confermare". Le notifiche rimaste in sospeso sono ripartite da sole.'
+  chiusura: 'Le notifiche rimaste in sospeso durante l\'interruzione sono ripartite da sole.'
 });
 
 /**

@@ -4,8 +4,6 @@ import { config, ROOT } from './src/config.js';
 import { db, chiudiDb } from './src/db.js';
 import { inizializzaAdmin, pulisciSessioniScadute } from './src/auth.js';
 import { avviaWorker, fermaWorker } from './src/outbox.js';
-import { avviaPolling, fermaPolling } from './src/inbox.js';
-import { avviaLetturaModuli, fermaLetturaModuli, daConfermare } from './src/moduli.js';
 import { avviaPromemoria, fermaPromemoria } from './src/promemoria.js';
 import { avviaBackup, fermaBackup } from './src/backup.js';
 import { avviaBattito, fermaBattito } from './src/battito.js';
@@ -150,17 +148,11 @@ const server = app.listen(config.port, config.bindHost, async () => {
   avviaBackup();
 
   // Va fatto partire prima di tutto il resto che potrebbe scrivere in coda: se
-  // il sito e' stato giu', l'avviso deve trovarsi in cima e non dopo trenta
-  // richieste raccolte dai Moduli nel frattempo.
+  // il sito e' stato giu', l'avviso deve trovarsi in cima alla coda.
   const assenza = avviaBattito();
   if (assenza) {
     console.log(`  ATTENZIONE     il sito e' stato irraggiungibile per circa ${assenza.minuti} minuti`);
   }
-
-  if (config.inbox.enabled) avviaPolling();
-  // Prima cosa all'accensione: raccogliere le richieste arrivate mentre il
-  // sito era spento. E' il motivo per cui i Moduli esistono.
-  if (config.moduli.enabled) avviaLetturaModuli();
 
   const email = await verificaConnessioneEmail();
   const foglio = await verificaFoglio();
@@ -168,22 +160,13 @@ const server = app.listen(config.port, config.bindHost, async () => {
 
   console.log(`  Email          ${stato(email)}`);
   console.log(`  Foglio Google  ${stato(foglio)}`);
-  console.log(`  Casella Gmail  ${config.inbox.enabled ? 'in ascolto' : 'non attiva (INBOX_POLLING_ENABLED=false)'}`);
   console.log(`  Apertura       ${config.pubblico.https
     ? `su internet con lucchetto${config.pubblico.url ? ` — ${config.pubblico.url}` : ''}`
     : 'solo rete locale (SITO_HTTPS=false)'}`);
   console.log(`  Indirizzi      ${config.pubblico.proxyDavanti
     ? `letti da X-Forwarded-For (${config.pubblico.proxyDavanti} proxy davanti)`
     : 'presi dalla connessione (nessun proxy davanti)'}`);
-  console.log(`  Moduli Google  ${config.moduli.enabled
-    ? 'in lettura (richieste raccolte anche a sito spento)'
-    : 'non attivi (GOOGLE_MODULI_ENABLED=false)'}`);
   console.log(`  Database       ${config.dbFile}\n`);
-
-  const inAttesa = daConfermare();
-  if (inAttesa) {
-    console.log(`  ${inAttesa} richieste dai Moduli aspettano una conferma nel pannello.\n`);
-  }
 
   // Le due combinazioni sbagliate fra lucchetto e proxy. Nessuna delle due
   // impedisce al sito di funzionare, ed e' proprio questo il pericolo:
@@ -218,8 +201,6 @@ function spegni(segnale, codice = 0) {
   console.log(`\n[${segnale}] chiusura in corso...`);
 
   fermaWorker();
-  fermaPolling();
-  fermaLetturaModuli();
   fermaPromemoria();
   fermaBackup();
   // Segna l'ora anche adesso: una chiusura ordinata non e' un'interruzione, e

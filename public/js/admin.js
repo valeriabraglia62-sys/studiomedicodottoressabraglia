@@ -379,7 +379,6 @@ function collegaCambioPassword() {
 
 const CARICATORI = {
   riepilogo: caricaRiepilogo,
-  moduli: caricaModuli,
   prenotazioni: caricaPrenotazioni,
   chiusure: caricaChiusure,
   medicine: caricaMedicine,
@@ -406,10 +405,6 @@ function apriScheda(nome) {
 async function caricaRiepilogo() {
   const { riepilogo, agenda_oggi } = await api('/admin/riepilogo');
 
-  // Il numerino sulla linguetta si aggiorna a ogni passaggio da "Oggi": chi
-  // apre lo studio vede subito se c'e' arretrato da confermare.
-  aggiornaContatoreModuli(riepilogo.moduli_da_confermare);
-
   // Ogni numero porta dove quel numero si spiega, con il filtro gia' messo:
   // leggere "3 medicinali da evadere" e poi doverli cercare a mano fra tutti e
   // duecento e' esattamente il lavoro che il riepilogo dovrebbe risparmiare.
@@ -417,9 +412,6 @@ async function caricaRiepilogo() {
     ['Visite oggi', riepilogo.prenotazioni_oggi, {
       scheda: 'prenotazioni',
       filtri: { '#pren-dal': oggiISO(), '#pren-al': oggiISO(), '#pren-stato': 'confermata', '#pren-cerca': '' }
-    }],
-    ['Da confermare', riepilogo.moduli_da_confermare, {
-      scheda: 'moduli', filtri: { '#mod-stato': 'nuova' }
     }],
     ['Richieste di visita', riepilogo.richieste_visita_da_confermare, {
       scheda: 'prenotazioni',
@@ -1318,268 +1310,6 @@ function schedaMedicina(r) {
   return carta;
 }
 
-// ---- Richieste dai Moduli Google -------------------------------------------
-//
-// Sono arrivate mentre il sito era spento e nessuno le ha ancora viste. Il
-// pannello le mostra con i campi gia' compilati ma modificabili: il paziente
-// scrive di fretta e da un telefono, e chi apre lo studio deve poter
-// raddrizzare un orario o un cognome senza rifare tutto a mano.
-
-async function caricaModuli() {
-  const parametri = new URLSearchParams();
-  const stato = $('#mod-stato').value;
-  if (stato) parametri.set('stato', stato);
-
-  const { richieste, totale } = await api(`/admin/moduli?${parametri}`);
-  const contenitore = $('#elenco-moduli');
-
-  aggiornaContatoreModuli(stato === 'nuova' ? totale : null);
-
-  if (!richieste.length) {
-    contenitore.replaceChildren(vuoto(stato === 'nuova'
-      ? 'Nessuna richiesta in attesa: è tutto confermato.'
-      : 'Nessuna richiesta in questa vista.'));
-    return;
-  }
-
-  contenitore.replaceChildren(
-    nodo('p', 'piccolo tenue', `${totale} richieste.`),
-    ...richieste.map(schedaModulo)
-  );
-}
-
-/** Il numerino sulla linguetta: si vede da qualsiasi scheda che c'e' lavoro. */
-function aggiornaContatoreModuli(quante) {
-  const pallino = $('#conta-moduli');
-  if (quante === null || quante === undefined) return;
-  pallino.textContent = quante ? ` (${quante})` : '';
-  pallino.hidden = !quante;
-}
-
-const campoModulo = (etichettaTesto, elemento) => {
-  const campo = nodo('div', 'campo');
-  campo.style.cssText = 'flex:1;min-width:150px';
-  const lab = nodo('label', null, etichettaTesto);
-  campo.append(lab, elemento);
-  return campo;
-};
-
-function inputTesto(valore, segnaposto) {
-  const el = nodo('input');
-  el.value = valore ?? '';
-  if (segnaposto) el.placeholder = segnaposto;
-  return el;
-}
-
-/**
- * Come si presenta una riga arrivata dai Moduli, secondo il modulo da cui viene.
- *
- * Il titolo non e' un vezzo: chi apre "Da confermare" al mattino trova quattro
- * moduli mescolati, e deve capire a colpo d'occhio se quella riga diventera' un
- * appuntamento in agenda o una richiesta di esami.
- */
-const MODULI_NOTI = {
-  prenotazione: { titolo: '📅 Richiesta di visita', campo: 'Motivo' },
-  medicina: { titolo: '💊 Richiesta di medicinali', campo: 'Medicinali', segnaposto: 'Medicinali richiesti' },
-  specialistica: { titolo: '🩺 Richiesta di visita specialistica', campo: 'Quale visita', segnaposto: 'Visita richiesta' },
-  esami: { titolo: '🧪 Richiesta di esami del sangue', campo: 'Quali esami', segnaposto: 'Esami richiesti' }
-};
-
-function schedaModulo(m) {
-  const carta = nodo('div', 'carta');
-  const prenotazione = m.tipo === 'prenotazione';
-  const parole = MODULI_NOTI[m.tipo] || MODULI_NOTI.medicina;
-
-  const testata = nodo('div');
-  testata.style.cssText = 'display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;justify-content:space-between';
-  const sinistra = nodo('div');
-  sinistra.append(
-    nodo('strong', null, parole.titolo),
-    nodo('div', 'piccolo tenue', `Arrivata il ${quando(m.ricevuta_il)} · ${m.codice}`)
-  );
-  testata.append(sinistra, etichetta(m.stato, {
-    nuova: 'da confermare', confermata: 'confermata', rifiutata: 'scartata'
-  }[m.stato]));
-  carta.append(testata);
-
-  // Gia' gestita: si guarda soltanto, non si tocca piu'.
-  if (m.stato !== 'nuova') {
-    carta.append(nodo('p', 'piccolo tenue',
-      `${m.nome || ''} ${m.cognome || ''} · ${m.telefono || 'senza telefono'}` +
-      (m.collegata_a ? ` · diventata ${m.collegata_a}` : '') +
-      (m.motivo_rifiuto ? ` · motivo: ${m.motivo_rifiuto}` : '')));
-    return carta;
-  }
-
-  const campi = {
-    nome: inputTesto(m.nome, 'Nome'),
-    cognome: inputTesto(m.cognome, 'Cognome'),
-    telefono: inputTesto(m.telefono, 'Telefono'),
-    email: inputTesto(m.email, 'Email (facoltativa)')
-  };
-
-  const riga1 = nodo('div', 'filtri');
-  riga1.style.marginTop = '.85rem';
-  riga1.append(
-    campoModulo('Nome', campi.nome),
-    campoModulo('Cognome', campi.cognome),
-    campoModulo('Telefono', campi.telefono),
-    campoModulo('Email', campi.email)
-  );
-  carta.append(riga1);
-
-  const riga2 = nodo('div', 'filtri');
-
-  if (prenotazione) {
-    campi.ambulatorio_id = scegliAmbulatorio(m.ambulatorio_id);
-
-    campi.data = nodo('input');
-    campi.data.type = 'date';
-    campi.data.value = m.data_chiesta || '';
-    campi.data.min = oggiISO();
-
-    // Elenco degli orari davvero liberi: evita di confermare alla cieca un
-    // orario che nel frattempo qualcun altro ha preso.
-    campi.ora_inizio = nodo('select');
-    const avviso = nodo('div', 'piccolo tenue');
-
-    const aggiornaOrari = async () => {
-      campi.ora_inizio.replaceChildren();
-      avviso.textContent = '';
-      if (!campi.data.value) {
-        avviso.textContent = 'Scegli prima il giorno.';
-        return;
-      }
-      try {
-        const { slot } = await api(`/disponibilita?data=${campi.data.value}` +
-          `&ambulatorio_id=${campi.ambulatorio_id.value}`);
-        const liberi = slot.filter((s) => s.disponibile);
-        if (!liberi.length) {
-          avviso.textContent = 'Nessun orario libero in questa giornata: prova un altro giorno.';
-          return;
-        }
-        for (const s of liberi) {
-          const opzione = nodo('option', null, `${s.ora_inizio}–${s.ora_fine}`);
-          opzione.value = s.ora_inizio;
-          if (s.ora_inizio === m.ora_chiesta) opzione.selected = true;
-          campi.ora_inizio.append(opzione);
-        }
-        avviso.textContent = m.ora_chiesta && !liberi.some((s) => s.ora_inizio === m.ora_chiesta)
-          ? `Il paziente aveva chiesto le ${m.ora_chiesta}, che non è libero: scegline un altro.`
-          : `${liberi.length} orari liberi.`;
-      } catch (err) {
-        avviso.textContent = err.message;
-      }
-    };
-
-    campi.data.addEventListener('change', aggiornaOrari);
-    campi.ambulatorio_id.addEventListener('change', aggiornaOrari);
-    aggiornaOrari();
-
-    campi.problema = inputTesto(m.testo, 'Motivo della visita');
-
-    riga2.append(
-      campoModulo('Ambulatorio', campi.ambulatorio_id),
-      campoModulo('Giorno', campi.data),
-      campoModulo('Orario', campi.ora_inizio),
-      campoModulo('Motivo', campi.problema)
-    );
-    carta.append(riga2, avviso);
-  } else {
-    campi.farmaci = inputTesto(m.testo, parole.segnaposto);
-    campi.note = inputTesto(m.note, 'Note');
-    riga2.append(campoModulo(parole.campo, campi.farmaci), campoModulo('Note', campi.note));
-    carta.append(riga2);
-  }
-
-  // Cosa aveva scritto davvero il paziente, parola per parola: serve quando la
-  // lettura automatica delle colonne ha capito male.
-  const originale = nodo('details');
-  originale.append(nodo('summary', 'piccolo tenue', 'Vedi la risposta originale'));
-  const grezzo = nodo('div', 'piccolo', testoOriginale(m));
-  grezzo.style.cssText = 'white-space:pre-line;margin-top:.5rem;background:var(--sfondo);' +
-    'padding:.75rem;border-radius:8px';
-  originale.append(grezzo);
-  originale.style.marginTop = '.85rem';
-  carta.append(originale);
-
-  const azioni = nodo('div', 'azioni');
-
-  const conferma = nodo('button', 'bottone', 'Conferma');
-  conferma.type = 'button';
-  conferma.addEventListener('click', () => {
-    const corpo = {};
-    for (const [chiave, elemento] of Object.entries(campi)) {
-      const valore = String(elemento.value || '').trim();
-      if (valore) corpo[chiave] = chiave === 'ambulatorio_id' ? Number(valore) : valore;
-    }
-    conferma.disabled = true;
-    protetto(async () => {
-      try {
-        const esito = await api(`/admin/moduli/${m.codice}/conferma`, { method: 'POST', body: corpo });
-        avvisa(`Confermata: ${esito.generata.codice}. Al paziente parte l'email.`, 'ok');
-        await caricaModuli();
-      } finally {
-        conferma.disabled = false;
-      }
-    });
-  });
-
-  const scarta = nodo('button', 'bottone secondario', 'Scarta');
-  scarta.type = 'button';
-  scarta.addEventListener('click', () => {
-    const motivo = prompt('Perché scarti questa richiesta? (resterà scritto)');
-    if (motivo === null) return;
-    scarta.disabled = true;
-    protetto(async () => {
-      try {
-        await api(`/admin/moduli/${m.codice}/rifiuta`, { method: 'POST', body: { motivo } });
-        avvisa('Richiesta scartata.', 'ok');
-        await caricaModuli();
-      } finally {
-        scarta.disabled = false;
-      }
-    });
-  });
-
-  azioni.append(conferma, scarta);
-  carta.append(azioni);
-  return carta;
-}
-
-function testoOriginale(m) {
-  try {
-    const { intestazioni, riga } = JSON.parse(m.riga_json);
-    return intestazioni
-      .map((testata, i) => (riga[i] ? `${testata}: ${riga[i]}` : null))
-      .filter(Boolean).join('\n');
-  } catch {
-    return m.riga_json;
-  }
-}
-
-function collegaModuli() {
-  $('#mod-stato').addEventListener('change', () => protetto(caricaModuli));
-
-  $('#mod-controlla').addEventListener('click', (evento) => {
-    const pulsante = evento.currentTarget;
-    pulsante.disabled = true;
-    pulsante.textContent = 'Controllo…';
-    protetto(async () => {
-      try {
-        const { esito } = await api('/admin/moduli/controlla', { method: 'POST' });
-        avvisa(esito.ok
-          ? `Controllo fatto: ${esito.nuove} richieste nuove.`
-          : `Non ho potuto leggere i moduli: ${esito.motivo}`, esito.ok ? 'ok' : 'errore');
-        await caricaModuli();
-      } finally {
-        pulsante.disabled = false;
-        pulsante.textContent = 'Controlla i moduli ora';
-      }
-    });
-  });
-}
-
 // ---- Pazienti --------------------------------------------------------------
 
 /**
@@ -2152,7 +1882,7 @@ function collegaChiusure() {
 // ---- Stato del sistema -----------------------------------------------------
 
 async function caricaSistema() {
-  const { coda, email, foglio, casella, moduli_link: moduliLink } = await api('/admin/sistema');
+  const { coda, email, foglio } = await api('/admin/sistema');
   const contenitore = $('#stato-sistema');
 
   const servizio = (titolo, attivo, dettaglio) => {
@@ -2166,14 +1896,10 @@ async function caricaSistema() {
     return carta;
   };
 
-  const griglia = nodo('div', 'griglia tre');
+  const griglia = nodo('div', 'griglia due');
   griglia.append(
     servizio('Invio email', email.ok, email.ok ? 'Collegamento verificato.' : email.motivo),
-    servizio('Foglio Google', foglio.ok, foglio.ok ? `Foglio "${foglio.titolo}"` : foglio.motivo),
-    servizio('Lettura casella Gmail', casella.attivo,
-      casella.mai_eseguito
-        ? 'Mai eseguita.'
-        : `Ultimo controllo ${quando(casella.quando)} · ${casella.ok ? `${casella.nuove ?? 0} nuove` : casella.motivo}`)
+    servizio('Foglio Google', foglio.ok, foglio.ok ? `Foglio "${foglio.titolo}"` : foglio.motivo)
   );
 
   const cartaCoda = nodo('div', 'carta');
@@ -2212,68 +1938,7 @@ async function caricaSistema() {
   });
   cartaCoda.append(riprova);
 
-  contenitore.replaceChildren(griglia, cartaCoda, cartaModuli(moduliLink));
-}
-
-/**
- * Gli indirizzi dei moduli Google, da dare ai pazienti quando il sito non
- * risponde.
- *
- * Stanno qui perche' vanno copiati *prima* che servano: nel momento in cui
- * servono davvero questo pannello non si apre, ed e' proprio quello il punto.
- * Chi li tiene sul telefono, o incollati da qualche parte in ambulatorio, ha
- * ancora una porta aperta durante un blackout; chi deve andarli a cercare no.
- */
-function cartaModuli(link) {
-  const carta = nodo('div', 'carta');
-  carta.style.marginTop = '1.25rem';
-  carta.append(nodo('h3', null, 'Se il sito non risponde'));
-  carta.append(nodo('p', 'piccolo tenue',
-    'Questi moduli stanno su Google e restano aperti anche a macchina spenta. '
-    + 'Tienili a portata di mano: sono da dare ai pazienti quando il sito è giù, '
-    + 'e le richieste che arrivano di lì le ritrovi in "Da confermare".'));
-
-  const voci = [
-    ['Prenotazione visita', link?.prenotazione],
-    ['Richiesta medicinali', link?.medicina],
-    ['Visita specialistica', link?.specialistica],
-    ['Esami del sangue', link?.esami]
-  ];
-
-  for (const [titolo, indirizzo] of voci) {
-    const riga = nodo('div');
-    riga.style.marginTop = '.75rem';
-    riga.append(nodo('div', 'piccolo tenue', titolo));
-
-    if (!indirizzo) {
-      riga.append(nodo('div', 'piccolo', 'non configurato nel .env'));
-      carta.append(riga);
-      continue;
-    }
-
-    const a = nodo('a', 'piccolo', indirizzo);
-    a.href = indirizzo;
-    a.target = '_blank';
-    a.rel = 'noopener';
-    a.style.wordBreak = 'break-all';
-    riga.append(a);
-
-    const copia = nodo('button', 'bottone secondario piccolo', 'Copia');
-    copia.type = 'button';
-    copia.style.marginLeft = '.5rem';
-    copia.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(indirizzo);
-        avvisa('Indirizzo copiato.', 'ok');
-      } catch {
-        avvisa('Non riesco a copiarlo: selezionalo a mano.', 'errore');
-      }
-    });
-    riga.append(copia);
-    carta.append(riga);
-  }
-
-  return carta;
+  contenitore.replaceChildren(griglia, cartaCoda);
 }
 
 // ---- Avvio -----------------------------------------------------------------
@@ -2322,39 +1987,6 @@ function collegaFiltri() {
       apriChiudi($(contenitore), (chiudi) => moduloNuovaMedicina(chiudi, tipo)));
   }
 
-  $('#mail-controlla').addEventListener('click', (e) => {
-    // Il controllo apre una connessione alla casella e riguarda sette giorni di
-    // posta, un messaggio alla volta: puo' metterci mezzo minuto abbondante, e
-    // il limite prima di arrendersi e' novanta secondi. Con il solo bottone
-    // spento e nessun'altra indicazione sembrava bloccato, e chi aspettava non
-    // aveva modo di sapere se stesse lavorando o fosse morto li'.
-    const bottone = e.target;
-    const testoOriginale = bottone.textContent;
-    bottone.disabled = true;
-    bottone.textContent = 'Controllo in corso…';
-
-    const partito = Date.now();
-    const avanzamento = setInterval(() => {
-      bottone.textContent = `Controllo in corso… ${Math.round((Date.now() - partito) / 1000)}s`;
-    }, 1000);
-
-    protetto(async () => {
-      const { esito } = await api('/admin/email/controlla', { method: 'POST' });
-      // Le nuove email diventano richieste da sole: quelle dei medicinali
-      // finiscono fra i medicinali, quelle di prenotazione in "Da confermare".
-      // Si ricarica quel che si sta guardando, cosi' si vedono comparire.
-      avvisa(esito?.saltato
-        ? 'Un controllo era già in corso: aspetta che finisca quello.'
-        : `Controllo eseguito: ${esito?.nuove ?? 0} nuove email.`, 'ok');
-      const attiva = $('#schede button.attiva')?.dataset.scheda;
-      if (attiva && CARICATORI[attiva]) await CARICATORI[attiva]();
-    }).finally(() => {
-      clearInterval(avanzamento);
-      bottone.textContent = testoOriginale;
-      bottone.disabled = false;
-    });
-  });
-
   $('#paz-cerca').addEventListener('input', attendi(() => protetto(caricaPazienti)));
   $('#paz-dimessi').addEventListener('change', () => protetto(caricaPazienti));
 }
@@ -2364,7 +1996,6 @@ async function avvia() {
   collegaCambioPassword();
   collegaCollaboratori();
   collegaChiusure();
-  collegaModuli();
   collegaFiltri();
 
   $('#schede').addEventListener('click', (evento) => {
