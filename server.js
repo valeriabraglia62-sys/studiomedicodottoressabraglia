@@ -180,9 +180,9 @@ const server = app.listen(config.port, config.bindHost, async () => {
     console.log('  scriversi da solo: i freni anti-abuso si aggirano cambiandola. Mettilo a 0.\n');
   }
 
-  if (!email.ok || !foglio.ok) {
-    console.log('  Le consegne verso i servizi spenti restano in coda e partono da sole');
-    console.log('  appena il servizio torna disponibile: nulla va perso.\n');
+  if (!email.ok) {
+    console.log('  Le email restano in coda finche\' l\'invio non torna disponibile:');
+    console.log('  non si perde nulla.\n');
   }
 });
 
