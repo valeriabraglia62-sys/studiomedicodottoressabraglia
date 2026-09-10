@@ -28,7 +28,7 @@ echo ">> Aggiorno il sistema e installo gli strumenti di base"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y ca-certificates curl gnupg git build-essential python3 ufw \
-  unattended-upgrades sqlite3
+  unattended-upgrades sqlite3 fail2ban
 
 echo ">> Aggiornamenti di sicurezza automatici"
 dpkg-reconfigure -f noninteractive unattended-upgrades || true
@@ -38,6 +38,23 @@ ufw allow OpenSSH
 ufw allow 80/tcp
 ufw allow 443/tcp
 ufw --force enable
+
+echo ">> fail2ban: banna gli IP che martellano SSH"
+cat > /etc/fail2ban/jail.local <<'F2B'
+[DEFAULT]
+backend = systemd
+banaction = nftables
+banaction_allports = nftables[type=allports]
+
+[sshd]
+enabled = true
+port = ssh
+maxretry = 5
+findtime = 3600
+bantime = 3600
+F2B
+systemctl enable --now fail2ban
+systemctl restart fail2ban
 
 echo ">> Installo Node.js ${NODE_MAJOR} LTS (repository APT firmato, senza curl|bash)"
 if ! command -v node >/dev/null || [ "$(node -v | cut -c2-3)" != "${NODE_MAJOR}" ]; then

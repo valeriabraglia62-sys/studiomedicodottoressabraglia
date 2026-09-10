@@ -33,3 +33,14 @@ __DOMINIO__ {
 		format console
 	}
 }
+
+# Tutto cio' che arriva su 80/443 con un Host diverso da quelli qui sopra
+# (scanner, richieste con Host falsificato) viene respinto e basta: non tocca
+# mai l'applicazione.
+:80 {
+	respond "Host non autorizzato" 421
+}
+
+:443 {
+	respond "Host non autorizzato" 421
+}

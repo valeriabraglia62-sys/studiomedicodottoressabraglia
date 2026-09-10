@@ -25,10 +25,16 @@ ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=__APP_DIR__/data __APP_DIR__/logs
 ProtectKernelTunables=true
+ProtectKernelLogs=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
 LockPersonality=true
 RestrictNamespaces=true
+# Solo socket di rete e locali: niente famiglie esotiche.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+# I file creati dal servizio non sono leggibili da "altri".
+UMask=0027
 
 [Install]
 WantedBy=multi-user.target
