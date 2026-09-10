@@ -123,6 +123,13 @@ sed "s|__APP_DIR__|$APP_DIR|g; s|__APP_USER__|$APP_USER|g" \
 systemctl daemon-reload
 systemctl enable --now studiomedico
 
+echo ">> Controllo di salute giornaliero (sito, coda email, backup, disco)"
+sed "s|__APP_DIR__|$APP_DIR|g; s|__APP_USER__|$APP_USER|g" \
+  "$APP_DIR/strumenti/server/controllo-salute.service" > /etc/systemd/system/controllo-salute.service
+cp "$APP_DIR/strumenti/server/controllo-salute.timer" /etc/systemd/system/controllo-salute.timer
+systemctl daemon-reload
+systemctl enable --now controllo-salute.timer
+
 echo ">> Configuro Caddy per ${DOMINIO}"
 sed "s|__DOMINIO__|$DOMINIO|g; s|__EMAIL_TLS__|$EMAIL_TLS|g" \
   "$APP_DIR/strumenti/server/Caddyfile" > /etc/caddy/Caddyfile

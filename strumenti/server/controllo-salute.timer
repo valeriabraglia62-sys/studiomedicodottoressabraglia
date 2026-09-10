@@ -1,0 +1,12 @@
+[Unit]
+Description=Controllo giornaliero Studio Medico
+
+[Timer]
+# Ogni giorno alle 07:30 (ora del server). Se il server era spento, recupera
+# alla riaccensione.
+OnCalendar=*-*-* 07:30:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,27 @@
+[Unit]
+Description=Studio Medico - controllo giornaliero (sito, coda email, backup, disco)
+After=studiomedico.service
+Wants=studiomedico.service
+
+[Service]
+Type=oneshot
+User=__APP_USER__
+WorkingDirectory=__APP_DIR__
+ExecStart=/usr/bin/node strumenti/server/controllo-salute.mjs
+
+# Stessa gabbia del servizio principale: legge il DB, scrive al massimo una
+# riga nella coda email, niente altro.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=__APP_DIR__/data
+ProtectKernelTunables=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+UMask=0027
