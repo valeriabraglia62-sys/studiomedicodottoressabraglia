@@ -479,6 +479,24 @@ function collegamentoTelefono(numero) {
 
 // ---- Pezzi di modulo in comune ---------------------------------------------
 
+// Un'etichetta sopra il campo, in una colonna che si allarga con lo spazio che
+// trova. Erano vicine al codice dei Moduli Google e sono state portate via con
+// quello, ma le usano ancora tutti i moduli di inserimento del pannello.
+const campoModulo = (etichettaTesto, elemento) => {
+  const campo = nodo('div', 'campo');
+  campo.style.cssText = 'flex:1;min-width:150px';
+  const lab = nodo('label', null, etichettaTesto);
+  campo.append(lab, elemento);
+  return campo;
+};
+
+function inputTesto(valore, segnaposto) {
+  const el = nodo('input');
+  el.value = valore ?? '';
+  if (segnaposto) el.placeholder = segnaposto;
+  return el;
+}
+
 // Riempito una volta all'accesso: gli ambulatori non cambiano durante il turno.
 let ambulatoriNoti = [];
 
