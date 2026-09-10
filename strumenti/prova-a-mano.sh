@@ -13,10 +13,8 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 export DB_FILE="data/banco-prova.sqlite"
 rm -f "$DB_FILE" "$DB_FILE-wal" "$DB_FILE-shm"
 
-# Servizi esterni spenti: niente email ai pazienti, niente scritture sui fogli.
+# Servizi esterni spenti: niente email ai pazienti.
 export EMAIL_USER="" EMAIL_PASS=""
-export INBOX_POLLING_ENABLED=false
-export GOOGLE_SHEETS_ENABLED=false
 
 export ADMIN_EMAIL="prova@example.com"
 export ADMIN_PASSWORD="prova-password-1234"

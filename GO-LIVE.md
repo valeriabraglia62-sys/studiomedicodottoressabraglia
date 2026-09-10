@@ -1,7 +1,12 @@
 # Da completare prima della messa in produzione
 
 Stato dopo il secondo audit Codex (branch `installazione-npm-windows`).
-`node prova/backend.mjs` → **264/264**. `npm audit` → **0 vulnerabilità**.
+`node prova/backend.mjs` → **tutte verdi**. `npm audit` → **0 vulnerabilità**.
+
+> Aggiornamento: il sito è stato messo in produzione sul VPS Aruba
+> (`https://studiomedicobragliavaleria.it`) e la lettura casella email, i
+> Moduli e il Foglio Google sono stati rimossi. Il conteggio dei test è
+> quindi sceso (meno sezioni), non per regressioni.
 
 Le voci **[FATTO]** sono applicate nel codice. Le voci **[TU]** richiedono
 un'azione tua (privilegi di amministratore, credenziali, o una decisione).
@@ -107,7 +112,8 @@ Ambiente:
 
 - App spostata fuori da OneDrive in `C:\Users\valer\studiomedico`, servizio
   `StudioMedico` che riparte da solo a ogni avvio/crash
-- Suite di test da 213 a **264** verifiche
+- Suite di test cresciuta durante l'audit; poi ridotta con la rimozione di
+  casella email / Moduli / Foglio Google
 
 ## Non applicabile
 

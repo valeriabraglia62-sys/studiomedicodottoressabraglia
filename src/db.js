@@ -195,7 +195,7 @@ CREATE TABLE IF NOT EXISTS allegati (
 );
 CREATE INDEX IF NOT EXISTS idx_allegati_richiesta ON allegati(richiesta_id);
 
--- Coda di consegna: ogni effetto esterno (email, Foglio Google) viene prima
+-- Coda di consegna: ogni effetto esterno (le email ai pazienti) viene prima
 -- scritto qui dentro nella stessa transazione del dato. Se il servizio esterno
 -- e' spento o irraggiungibile la riga resta in attesa e viene ritentata:
 -- e' il meccanismo che garantisce che nessuna richiesta vada persa.

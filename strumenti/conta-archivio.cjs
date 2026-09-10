@@ -27,8 +27,6 @@ const INTERESSANTI = [
   ['prenotazioni', 'prenotazioni'],
   ['richieste_medicine', 'richieste di medicinali'],
   ['medicine_abituali', 'medicinali abituali'],
-  ['richieste_email', 'email raccolte'],
-  ['richieste_modulo', 'richieste dai Moduli'],
   ['utenti', 'accessi al pannello']
 ];
 

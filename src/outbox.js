@@ -6,8 +6,8 @@ import { db } from './db.js';
  * Regola fondamentale: la riga di outbox viene scritta nella STESSA transazione
  * del dato a cui si riferisce. O si salvano entrambi o nessuno dei due. Cosi' e'
  * impossibile che una prenotazione esista senza che qualcuno provi a notificarla,
- * e viceversa. Se Gmail o Google Sheets sono irraggiungibili la riga resta in
- * attesa e viene ritentata finche' non passa: la richiesta non si perde.
+ * e viceversa. Se Gmail e' irraggiungibile la riga resta in attesa e viene
+ * ritentata finche' non passa: la richiesta non si perde.
  */
 
 const gestori = new Map();

@@ -253,7 +253,7 @@ function validaRichiesta(dati, forza = false) {
 const SLOT_OCCUPATO = 'Questo orario è appena stato prenotato da un altro paziente. Scegline un altro.';
 
 /**
- * Crea la prenotazione. Dato, email e sincronizzazione col foglio vengono
+ * Crea la prenotazione. Dato ed email vengono
  * scritti in un'unica transazione: o riesce tutto, o non resta traccia di nulla.
  *
  * Chi la scrive decide anche se nasce gia' valida o come semplice richiesta:

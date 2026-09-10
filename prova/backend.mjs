@@ -22,7 +22,6 @@ for (const f of [DB_PROVA, `${DB_PROVA}-wal`, `${DB_PROVA}-shm`]) fs.rmSync(f, {
 
 process.env.DB_FILE = DB_PROVA;
 process.env.PORT = '3999';
-process.env.GOOGLE_SHEETS_ENABLED = 'false';
 // I test parlano direttamente in HTTP locale; la produzione resta HTTPS
 // fail-closed salvo questa disattivazione esplicita.
 process.env.SITO_HTTPS = 'false';
