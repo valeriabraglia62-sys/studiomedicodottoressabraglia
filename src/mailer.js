@@ -7,13 +7,15 @@ import { linkGoogleCalendar } from './evento.js';
 
 let transporter = null;
 if (config.email.enabled) {
-  transporter = nodemailer.createTransport({
-    service: 'gmail',
+  const comune = {
     auth: { user: config.email.user, pass: config.email.pass },
     pool: true,
     maxConnections: 3,
     maxMessages: 50
-  });
+  };
+  transporter = nodemailer.createTransport(config.email.host
+    ? { host: config.email.host, port: config.email.port, secure: config.email.secure, ...comune }
+    : { service: 'gmail', ...comune });
 }
 
 const esc = (s) => String(s ?? '')
@@ -107,7 +109,10 @@ registraGestore('email', async (payload) => {
     return;
   }
   await transporter.sendMail({
-    from: `"${config.nomeStudio}" <${config.email.user}>`,
+    from: `"${config.nomeStudio}" <${config.email.from}>`,
+    // Le email dicono "non rispondere", ma se un paziente risponde lo stesso
+    // la risposta deve arrivare dove qualcuno la legge, non nel vuoto.
+    replyTo: NOTIFY_EMAIL || config.email.from,
     to: payload.to,
     subject: payload.subject,
     text: payload.text,

@@ -79,6 +79,18 @@ export const config = {
   email: {
     user: (process.env.EMAIL_USER || '').trim(),
     pass: (process.env.EMAIL_PASS || '').trim(),
+    // Server SMTP. Senza SMTP_HOST si usa Gmail, com'era prima. Con SMTP_HOST
+    // impostato (es. la casella del dominio su smtps.aruba.it) si passa a quello,
+    // cosi' il mittente puo' essere @studiomedicobragliavaleria.it e le email
+    // non arrivano piu' da un indirizzo che non c'entra col sito.
+    host: (process.env.SMTP_HOST || '').trim(),
+    port: Number(process.env.SMTP_PORT) || 465,
+    secure: String(process.env.SMTP_SECURE ?? 'true').trim().toLowerCase() !== 'false',
+    // L'indirizzo che il paziente vede come mittente. Se non impostato, quello
+    // con cui ci si autentica.
+    get from() {
+      return (process.env.MAIL_FROM || '').trim() || this.user;
+    },
     get enabled() {
       return Boolean(this.user && this.pass && this.user !== 'your-email@gmail.com');
     }
