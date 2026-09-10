@@ -538,24 +538,96 @@ function scegliRitiro(selezionato, tipo = 'medicina') {
   return el;
 }
 
-/** Nome, cognome, telefono, email: identici per una visita e per i medicinali. */
+/**
+ * Nome, cognome, telefono, email: identici per una visita e per i medicinali.
+ *
+ * Mentre si scrive in uno qualsiasi dei quattro campi, sotto compare l'elenco
+ * dei pazienti gia' in archivio che combaciano: sceglierne uno riempie gli
+ * altri tre e aggancia la pratica a quella scheda (campi.pazienteId), cosi'
+ * non nasce un doppione per una lettera diversa nel cognome. Se dopo la scelta
+ * si ritocca un campo a mano, l'aggancio salta e si torna a un inserimento
+ * libero: quel campo modificato conta piu' della scheda vecchia.
+ */
 function campiPaziente() {
   const campi = {
     nome: inputTesto('', 'Nome'),
     cognome: inputTesto('', 'Cognome'),
     telefono: inputTesto('', '333 1234567'),
-    email: inputTesto('', 'nome@esempio.it')
+    email: inputTesto('', 'nome@esempio.it'),
+    pazienteId: null
   };
   campi.telefono.type = 'tel';
   campi.email.type = 'email';
+  const scrivibili = [campi.nome, campi.cognome, campi.telefono, campi.email];
+  for (const el of scrivibili) el.autocomplete = 'off';
 
   const riga = nodo('div', 'filtri');
+  riga.style.position = 'relative';
   riga.append(
     campoModulo('Nome', campi.nome),
     campoModulo('Cognome', campi.cognome),
     campoModulo('Telefono', campi.telefono),
     campoModulo('Email (se non ce l\'ha, lascia vuoto)', campi.email)
   );
+
+  const tendina = nodo('div');
+  tendina.style.cssText = 'position:absolute;top:100%;left:0;right:0;z-index:30;margin-top:2px;'
+    + 'background:var(--carta);border:1px solid var(--bordo);border-radius:var(--raggio-piccolo);'
+    + 'box-shadow:var(--ombra-alta);max-height:15rem;overflow:auto';
+  tendina.hidden = true;
+  riga.append(tendina);
+
+  const fuoriClic = (e) => { if (!riga.contains(e.target)) chiudiTendina(); };
+  function chiudiTendina() {
+    tendina.hidden = true;
+    tendina.replaceChildren();
+    document.removeEventListener('click', fuoriClic);
+  }
+
+  const scegli = (p) => {
+    campi.nome.value = p.nome || '';
+    campi.cognome.value = p.cognome || '';
+    campi.telefono.value = p.telefono || '';
+    campi.email.value = p.email || '';
+    campi.pazienteId = p.id;
+    chiudiTendina();
+  };
+
+  const cerca = attendi(async () => {
+    // Si cerca col pezzo piu' lungo scritto finora: piu' e' lungo, meno risultati.
+    const q = scrivibili.map((el) => el.value.trim()).filter(Boolean)
+      .sort((a, b) => b.length - a.length)[0] || '';
+    if (q.length < 2) return chiudiTendina();
+
+    let pazienti = [];
+    try {
+      ({ pazienti } = await api(`/admin/pazienti?dimessi=1&cerca=${encodeURIComponent(q)}`));
+    } catch { return; }
+    if (!pazienti.length) return chiudiTendina();
+
+    tendina.replaceChildren(...pazienti.slice(0, 8).map((p) => {
+      const voce = nodo('button', null, `${p.cognome} ${p.nome}`.trim()
+        + (p.telefono ? ` · ${p.telefono}` : '')
+        + (p.email ? ` · ${p.email}` : '')
+        + (p.dimesso_il ? ' · non più assistito' : ''));
+      voce.type = 'button';
+      voce.style.cssText = 'display:block;width:100%;text-align:left;border:0;background:none;'
+        + 'padding:.5rem .7rem;font:inherit;color:inherit;cursor:pointer;'
+        + 'border-bottom:1px solid var(--bordo)';
+      voce.addEventListener('mouseenter', () => { voce.style.background = 'var(--verde-tenue)'; });
+      voce.addEventListener('mouseleave', () => { voce.style.background = 'none'; });
+      voce.addEventListener('click', () => scegli(p));
+      return voce;
+    }));
+    tendina.hidden = false;
+    document.addEventListener('click', fuoriClic);
+  });
+
+  for (const el of scrivibili) {
+    el.addEventListener('input', () => { campi.pazienteId = null; cerca(); });
+    el.addEventListener('focus', cerca);
+  }
+
   return { campi, riga };
 }
 
@@ -728,6 +800,7 @@ function moduloNuovaPrenotazione(chiudi) {
           body: {
             nome: campi.nome.value, cognome: campi.cognome.value,
             telefono: campi.telefono.value, email: campi.email.value,
+            pazienteId: campi.pazienteId || undefined,
             problema: problema.value, ...quando.valori()
           }
         });
@@ -1087,6 +1160,7 @@ function moduloNuovaMedicina(chiudi, tipo = 'medicina') {
             tipo,
             nome: campi.nome.value, cognome: campi.cognome.value,
             telefono: campi.telefono.value, email: campi.email.value,
+            pazienteId: campi.pazienteId || undefined,
             farmaci: farmaci.value, note: note.value,
             ambulatorio_id: Number(ambulatorio.value) || undefined
           }

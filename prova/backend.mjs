@@ -909,6 +909,38 @@ console.log('\nIl paziente modifica il proprio profilo');
     `${attacco.stato} ${JSON.stringify(bersDopo)}`);
 }
 
+console.log('\nLo studio prenota scegliendo un paziente dall\'archivio');
+{
+  const reg = registraPazienteDiretto({
+    nome: 'Archivio', cognome: 'Scelto', telefono: '3335552220',
+    email: 'archivio.scelto@example.it', password: 'PasswordArchivio26!'
+  });
+  verificaEmailDiretto(reg.token);
+  const idPaz = db.prepare('SELECT paziente_id FROM utenti WHERE id = ?').get(reg.utente.id).paziente_id;
+  const quantiPrima = db.prepare('SELECT COUNT(*) c FROM pazienti').get().c;
+
+  // Il pannello manda pazienteId della scheda scelta; nome/cognome nel corpo
+  // sono quelli riempiti dal suggerimento, ma e' l'id che aggancia.
+  const pren = await chiama('POST', '/api/admin/prenotazioni', {
+    forza: true, ambulatorio_id: 1,
+    data: aggiungiGiorni(oggiISO(), 43), ora_inizio: '11:30',
+    pazienteId: idPaz,
+    nome: 'Archivio', cognome: 'Scelto', telefono: '3335552220',
+    email: 'archivio.scelto@example.it', problema: 'controllo'
+  }, token);
+  const cod = pren.dati.prenotazione?.codice;
+  const idPrenPaz = cod
+    ? db.prepare('SELECT paziente_id FROM prenotazioni WHERE codice = ?').get(cod).paziente_id
+    : null;
+
+  verifica('la prenotazione si aggancia alla scheda scelta, senza crearne una nuova',
+    pren.stato === 201 && idPrenPaz === idPaz
+    && db.prepare('SELECT COUNT(*) c FROM pazienti').get().c === quantiPrima,
+    `stato ${pren.stato} · scheda pren ${idPrenPaz} · attesa ${idPaz}`);
+
+  if (cod) await chiama('POST', `/api/admin/prenotazioni/${cod}/annulla`, {}, token);
+}
+
 console.log('\nRegistrazione: non svela se l\'email esiste gia\'');
 {
   const nuovo = await chiama('POST', '/api/auth/register', {
