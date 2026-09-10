@@ -59,17 +59,11 @@ CREATE TABLE IF NOT EXISTS sessioni (
 );
 CREATE INDEX IF NOT EXISTS idx_sessioni_scadenza ON sessioni(scade_il);
 
--- Stato operativo piccolo e non sensibile: recovery monouso e cursori delle
--- integrazioni devono sopravvivere ai riavvii del processo.
+-- Stato operativo piccolo e non sensibile: il recovery monouso deve
+-- sopravvivere ai riavvii del processo.
 CREATE TABLE IF NOT EXISTS impostazioni (
   chiave        TEXT PRIMARY KEY,
   valore        TEXT,
-  aggiornata_il TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS cursori_integrazioni (
-  chiave        TEXT PRIMARY KEY,
-  ultima_riga   INTEGER NOT NULL DEFAULT 1,
   aggiornata_il TEXT NOT NULL
 );
 
