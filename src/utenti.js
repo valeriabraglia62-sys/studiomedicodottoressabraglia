@@ -93,15 +93,29 @@ export function registraPaziente({ nome, cognome, telefono, email, password }) {
   // Se l'email ha gia' un account non lo si dice a chi registra (svelerebbe
   // quali indirizzi sono nostri pazienti): la risposta HTTP e' identica a una
   // registrazione riuscita, e a essere avvisato via email e' il titolare vero.
-  if (db.prepare('SELECT id FROM utenti WHERE email = ?').get(indirizzo)) {
-    return { giaRegistrato: true, email: indirizzo, nome: nomePulito };
-  }
+  //
+  // Eccezione: l'account "orfano". Il paziente e' stato cancellato dal pannello
+  // ma la riga di accesso era rimasta, senza scheda ne' scheda da collegare.
+  // Non ha piu' dati dietro e non serve a nessuno; se lo si tenesse, quella
+  // email resterebbe per sempre inutilizzabile. Lo si rimuove e si prosegue
+  // come una registrazione nuova, che dovra' comunque passare dalla verifica.
+  const esistente = db.prepare(
+    'SELECT id, ruolo, paziente_id, scheda_da_collegare FROM utenti WHERE email = ?'
+  ).get(indirizzo);
+  const orfano = esistente
+    && esistente.ruolo === 'paziente'
+    && !esistente.paziente_id && !esistente.scheda_da_collegare;
+  if (esistente && !orfano) return { giaRegistrato: true, email: indirizzo, nome: nomePulito };
 
   const schedaEsistente = schedaUnivoca(indirizzo, numero);
   const token = crypto.randomBytes(32).toString('base64url');
   const scade = new Date(Date.now() + ORE_VALIDITA_VERIFICA * 3600000).toISOString();
 
   return db.transaction(() => {
+    if (orfano) {
+      db.prepare('DELETE FROM sessioni WHERE utente_id = ?').run(esistente.id);
+      db.prepare('DELETE FROM utenti WHERE id = ?').run(esistente.id);
+    }
     let pazienteId = null;
     let schedaDaCollegare = null;
     if (schedaEsistente) {

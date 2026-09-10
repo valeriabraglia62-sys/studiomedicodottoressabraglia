@@ -81,8 +81,14 @@ export function cancella(id) {
       'DELETE FROM medicine_abituali WHERE paziente_id = ?',
       'DELETE FROM lista_attesa WHERE paziente_id = ?',
       'DELETE FROM prenotazioni WHERE paziente_id = ?',
-      // Un eventuale accesso personale collegato: si slega, non si cancella,
-      // perche' potrebbe essere l'accesso di un collaboratore.
+      // L'accesso personale del paziente se ne va con lui: "cancella" non deve
+      // lasciare un account fantasma, che non e' collegato a niente ma impedisce
+      // di ri-registrarsi con la stessa email. Le sessioni si tolgono a mano
+      // perche' non si dipende dal vincolo ON DELETE (vedi commento sopra).
+      "DELETE FROM sessioni WHERE utente_id IN (SELECT id FROM utenti WHERE paziente_id = ? AND ruolo = 'paziente')",
+      "DELETE FROM utenti WHERE paziente_id = ? AND ruolo = 'paziente'",
+      // Un eventuale accesso di un collaboratore agganciato a questa scheda si
+      // slega soltanto: quello non e' del paziente e non va cancellato.
       'UPDATE utenti SET paziente_id = NULL WHERE paziente_id = ?',
       'DELETE FROM pazienti WHERE id = ?'
     ]) db.prepare(sql).run(prima.paziente.id);

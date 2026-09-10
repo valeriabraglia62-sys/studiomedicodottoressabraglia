@@ -925,6 +925,40 @@ console.log('\nRegistrazione: non svela se l\'email esiste gia\'');
     && !/esiste|gi[àa] regist|409/i.test(JSON.stringify(ripetuto.dati)));
 }
 
+console.log('\nPaziente cancellato: l\'email torna libera per registrarsi di nuovo');
+{
+  const reg = registraPazienteDiretto({
+    nome: 'Ex', cognome: 'Paziente', telefono: '3332220001',
+    email: 'ex.paziente@example.it', password: 'PasswordExPaziente26!'
+  });
+  verificaEmailDiretto(reg.token);
+  const idPaz = db.prepare('SELECT paziente_id FROM utenti WHERE id = ?').get(reg.utente.id).paziente_id;
+
+  const cancellato = await chiama('DELETE', `/api/admin/pazienti/${idPaz}`, null, token);
+  verifica('il medico cancella la scheda', cancellato.stato === 200);
+  verifica('la cancellazione porta via anche l\'accesso del paziente',
+    db.prepare('SELECT id FROM utenti WHERE email = ?').get('ex.paziente@example.it') === undefined);
+
+  const dinuovo = await chiama('POST', '/api/auth/register', {
+    nome: 'Ex', cognome: 'Paziente', telefono: '3332220001',
+    email: 'ex.paziente@example.it', password: 'PasswordTornato2026!'
+  });
+  verifica('ci si puo\' registrare di nuovo con quell\'email',
+    dinuovo.stato === 201 && dinuovo.dati.verifica_inviata === true
+    && !/gi[àa] regist/i.test(JSON.stringify(dinuovo.dati)));
+  const nuovaRiga = db.prepare(
+    'SELECT email_verificata, token_verifica FROM utenti WHERE email = ?'
+  ).get('ex.paziente@example.it');
+  verifica('il nuovo account e\' una registrazione vera, ancora da confermare',
+    Boolean(nuovaRiga) && nuovaRiga.email_verificata === 0 && Boolean(nuovaRiga.token_verifica));
+
+  const login = await chiama('POST', '/api/auth/login', {
+    email: 'ex.paziente@example.it', password: 'PasswordTornato2026!'
+  });
+  verifica('senza conferma non si entra nel nuovo account',
+    login.stato === 403 && login.dati.verifica_email === true);
+}
+
 console.log('\nL\'assistente del pannello');
 {
   const chiedi = async (testo) =>

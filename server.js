@@ -111,6 +111,18 @@ app.use((req, res, next) => {
   next();
 });
 
+// Le risposte delle API non vanno mai in cache. Portano dati che cambiano di
+// continuo — l'agenda, l'elenco dei pazienti, lo stato di una richiesta — e
+// viaggiano con l'intestazione Authorization. Senza questo, dopo una modifica
+// il browser puo' continuare a mostrare la lista di prima finche' non gli si
+// svuota la cache a mano: "sembra che non si aggiorni".
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
 app.use('/api', router);
 
 // Il sito e le API vivono sullo stesso indirizzo: nessun CORS da aprire.

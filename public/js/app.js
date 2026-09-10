@@ -103,12 +103,20 @@ function collegaAccessoPaziente() {
   $('#form-registra-paziente').addEventListener('submit', (evento) => {
     evento.preventDefault();
     const form = evento.currentTarget;
+    // L'indirizzo va letto prima del reset: serve a dire alla persona DOVE
+    // guardare, che e' la meta' dell'informazione utile.
+    const indirizzo = $('#reg-email').value.trim();
     inviaProtetto(form, async () => {
-      const dati = await api('/auth/register', { method: 'POST', body: datiModulo(form) });
-      mostraModulo('login');
-      mostraStato(dati.message
-        || 'Ti abbiamo inviato un\'email: apri il link per confermare l\'indirizzo, poi accedi.', 'ok');
+      await api('/auth/register', { method: 'POST', body: datiModulo(form) });
       form.reset();
+      mostraModulo('login');
+      mostraStato(
+        `Ti abbiamo inviato un'email a ${indirizzo}. Aprila e premi il link dentro per `
+        + 'confermare l\'indirizzo: finché non lo fai non puoi accedere. Il link vale 24 ore. '
+        + 'Se entro un minuto non la vedi, controlla nello spam / posta indesiderata; '
+        + 'oppure scrivi l\'email qui sopra e premi «Rinvia il link».',
+        'ok'
+      );
     });
   });
 
