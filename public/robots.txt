@@ -1,0 +1,5 @@
+User-agent: *
+Disallow: /admin.html
+Disallow: /api/
+
+Sitemap: https://studiomedicobragliavaleria.it/sitemap.xml

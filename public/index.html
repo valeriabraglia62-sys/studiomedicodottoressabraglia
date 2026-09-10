@@ -3,9 +3,78 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Studio Medico Dottoressa Braglia — Prenotazioni e richieste medicinali</title>
-<meta name="description" content="Prenota una visita o richiedi i tuoi medicinali negli ambulatori di Arceto e Casalgrande.">
+<title>Studio Dott.ssa Valeria Braglia — Medico di base ad Arceto e Casalgrande</title>
+<meta name="description" content="Dott.ssa Valeria Braglia, medico di medicina generale ad Arceto (Scandiano) e Casalgrande, in provincia di Reggio Emilia. Prenota la visita online e richiedi ricette, impegnative ed esami.">
+<link rel="canonical" href="https://studiomedicobragliavaleria.it/">
+<meta name="robots" content="index,follow">
+<meta name="theme-color" content="#0d6e6e">
+<meta name="geo.region" content="IT-RE">
+<meta name="geo.placename" content="Arceto, Casalgrande">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="it_IT">
+<meta property="og:site_name" content="Studio Dott.ssa Valeria Braglia">
+<meta property="og:title" content="Studio Dott.ssa Valeria Braglia — Medico di base ad Arceto e Casalgrande">
+<meta property="og:description" content="Prenota la visita e richiedi ricette, impegnative ed esami online. Ambulatori ad Arceto e Casalgrande (RE).">
+<meta property="og:url" content="https://studiomedicobragliavaleria.it/">
 <link rel="stylesheet" href="/css/stile.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Physician",
+  "@id": "https://studiomedicobragliavaleria.it/#studio",
+  "name": "Studio della Dott.ssa Valeria Braglia",
+  "alternateName": "Studio Medico Dottoressa Braglia",
+  "description": "Ambulatorio della Dott.ssa Valeria Braglia, medico di medicina generale (medico di base), con sedi ad Arceto e Casalgrande, in provincia di Reggio Emilia.",
+  "url": "https://studiomedicobragliavaleria.it/",
+  "medicalSpecialty": "PrimaryCare",
+  "availableService": [
+    { "@type": "MedicalProcedure", "name": "Visita di medicina generale" },
+    { "@type": "MedicalProcedure", "name": "Prescrizione di ricette e farmaci" },
+    { "@type": "MedicalProcedure", "name": "Impegnative per visite specialistiche ed esami del sangue" }
+  ],
+  "areaServed": [
+    { "@type": "AdministrativeArea", "name": "Arceto" },
+    { "@type": "AdministrativeArea", "name": "Scandiano" },
+    { "@type": "AdministrativeArea", "name": "Casalgrande" }
+  ],
+  "location": [
+    {
+      "@type": "MedicalClinic",
+      "name": "Ambulatorio di Arceto",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Via Piazza Castello, 10",
+        "addressLocality": "Arceto",
+        "addressRegion": "RE",
+        "postalCode": "42019",
+        "addressCountry": "IT"
+      },
+      "telephone": "+39 329 154 5236",
+      "openingHoursSpecification": [
+        { "@type": "OpeningHoursSpecification", "dayOfWeek": ["Monday", "Tuesday", "Thursday", "Friday"], "opens": "11:00", "closes": "13:00" },
+        { "@type": "OpeningHoursSpecification", "dayOfWeek": "Wednesday", "opens": "17:30", "closes": "19:00" }
+      ]
+    },
+    {
+      "@type": "MedicalClinic",
+      "name": "Ambulatorio di Casalgrande",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Via Canale, 29",
+        "addressLocality": "Casalgrande",
+        "addressRegion": "RE",
+        "postalCode": "42013",
+        "addressCountry": "IT"
+      },
+      "telephone": "+39 347 245 0118",
+      "openingHoursSpecification": [
+        { "@type": "OpeningHoursSpecification", "dayOfWeek": ["Monday", "Thursday"], "opens": "17:30", "closes": "19:00" },
+        { "@type": "OpeningHoursSpecification", "dayOfWeek": ["Wednesday", "Friday"], "opens": "08:30", "closes": "10:00" }
+      ]
+    }
+  ]
+}
+</script>
 </head>
 <body>
 
@@ -47,6 +116,32 @@
     </form>
 
     <div id="stato-account" class="avviso attenzione" hidden></div>
+
+    <!-- Testo sempre visibile: è la sola parte del sito che i motori di ricerca
+         leggono davvero (tutto il resto è dietro l'accesso). Dice chi è lo
+         studio, cosa fa e dove, con le parole che i pazienti cercano. -->
+    <section class="info-studio">
+      <h1>Studio della Dott.ssa Valeria Braglia</h1>
+      <p>Medico di medicina generale (medico di base) con ambulatori ad
+         <strong>Arceto</strong> (Scandiano) e <strong>Casalgrande</strong>, in
+         provincia di Reggio Emilia. Da questo sito i pazienti assistiti prenotano
+         la visita e richiedono ricette, impegnative ed esami del sangue.</p>
+
+      <address>
+        <strong>Ambulatorio di Arceto</strong><br>
+        Via Piazza Castello, 10 — 42019 Arceto (RE)<br>
+        Tel. <a href="tel:+393291545236">329 154 5236</a><br>
+        Lun, Mar, Gio, Ven 11:00–13:00 · Mer 17:30–19:00
+      </address>
+      <address>
+        <strong>Ambulatorio di Casalgrande</strong><br>
+        Via Canale, 29 — 42013 Casalgrande (RE)<br>
+        Tel. <a href="tel:+393472450118">347 245 0118</a><br>
+        Lun, Gio 17:30–19:00 · Mer, Ven 08:30–10:00
+      </address>
+
+      <p class="piccolo">In caso di emergenza chiama il <a href="tel:112">112</a>.</p>
+    </section>
   </div>
 </div>
 

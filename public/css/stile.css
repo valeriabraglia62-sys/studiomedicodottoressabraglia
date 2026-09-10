@@ -613,6 +613,14 @@ td select {
 .marchio-centro { justify-content: center; margin: 0 0 1.25rem; }
 #stato-account { margin-top: 1rem; }
 
+/* Il blocco informativo sotto il modulo d'accesso: piccolo e defilato, ma è
+   testo vero — serve ai motori di ricerca e a chi capita qui senza account. */
+.info-studio { margin-top: 1.75rem; text-align: center; font-size: .9rem; color: var(--testo-tenue); }
+.info-studio h1 { font-size: 1.05rem; color: var(--testo); margin: 0 0 .6rem; }
+.info-studio p { margin: 0 0 .9rem; line-height: 1.55; }
+.info-studio address { display: block; font-style: normal; margin: .6rem 0; line-height: 1.5; }
+.info-studio a { color: inherit; text-decoration: underline; }
+
 /* Menu account nella barra in alto a destra */
 .account-menu { margin-left: auto; position: relative; }
 .account-menu > summary {
