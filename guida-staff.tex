@@ -1,0 +1,239 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[italian]{babel}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titling}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{textcomp}
+
+\definecolor{studioteal}{HTML}{0D6E6E}
+\definecolor{studiogrigio}{HTML}{5B6B6A}
+\definecolor{studioarancio}{HTML}{B45309}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=studioteal,
+  urlcolor=studioteal,
+  citecolor=studioteal,
+  pdftitle={Guida per lo staff dello studio},
+  pdfauthor={Studio Medico Dottoressa Braglia}
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{studiogrigio} Studio Medico Dottoressa Braglia --- Pannello}
+\fancyhead[R]{\small\color{studiogrigio} Guida per lo staff}
+\fancyfoot[C]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{studioteal}\leaders\hrule height \headrulewidth\hfill}}
+
+\setlist[itemize]{leftmargin=1.4em, itemsep=0.25em}
+\setlist[enumerate]{leftmargin=1.6em, itemsep=0.35em}
+
+\newcommand{\schermata}[1]{\textbf{\color{studioteal}#1}}
+\newcommand{\bottone}[1]{\textbf{``#1''}}
+\newcommand{\solomedico}{\textcolor{studioarancio}{\textbf{[solo medico]}}\ }
+
+\title{\color{studioteal}\Huge Guida per lo staff}
+\author{\Large Studio Medico Dottoressa Braglia}
+\date{}
+
+\begin{document}
+
+\begin{titlepage}
+\centering
+\vspace*{3cm}
+{\color{studioteal}\Huge\bfseries Guida per lo staff}\\[1em]
+{\Large Come usare il pannello di gestione}\\[2em]
+{\large Studio Medico Dottoressa Braglia}\\
+{\large Ambulatori di Arceto e Casalgrande}\\[3em]
+{\normalsize\color{studiogrigio} \url{https://studiomedicobragliavaleria.it/admin.html}}
+\vfill
+{\small\color{studiogrigio}
+Questa guida è per chi lavora nello studio: medico e segreteria.\\
+Le voci segnate \solomedico sono visibili solo all'accesso del medico.}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+\section{Primo accesso}
+
+Il pannello è raggiungibile all'indirizzo \url{https://studiomedicobragliavaleria.it/admin.html}. È separato dal sito che vedono i pazienti: ha un proprio indirizzo e un proprio accesso.
+
+Un nuovo collaboratore riceve dal medico una \textbf{password provvisoria}. Al primo ingresso il sistema chiede subito di sceglierne una personale, che nessun altro conoscerà: finché non viene scelta, il resto del pannello resta bloccato.
+
+\section{Le schede del pannello}
+
+In alto si trovano le schede principali. Alcune sono visibili solo al medico.
+
+\begin{center}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\textbf{Scheda} & \textbf{A cosa serve} \\
+\midrule
+Oggi & Riepilogo della giornata: quante visite, cosa aspetta una risposta. \\
+Prenotazioni & Agenda, richieste da confermare, prenotazioni a mano. \\
+Chiusure & Bloccare un giorno o una fascia oraria alle prenotazioni. \\
+Medicinali & Richieste di rinnovo ricette. \\
+Visite specialistiche & Richieste di impegnativa per uno specialista. \\
+Esami del sangue & Richieste di impegnativa per le analisi. \\
+Pazienti & Anagrafica, ricerca, fascicolo, dati e password di accesso. \\
+Collaboratori & \solomedico Chi ha un accesso al pannello, e con quale ruolo. \\
+Impostazioni & Cambiare la propria password quando si vuole. \\
+Stato del sistema & Email, backup, coda degli invii. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\section{Oggi}
+
+La prima schermata dopo l'accesso. Mostra a colpo d'occhio quante visite ci sono oggi (e domani), quante richieste di medicinali, visite specialistiche ed esami aspettano una risposta, e quante richieste di visita dal sito sono ancora da confermare. Ogni numero è cliccabile e porta dritto alla scheda corrispondente, già filtrata.
+
+\section{Prenotazioni}
+
+\subsection{Confermare o rifiutare una richiesta dal sito}
+
+Le visite prenotate dal sito o dal chatbot dei pazienti nascono come \emph{richieste}, in attesa: appaiono con il filtro \bottone{Da confermare}. Aprendo una richiesta si può:
+
+\begin{itemize}
+  \item \textbf{Confermarla} così com'è (o cambiando giorno, ora o ambulatorio se necessario) --- al paziente arriva l'email di conferma definitiva;
+  \item \textbf{Rifiutarla}, indicando il motivo --- il paziente lo legge nell'email di risposta, e il posto torna libero.
+\end{itemize}
+
+\subsection{Prenotare a mano (telefono, sportello)}
+
+Dal pulsante \bottone{+ Nuova prenotazione} si registra una visita presa al telefono o allo sportello. Mentre si scrive nome, cognome, telefono o email, il pannello suggerisce i pazienti già in archivio che corrispondono: scegliendone uno, gli altri campi si riempiono da soli e la visita resta agganciata a quella scheda, senza creare un doppione.
+
+La casella \bottone{orario mio / forza} permette di scavalcare i limiti pensati per chi prenota da solo (orari di apertura, quanti giorni in anticipo, il passato): utile per registrare una visita già avvenuta, o un caso particolare. Non si può mai, nemmeno forzando, mettere due pazienti nello stesso posto alla stessa ora.
+
+\subsection{Spostare o annullare}
+
+Una prenotazione confermata si può riprogrammare (cambiare giorno, ora o ambulatorio) o annullare. In entrambi i casi parte un'email al paziente, e chi era in lista d'attesa per quel giorno viene avvisato se si libera un posto.
+
+\section{Chiusure}
+
+Per bloccare le prenotazioni --- ferie, un imprevisto, mezza giornata --- si aggiunge una chiusura: un giorno intero, un intervallo di giorni, oppure solo una fascia oraria all'interno di una o più giornate. Le prenotazioni già confermate in quel periodo \textbf{non} vengono annullate da sole: il pannello elenca quelle da avvisare a mano.
+
+\section{Medicinali, visite specialistiche, esami del sangue}
+
+Le tre code funzionano allo stesso modo. Per ogni richiesta nuova si può:
+
+\begin{itemize}
+  \item \textbf{Confermarla}, indicando se serve il numero della ricetta o dell'impegnativa --- il paziente riceve l'email con le istruzioni per il ritiro;
+  \item \textbf{Modificarla}, se dopo una telefonata è cambiato qualcosa rispetto a quanto chiesto --- l'email al paziente mostra cosa aveva chiesto e cosa gli è stato preparato;
+  \item \textbf{Rifiutarla}, con un motivo.
+\end{itemize}
+
+Se il paziente ha allegato la foto di una prescrizione, è visibile direttamente nella scheda della richiesta.
+
+Anche qui, dal pulsante \bottone{+ Aggiungi}, si registra una richiesta presa al telefono, con lo stesso suggerimento dei pazienti già in archivio.
+
+\section{Pazienti}
+
+\subsection{Elenco e ricerca}
+
+Mostra tutti i pazienti in carico allo studio. Chi non è più assistito non compare, a meno di spuntare l'opzione apposita: dimettere qualcuno serve proprio a toglierlo dagli elenchi di tutti i giorni, senza perdere la sua storia.
+
+\subsection{Il fascicolo} \solomedico
+
+Cliccando sul nome si apre il fascicolo completo: le visite passate e future, i medicinali che il paziente prende abitualmente, e la storia di ogni richiesta con come è stata gestita. Contiene il motivo delle visite, un dato clinico: per questo lo apre solo il medico.
+
+\subsection{Dati e password}
+
+Sotto ogni nome, il pulsante \bottone{Dati e password} --- questo lo usa chiunque lavori nello studio, medico o segreteria. Da lì si può:
+
+\begin{itemize}
+  \item correggere nome, cognome, telefono o email del paziente;
+  \item reimpostare la sua password di accesso al sito, se il paziente non riesce più a entrare.
+\end{itemize}
+
+In entrambi i casi il paziente riceve un'email che lo avvisa del cambiamento. Se il paziente non ha mai creato un account sul sito, la voce ``reimposta password'' non si può usare: il pannello lo segnala chiaramente.
+
+\subsection{Dimettere o cancellare}
+
+Due gesti diversi, apposta:
+
+\begin{itemize}
+  \item \bottone{Non è più nostro paziente} --- sparisce dagli elenchi, la sua storia resta in archivio. Si annulla con un altro clic (``È tornato nostro paziente''). È il gesto giusto quasi sempre.
+  \item \bottone{Cancella definitivamente} \solomedico --- non si torna indietro: visite, richieste, ricette e foto allegate spariscono per sempre, insieme all'eventuale accesso del paziente al sito. Va usata solo per un doppione o su richiesta esplicita della persona. Il pannello mostra prima quanto andrebbe perso, e chiede di scrivere il cognome per confermare.
+\end{itemize}
+
+\section{Collaboratori} \solomedico
+
+Solo il medico può creare, sospendere o eliminare gli accessi al pannello.
+
+\begin{itemize}
+  \item \textbf{Creare un accesso}: nome, email, e il ruolo (\emph{segreteria} o \emph{medico}). Viene generata una password provvisoria, da consegnare al collaboratore: compare una volta sola sullo schermo, quindi va copiata o annotata subito.
+  \item \textbf{Sospendere / riattivare}: chiude fuori subito un accesso, anche se la persona è già collegata.
+  \item \textbf{Rinnovare la password}: genera una nuova password provvisoria per chi l'ha persa, e chiude le sessioni aperte con quella vecchia.
+  \item \textbf{Eliminare}: toglie l'accesso definitivamente.
+\end{itemize}
+
+Non è possibile eliminare, sospendere o togliere i poteri al proprio stesso accesso, né lasciare lo studio senza nemmeno un accesso da medico attivo: il sistema lo impedisce apposta, per non restare chiusi fuori dal pannello.
+
+\section{Impostazioni}
+
+Ogni collaboratore --- medico o segreteria --- può cambiare la propria password quando vuole da questa scheda, non solo la prima volta con quella provvisoria.
+
+\section{Notifiche e installazione come app}
+
+In alto, accanto al pulsante ``Esci'', sono disponibili:
+
+\begin{itemize}
+  \item \bottone{Attiva notifiche} --- per ricevere un avviso sul dispositivo quando arriva una nuova richiesta da confermare (visita, medicinali, specialistica, esami).
+  \item \bottone{Installa} --- per aggiungere un'icona del pannello sul telefono o computer, che si apre a schermo intero come un'app vera.
+\end{itemize}
+
+Su iPhone e iPad, per entrambe le funzioni, va prima aggiunto il pannello alla schermata Home da Safari (icona Condividi \textrightarrow\ ``Aggiungi alla schermata Home''): è una regola di Apple, non una nostra scelta, e vale anche usando Chrome.
+
+\section{L'assistente del pannello}
+
+In basso a destra è disponibile un assistente che risponde a domande scritte in linguaggio naturale, sempre con numeri veri presi dal database (mai inventati). Alcuni esempi:
+
+\begin{center}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\textbf{Si scrive} & \textbf{Cosa fa} \\
+\midrule
+``come va oggi'' & Il riepilogo della giornata. \\
+``cosa devo vedere'' & Solo ciò che aspetta ancora una risposta. \\
+``chi viene oggi'' / ``chi viene domani'' & L'agenda del giorno. \\
+``quante prenotazioni ho oggi'' & Un numero solo, súbito. \\
+``cerca Rossi'' & Trova la persona e apre la scheda Pazienti. \\
+\emph{(incollare un codice, es. PRE-A1B2-C3D4)} & Dice cos'è e a che punto sta. \\
+``annulla PRE-1234-ABCD'' & Annulla l'appuntamento (chiede conferma). \\
+``blocca il 15/10 dalle 10 alle 12'' & Crea una chiusura (chiede conferma). \\
+``che chiusure ci sono'' & L'elenco delle chiusure future. \\
+``apri i medicinali'' & Porta dritto sulla scheda giusta. \\
+``password'', ``notifiche'', ``installa'' & Spiega dove trovarle. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Il pulsante \bottone{Al telefono} apre lo stesso modulo che vede il paziente, per registrare una richiesta raccolta a voce.
+
+\section{Stato del sistema}
+
+Mostra se l'invio delle email è attivo, quante ce ne sono ancora in coda (le email non si perdono mai: se l'invio non è disponibile, restano lì e riprovano da sole), e lo stato dell'ultima copia di sicurezza del database.
+
+\section{Promemoria automatici}
+
+Il giorno prima di ogni visita confermata, il paziente riceve automaticamente un promemoria via email, con la richiesta di annullare se non può presentarsi.
+
+\section{Buone pratiche}
+
+\begin{itemize}
+  \item Non condividere mai la propria password con altri: ogni accesso è personale, e serve a sapere chi ha fatto cosa.
+  \item Sospendere subito l'accesso di chi lascia lo studio.
+  \item Usare \bottone{Cancella definitivamente} solo quando è davvero irreversibile: nel dubbio, \bottone{Non è più nostro paziente} si annulla, l'altra no.
+  \item Per un cambio di email o telefono di un paziente, preferire ``Dati e password'' invece di far ricreare un account nuovo: mantiene collegata tutta la sua storia.
+\end{itemize}
+
+\end{document}

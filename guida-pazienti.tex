@@ -1,0 +1,239 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[italian]{babel}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titling}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{textcomp}
+
+\definecolor{studioteal}{HTML}{0D6E6E}
+\definecolor{studiogrigio}{HTML}{5B6B6A}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=studioteal,
+  urlcolor=studioteal,
+  citecolor=studioteal,
+  pdftitle={Guida per i pazienti},
+  pdfauthor={Studio Medico Dottoressa Braglia}
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{studiogrigio} Studio Medico Dottoressa Braglia}
+\fancyhead[R]{\small\color{studiogrigio} Guida per i pazienti}
+\fancyfoot[C]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{studioteal}\leaders\hrule height \headrulewidth\hfill}}
+
+\setlist[itemize]{leftmargin=1.4em, itemsep=0.25em}
+\setlist[enumerate]{leftmargin=1.6em, itemsep=0.35em}
+
+\newcommand{\schermata}[1]{\textbf{\color{studioteal}#1}}
+\newcommand{\bottone}[1]{\textbf{``#1''}}
+
+\title{\color{studioteal}\Huge Guida per i pazienti}
+\author{\Large Studio Medico Dottoressa Braglia \\[.3em] \normalsize Ambulatori di Arceto e Casalgrande}
+\date{}
+
+\begin{document}
+
+\begin{titlepage}
+\centering
+\vspace*{3cm}
+{\color{studioteal}\Huge\bfseries Guida per i pazienti}\\[1em]
+{\Large Come usare il sito dello studio}\\[2em]
+{\large Studio Medico Dottoressa Braglia}\\
+{\large Ambulatori di Arceto e Casalgrande}\\[3em]
+{\normalsize\color{studiogrigio} \url{https://studiomedicobragliavaleria.it}}
+\vfill
+{\small\color{studiogrigio} Questa guida spiega come creare un account, prenotare una visita, \\
+richiedere medicinali o esami, e gestire il proprio account dal sito.}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+\section{Come accedere al sito}
+
+Il sito è raggiungibile all'indirizzo \url{https://studiomedicobragliavaleria.it}, da computer, tablet o telefono. Funziona con qualsiasi browser aggiornato (Chrome, Safari, Edge, Firefox) ed è sempre disponibile, giorno e notte.
+
+La prima cosa che si vede è la schermata di accesso: da lì si entra con un account già esistente, oppure se ne crea uno nuovo.
+
+\section{Creare un account}
+
+\begin{enumerate}
+  \item Nella schermata di accesso, cliccare su \bottone{Crea account}.
+  \item Compilare il modulo con \textbf{nome}, \textbf{cognome}, \textbf{telefono}, \textbf{email} e una \textbf{password} di almeno 10 caratteri.
+  \item Cliccare su \bottone{Registrati}.
+\end{enumerate}
+
+A quel punto il sito manda un'email all'indirizzo indicato, con un link per confermarlo. \textbf{Senza aprire quel link non si può accedere.} Il link resta valido 24 ore.
+
+\begin{itemize}
+  \item Se l'email non arriva entro un minuto, controllare nella cartella \textbf{spam / posta indesiderata}.
+  \item Se il link scade prima di essere aperto, dalla pagina di accesso si può cliccare su \bottone{Rinvia il link} per riceverne uno nuovo.
+\end{itemize}
+
+\subsection*{Perché a volte arriva ``Hai già un account''}
+
+Se si prova a registrarsi con un indirizzo già usato in passato, il sito non lo dice apertamente (per non rivelare a chiunque quali email sono già nostre pazienti): manda comunque un'email, ma il suo contenuto sarà diverso — dirà che quell'indirizzo ha già un account, invitando ad accedere con la password, oppure a reimpostarla se dimenticata.
+
+\section{Accedere}
+
+Dalla schermata iniziale, inserire l'email e la password usate in fase di registrazione, poi cliccare su \bottone{Accedi}.
+
+\subsection{Password dimenticata}
+
+Se non si ricorda la password:
+\begin{enumerate}
+  \item Nella schermata di accesso cliccare su \bottone{Reimpostala}.
+  \item Scrivere l'email con cui ci si è registrati e inviare.
+  \item Se l'indirizzo corrisponde a un account, arriva un'email con un link per scegliere una password nuova. Il link resta valido \textbf{2 ore}.
+\end{enumerate}
+
+\subsection{Email dimenticata}
+
+Se invece non si ricorda \emph{quale} email è stata usata per la registrazione:
+\begin{enumerate}
+  \item Nella schermata di accesso cliccare su \bottone{Recuperala}.
+  \item Scrivere il numero di \textbf{telefono} usato in fase di registrazione.
+  \item Se corrisponde a un account, arriva un promemoria dell'indirizzo email — \textbf{alla casella stessa}, mai mostrato sullo schermo, per sicurezza.
+\end{enumerate}
+
+Se non si ricorda nemmeno il telefono usato, l'unica strada è contattare direttamente lo studio: il personale può verificare i dati e correggerli dal pannello.
+
+\section{Prenotare una visita}
+
+\begin{enumerate}
+  \item Dal menu in alto, aprire \schermata{Prenota}.
+  \item Scegliere l'\textbf{ambulatorio}: \textbf{si può prenotare solo in quello di residenza.}
+  \item Scegliere un giorno dal calendario: i giorni con il pallino verde hanno posti liberi.
+  \item Scegliere un orario libero.
+  \item Scrivere il motivo della visita e confermare.
+\end{enumerate}
+
+Arriva subito un'email di conferma con il \textbf{codice della prenotazione}: conservarlo, serve per consultarla o annullarla in seguito.
+
+\textbf{Nota:} le visite richieste dal sito nascono come \emph{richieste}: lo studio le conferma (o le rifiuta, indicandone il motivo) entro breve, e a quel punto arriva una seconda email con la conferma definitiva.
+
+\section{Richiedere medicinali, una visita specialistica o esami del sangue}
+
+Dal menu in alto sono disponibili tre moduli distinti:
+
+\begin{itemize}
+  \item \schermata{Medicinali} --- per chiedere il rinnovo di una ricetta.
+  \item \schermata{Visite specialistiche} --- per chiedere l'impegnativa di una visita da uno specialista.
+  \item \schermata{Esami del sangue} --- per chiedere l'impegnativa degli esami.
+\end{itemize}
+
+In ciascun modulo si indicano nome, cognome, telefono, email e cosa serve. Per le visite specialistiche e gli esami è possibile \textbf{allegare la foto} di una richiesta già scritta da uno specialista: da telefono si può scattarla direttamente.
+
+Dopo l'invio arriva un'email di conferma con un codice. Quando lo studio risponde (approvando, magari con qualche modifica concordata, oppure spiegando perché non può essere accolta) arriva una seconda email.
+
+\section{Controllare o annullare}
+
+Nella sezione \schermata{La mia richiesta} si inserisce il codice ricevuto via email per vedere lo stato di una prenotazione o di una richiesta, ed eventualmente annullarla:
+
+\begin{center}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\textbf{Prefisso del codice} & \textbf{Cosa indica} \\
+\midrule
+\texttt{PRE-\dots} & Prenotazione di una visita \\
+\texttt{MED-\dots} & Richiesta di medicinali \\
+\texttt{SPE-\dots} & Richiesta di visita specialistica \\
+\texttt{ESA-\dots} & Richiesta di esami del sangue \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Chi ha effettuato l'accesso trova anche le proprie pratiche direttamente in quella sezione, senza dover ricordare i codici a memoria.
+
+\section{Il proprio account}
+
+Una volta effettuato l'accesso, in alto a destra si trova il menu \schermata{Account}. Da lì, \bottone{Modifica account} permette di cambiare:
+
+\begin{itemize}
+  \item nome, cognome e telefono, liberamente;
+  \item l'email con cui si accede --- serve però la \textbf{password attuale}, come conferma;
+  \item la password --- serve la password attuale e una nuova di almeno 10 caratteri.
+\end{itemize}
+
+\section{Notifiche sul telefono}
+
+Il sito può mandare un avviso direttamente sul telefono o sul computer (oltre alle email) quando una prenotazione viene confermata, una richiesta viene evasa, e così via.
+
+Per attivarle: menu in alto, pulsante \bottone{Attiva notifiche}. Il browser chiederà un permesso: basta accettarlo.
+
+\subsection*{Nota per iPhone e iPad}
+
+Su iPhone e iPad, Apple permette le notifiche solo ai siti \textbf{aggiunti alla schermata Home} --- vale per qualsiasi browser si usi, anche Chrome. Per attivarle:
+\begin{enumerate}
+  \item Aprire il sito con \textbf{Safari}.
+  \item Toccare l'icona \textbf{Condividi}.
+  \item Scegliere \textbf{``Aggiungi alla schermata Home''}.
+  \item Aprire l'icona appena creata: da lì il pulsante ``Attiva notifiche'' funziona.
+\end{enumerate}
+
+\section{Installare il sito come app}
+
+Il sito si può installare sul telefono o sul computer come una vera app, gratuitamente, senza passare da nessun negozio di app.
+
+\begin{itemize}
+  \item \textbf{Android, Chrome, computer}: cercare il pulsante \bottone{Installa l'app} in alto nella pagina.
+  \item \textbf{iPhone / iPad}: seguire gli stessi passaggi descritti sopra per le notifiche (Safari \textrightarrow\ Condividi \textrightarrow\ Aggiungi alla schermata Home): è lo stesso identico gesto.
+\end{itemize}
+
+\section{L'assistente virtuale}
+
+In basso a destra sul sito è disponibile un piccolo assistente (chatbot) che guida passo dopo passo nella prenotazione di una visita, in una richiesta di medicinali/specialistica/esami, oppure nel controllo di una pratica già aperta con il suo codice.
+
+Alcuni comandi utili durante la conversazione:
+\begin{itemize}
+  \item scrivere \textbf{``indietro''} per correggere l'ultima risposta, senza ricominciare tutto;
+  \item scrivere \textbf{``menu''} per tornare al punto di partenza;
+  \item scrivere \textbf{``aiuto''} per un riepilogo di cosa sa fare, incluso come cambiare password, dati dell'account o attivare le notifiche.
+\end{itemize}
+
+\section{I nostri ambulatori}
+
+\begin{center}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\multicolumn{2}{l}{\textbf{Ambulatorio di Arceto}} \\
+\midrule
+Indirizzo & Via Piazza Castello, 10 --- 42019 Arceto (RE) \\
+Telefono & 329 154 5236 \\
+Orari & Lunedì, martedì, giovedì, venerdì: 11:00--13:00 \\
+       & Mercoledì: 17:30--19:00 \\
+\bottomrule
+\end{tabularx}
+
+\vspace{1em}
+
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\multicolumn{2}{l}{\textbf{Ambulatorio di Casalgrande}} \\
+\midrule
+Indirizzo & Via Canale, 29 --- 42013 Casalgrande (RE) \\
+Telefono & 347 245 0118 \\
+Orari & Lunedì, giovedì: 17:30--19:00 \\
+       & Mercoledì, venerdì: 08:30--10:00 \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\textbf{Si ricorda di prenotare solo nell'ambulatorio di residenza.}
+
+\section{In caso di emergenza}
+
+Per un'emergenza medica chiamare sempre il \textbf{112}. Per urgenze non differibili al di fuori dell'orario di apertura, contattare la Guardia Medica.
+
+\end{document}
