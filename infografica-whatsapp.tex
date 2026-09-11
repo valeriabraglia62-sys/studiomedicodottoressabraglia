@@ -21,9 +21,13 @@
 
 % Larghezza x altezza del "cartellone": 9 x 16 cm, stesso rapporto di un
 % telefono (1080x1920 px). Basta cambiare questi due numeri per ridimensionare
-% tutto: le coordinate sotto sono già proporzionate a W e H.
-\newlength{\W}\setlength{\W}{9cm}
-\newlength{\H}\setlength{\H}{16cm}
+% tutto: le coordinate sotto sono già proporzionate a queste due lunghezze.
+%
+% NOTA: non chiamarle \W e \H — \H è già un comando LaTeX predefinito
+% (l'accento ungherese, come in "H{o}" -> ő) e ridefinirlo manda in errore
+% la compilazione. Nomi per esteso, zero rischio di scontrarsi con qualcos'altro.
+\newlength{\larghezza}\setlength{\larghezza}{9cm}
+\newlength{\altezza}\setlength{\altezza}{16cm}
 
 % Una croce ✚, disegnata come poligono: la usiamo sia piccola (marchio) sia
 % enorme e semitrasparente (decorazione sullo sfondo).
@@ -37,16 +41,16 @@
 \begin{tikzpicture}[x=1cm,y=1cm]
 
   % ---- Sfondo (crema, caldo) --------------------------------------------
-  \fill[studiocrema] (0,0) rectangle (\W,\H);
+  \fill[studiocrema] (0,0) rectangle (\larghezza,\altezza);
 
   % ---- Fascia superiore, teal --------------------------------------------
   % Parte a 10.1cm da terra: cambia solo questo numero per allargarla o
   % stringerla (gli elementi sotto sono posizionati assumendo questo valore).
-  \fill[studioteal] (0,10.1) rectangle (\W,\H);
+  \fill[studioteal] (0,10.1) rectangle (\larghezza,\altezza);
 
   % Croce grande, decorativa, appena visibile, in alto a destra
   \begin{scope}
-    \clip (0,10.1) rectangle (\W,\H);
+    \clip (0,10.1) rectangle (\larghezza,\altezza);
     \croce{(9.4,17.6)}{2.1cm}{white,opacity=0.12}
   \end{scope}
 
@@ -69,7 +73,7 @@
     draw=studioteal, line width=1.4pt, fill=white, rounded corners=0.6cm,
     inner xsep=0.55cm, inner ysep=0.30cm,
     font=\bfseries\sffamily\fontsize{13}{15}\selectfont, text=studioteal
-  ] at (\W/2,10.05) {studiomedicobragliavaleria.it};
+  ] at (\larghezza/2,10.05) {studiomedicobragliavaleria.it};
 
   % ---- Le quattro funzioni -------------------------------------------------
   \def\riga#1#2#3{%
@@ -116,10 +120,10 @@
   \node[
     fill=studioteal, rounded corners=0.55cm, inner xsep=0.7cm, inner ysep=0.38cm,
     font=\bfseries\rmfamily\fontsize{16}{19}\selectfont, text=white
-  ] (cta) at (\W/2,1.55) {Scopri il sito \ $\rightarrow$};
+  ] (cta) at (\larghezza/2,1.55) {Scopri il sito \ $\rightarrow$};
 
   \node[anchor=north, text=studiogrigio, font=\sffamily\fontsize{10.5}{13}\selectfont]
-    at (\W/2,0.85) {studiomedicobragliavaleria.it};
+    at (\larghezza/2,0.85) {studiomedicobragliavaleria.it};
 
 \end{tikzpicture}
 \end{document}
