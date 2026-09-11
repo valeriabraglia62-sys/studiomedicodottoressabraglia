@@ -17,6 +17,11 @@
 <meta property="og:title" content="Studio Dott.ssa Valeria Braglia — Medico di base ad Arceto e Casalgrande">
 <meta property="og:description" content="Prenota la visita e richiedi ricette, impegnative ed esami online. Ambulatori ad Arceto e Casalgrande (RE).">
 <meta property="og:url" content="https://studiomedicobragliavaleria.it/">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Studio Braglia">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="stylesheet" href="/css/stile.css">
 <script type="application/ld+json">
 {
@@ -166,7 +171,13 @@
       <summary><span id="nome-utente-paziente">Account</span><span aria-hidden="true"> ▾</span></summary>
       <div class="account-tendina">
         <button type="button" id="btn-modifica-account">Modifica account</button>
+        <button type="button" id="btn-installa" hidden>📲 Installa l'app</button>
         <button type="button" id="btn-notifiche" hidden>🔔 Attiva notifiche</button>
+        <p class="piccolo tenue" id="nota-iphone" style="padding:.5rem .6rem;margin:0" hidden>
+          📱 Su iPhone/iPad: apri questo sito in <strong>Safari</strong>, tocca
+          <strong>Condividi → Aggiungi alla schermata Home</strong>. Da lì l'app si apre a
+          schermo intero e può mandare notifiche.
+        </p>
         <button type="button" id="btn-esci-paziente">Esci</button>
       </div>
     </details>

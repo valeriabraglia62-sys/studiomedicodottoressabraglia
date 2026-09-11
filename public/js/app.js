@@ -4,7 +4,7 @@
  */
 
 import { montaChat } from './chat.js';
-import { collegaNotifiche } from './push-client.js';
+import { collegaNotifiche, registraServiceWorker, collegaInstallazione, mostraSuIOS } from './push-client.js';
 
 const $ = (sel, dove = document) => dove.querySelector(sel);
 const $$ = (sel, dove = document) => [...dove.querySelectorAll(sel)];
@@ -1018,6 +1018,12 @@ async function entraNelSito(utente) {
 
 async function avvia() {
   collegaAccessoPaziente();
+
+  // Indipendenti dal login: chi visita il sito senza ancora un account deve
+  // poter installare l'app comunque, e sapere subito come si fa su iPhone.
+  registraServiceWorker();
+  collegaInstallazione($('#btn-installa'));
+  mostraSuIOS($('#nota-iphone'));
 
   if (tokenPaziente) {
     try {

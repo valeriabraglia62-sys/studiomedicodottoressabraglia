@@ -5,7 +5,7 @@
  */
 
 import { montaChat } from './chat.js';
-import { collegaNotifiche } from './push-client.js';
+import { collegaNotifiche, registraServiceWorker, collegaInstallazione, mostraSuIOS } from './push-client.js';
 
 const $ = (sel, dove = document) => dove.querySelector(sel);
 const $$ = (sel, dove = document) => [...dove.querySelectorAll(sel)];
@@ -2090,6 +2090,10 @@ async function avvia() {
   collegaCollaboratori();
   collegaChiusure();
   collegaFiltri();
+
+  registraServiceWorker();
+  collegaInstallazione($('#btn-installa'));
+  mostraSuIOS($('#nota-iphone'));
 
   $('#schede').addEventListener('click', (evento) => {
     const scheda = evento.target.closest('button[data-scheda]');

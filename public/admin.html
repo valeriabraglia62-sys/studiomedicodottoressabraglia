@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>Gestione — Studio Medico Dottoressa Braglia</title>
+<link rel="manifest" href="/manifest-admin.json">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gestione Studio">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#0d6e6e">
 <link rel="stylesheet" href="/css/stile.css">
 </head>
 <body>
@@ -72,9 +78,16 @@
     </a>
     <nav class="menu">
       <a href="/">Vedi il sito</a>
+      <button type="button" class="bottone secondario piccolo" id="btn-installa" hidden>📲 Installa</button>
       <button type="button" class="bottone secondario piccolo" id="btn-notifiche" hidden>🔔 Attiva notifiche</button>
       <button type="button" class="bottone secondario piccolo" id="esci">Esci</button>
     </nav>
+  </div>
+  <div class="contenitore">
+    <p class="piccolo tenue" id="nota-iphone" style="margin:.4rem 0 0" hidden>
+      📱 Su iPad/iPhone: apri in <strong>Safari</strong>, tocca <strong>Condividi → Aggiungi alla
+      schermata Home</strong> per installare il pannello e ricevere le notifiche.
+    </p>
   </div>
 </header>
 
