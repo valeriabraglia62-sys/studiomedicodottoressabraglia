@@ -956,18 +956,55 @@ function collegaChat() {
 
 // ---- Navigazione -----------------------------------------------------------
 
+/**
+ * Le sei sezioni del sito, elencate una volta sola: sia i link del menu che i
+ * due pulsanti della copertina puntano ai loro id, e questo elenco dice a
+ * mostraSchermata() quali nascondere e quali no.
+ */
+const SEZIONI_SITO = ['prenota', 'medicinali', 'specialistiche', 'esami', 'gestisci', 'ambulatori'];
+
+/**
+ * Una schermata alla volta, non tutte una sotto l'altra.
+ *
+ * Prima erano sei sezioni impilate in scorrimento continuo, e su un telefono
+ * in verticale ognuna si vedeva a pezzi fra quella sopra e quella sotto. Ora
+ * si vede solo quella scelta, che occupa tutto lo schermo: il modulo di
+ * prenotazione o di richiesta non e' piu' schiacciato, e' l'unica cosa a video.
+ *
+ * `id` nullo o non riconosciuto riporta alla copertina, che resta la home.
+ */
+function mostraSchermata(id) {
+  const valida = SEZIONI_SITO.includes(id) ? id : null;
+
+  $('.copertina')?.classList.toggle('nascosto', Boolean(valida));
+  for (const nome of SEZIONI_SITO) {
+    $(`#${nome}`)?.classList.toggle('nascosto', nome !== valida);
+  }
+  $$('.menu a[data-sezione]').forEach((a) => a.classList.toggle('attivo', a.dataset.sezione === valida));
+
+  window.scrollTo(0, 0);
+  history.replaceState(null, '', valida ? `#${valida}` : location.pathname + location.search);
+}
+
 function collegaNavigazione() {
-  const sezioni = $$('main section[id]');
-  const voci = $$('.menu a[data-sezione]');
+  // Sia i link del menu (data-sezione) sia i due pulsanti della copertina
+  // ("Prenota una visita", "Richiedi medicinali") puntano a un #id: basta
+  // riconoscere quelli che sono davvero una delle sei sezioni, cosi' i link
+  // dell'accesso ("#" da solo) restano intoccati.
+  $$('a[href^="#"]').forEach((a) => {
+    const id = a.getAttribute('href').slice(1);
+    if (!SEZIONI_SITO.includes(id)) return;
+    a.addEventListener('click', (e) => { e.preventDefault(); mostraSchermata(id); });
+  });
 
-  const osservatore = new IntersectionObserver((voci_visibili) => {
-    for (const v of voci_visibili) {
-      if (!v.isIntersecting) continue;
-      voci.forEach((a) => a.classList.toggle('attivo', a.dataset.sezione === v.target.id));
-    }
-  }, { rootMargin: '-45% 0px -45% 0px' });
+  // Il marchio in alto riporta alla home invece di ricaricare la pagina.
+  $('a.marchio[href="/"]')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    mostraSchermata(null);
+  });
 
-  sezioni.forEach((s) => osservatore.observe(s));
+  // Un link diretto tipo /#medicinali apre subito quella schermata.
+  mostraSchermata(location.hash.slice(1));
 }
 
 // ---- Avvio -----------------------------------------------------------------

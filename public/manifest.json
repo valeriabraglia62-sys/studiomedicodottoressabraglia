@@ -3,6 +3,7 @@
   "short_name": "Studio Braglia",
   "description": "Prenota una visita e richiedi ricette, impegnative ed esami del sangue.",
   "lang": "it",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

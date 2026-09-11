@@ -179,8 +179,18 @@ a { color: var(--verde); }
 .copertina .azioni { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.5rem; }
 
 /* ---- Sezioni ----------------------------------------------------------- */
-
-.sezione { padding: 3rem 0; }
+/* Una alla volta (la mostra/nasconde js/app.js): ognuna prende tutta
+   l'altezza dello schermo invece di stare impilata e schiacciata fra le
+   altre. 100dvh conta l'altezza vera su telefono, senza le barre del
+   browser che vanno e vengono; dove manca il supporto resta 100vh. */
+.sezione {
+  padding: 3rem 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+}
 .sezione > .contenitore > header { margin-bottom: 1.75rem; max-width: 60ch; }
 
 /* ---- Ambulatori -------------------------------------------------------- */

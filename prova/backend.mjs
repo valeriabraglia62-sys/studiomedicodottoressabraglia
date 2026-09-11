@@ -369,6 +369,26 @@ console.log('\nChatbot');
   const sconosciuto = await chiama('POST', '/api/chat', { sessione, testo: 'qwerty asdf' });
   verifica('un messaggio incomprensibile non rompe la chat', sconosciuto.stato === 200 && Boolean(sconosciuto.dati.testo));
 
+  const menuPrima = await chiama('POST', '/api/chat', { sessione, testo: 'menu' });
+  verifica('il menu propone anche "Account e notifiche"',
+    menuPrima.dati.azioni?.some((a) => a.id === 'account'),
+    JSON.stringify(menuPrima.dati.azioni));
+
+  const account = await chiama('POST', '/api/chat', { sessione, testo: 'come cambio la password' });
+  verifica('spiega dove cambiare la password',
+    /password/i.test(account.dati.testo) && /modifica account/i.test(account.dati.testo),
+    account.dati.testo);
+
+  const notifiche = await chiama('POST', '/api/chat', { sessione, testo: 'come attivo le notifiche' });
+  verifica('spiega le notifiche, con la nota per iPhone',
+    /notifiche/i.test(notifiche.dati.testo) && /iphone/i.test(notifiche.dati.testo),
+    notifiche.dati.testo);
+
+  const installa = await chiama('POST', '/api/chat', { sessione, testo: 'come installo l\'app' });
+  verifica('spiega come installare il sito come app',
+    /installa/i.test(installa.dati.testo) && /schermata home/i.test(installa.dati.testo),
+    installa.dati.testo);
+
   db.prepare("UPDATE chat_sessioni SET ultima_attivita = datetime('now', '-73 hours') WHERE id = ?")
     .run(sessione);
   const scaduta = await chiama('GET', `/api/chat?sessione=${encodeURIComponent(sessione)}`);
@@ -1051,6 +1071,24 @@ console.log('\nL\'assistente del pannello');
   verifica('"apri i medicinali" porta sulla scheda giusta', vai.vai?.scheda === 'medicine',
     JSON.stringify(vai.vai));
 
+  const vaiChiusure = await chiedi('apri le chiusure');
+  verifica('"apri le chiusure" porta sulla scheda chiusure (prima mancava)',
+    vaiChiusure.vai?.scheda === 'chiusure', JSON.stringify(vaiChiusure.vai));
+
+  const vaiCollaboratori = await chiedi('apri i collaboratori');
+  verifica('"apri i collaboratori" porta sulla scheda collaboratori (prima mancava)',
+    vaiCollaboratori.vai?.scheda === 'collaboratori', JSON.stringify(vaiCollaboratori.vai));
+
+  const passwordAdmin = await chiedi('come cambio la password');
+  verifica('al medico spiega come rinnovare la password di un collaboratore',
+    /password/i.test(passwordAdmin.testo) && /collaborator/i.test(passwordAdmin.testo),
+    passwordAdmin.testo);
+
+  const notificheAdmin = await chiedi('come attivo le notifiche');
+  verifica('spiega le notifiche e come installare il pannello',
+    /notifiche/i.test(notificheAdmin.testo) && /installa/i.test(notificheAdmin.testo),
+    notificheAdmin.testo);
+
   const boh = await chiedi('qwerty asdf zxcv');
   verifica('una domanda incomprensibile non lo rompe', Boolean(boh.testo) && boh.azioni?.length > 0);
 
@@ -1124,6 +1162,12 @@ console.log('\nL\'assistente non aggira il segreto del medico');
 
   const suo = await chiama('POST', '/api/admin/assistente', { testo: 'chi viene oggi' }, tokenCollab);
   verifica('la segretaria usa l\'assistente', suo.stato === 200 && Boolean(suo.dati.testo));
+
+  const passwordSegretaria = await chiama('POST', '/api/admin/assistente',
+    { testo: 'come cambio la password' }, tokenCollab);
+  verifica('a un collaboratore dice di chiedere al medico, non di rinnovarla lui',
+    /chiedi al medico/i.test(passwordSegretaria.dati?.testo || ''),
+    passwordSegretaria.dati?.testo);
 
   // Il confronto e' fra le due risposte alla stessa domanda: quella del medico
   // contiene il motivo, quella della segretaria deve contenere il segnaposto al

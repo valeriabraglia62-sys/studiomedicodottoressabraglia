@@ -129,9 +129,27 @@ const MENU = {
     { id: 'specialistica', etichetta: '🩺 Visita specialistica' },
     { id: 'esami', etichetta: '🧪 Esami del sangue' },
     { id: 'stato', etichetta: '🔍 Controlla o annulla' },
+    { id: 'account', etichetta: '⚙️ Account e notifiche' },
     { id: 'info', etichetta: 'ℹ️ Orari e contatti' }
   ]
 };
+
+/**
+ * Le domande su "come si fa" non sono una richiesta da mandare allo studio:
+ * sono gia' tutte cose che il paziente puo' fare da solo, dal menu account in
+ * alto a destra. Il chatbot qui si limita a indicare dove cliccare.
+ */
+function testoAccount() {
+  return '**Il tuo account**\n\n' +
+    '🔐 **Cambiare la password**: menu account (in alto a destra) → "Modifica account" → ' +
+    '"Cambia password". Password dimenticata? Esci e usa "Rinvia il link" dalla pagina di accesso.\n\n' +
+    '👤 **Cambiare nome, cognome, telefono o email**: menu account → "Modifica account".\n\n' +
+    '🔔 **Notifiche sul telefono**: menu account → "Attiva notifiche". Su iPhone/iPad funzionano ' +
+    'solo dopo aver aggiunto il sito alla schermata Home (vedi sotto).\n\n' +
+    '📲 **Installare il sito come app**: su Android o computer, menu account → "Installa l\'app". ' +
+    'Su iPhone/iPad: apri Safari, tocca Condividi → Aggiungi alla schermata Home.\n\n' +
+    'Posso aiutarti con altro?';
+}
 
 /**
  * Le tre richieste che il chatbot sa raccogliere.
@@ -372,7 +390,9 @@ function gestisci(stato, testo) {
       'o gli esami del sangue, oppure a controllare una prenotazione che hai già.\n\n' +
       'Per specialistiche ed esami, alla fine puoi allegare la foto della richiesta dello specialista.\n\n' +
       'Se sbagli una risposta puoi scrivere "indietro" per rifarla, senza ricominciare tutto. ' +
-      'Scrivi "menu" per tornare al punto di partenza.', MENU.azioni);
+      'Scrivi "menu" per tornare al punto di partenza.\n\n' +
+      'Posso anche spiegarti come cambiare la password, i tuoi dati, attivare le notifiche o ' +
+      'installare il sito come app: scrivi "account" o scegli "⚙️ Account e notifiche".', MENU.azioni);
   }
 
   switch (stato.flusso) {
@@ -423,8 +443,12 @@ function gestisciMenu(stato, t) {
     stato.passo = 'codice';
     return risposta('Indicami il codice che hai ricevuto via email (per esempio PRE-A1B2-C3D4).');
   }
-  if (t === 'info' || contiene(t, 'orari', 'contatt', 'telefono', 'indirizz', 'dove')) {
+  if (t === 'info' || contiene(t, 'orari', 'contatt', 'telefono dello studio', 'indirizz', 'dove siamo', 'dove siete')) {
     return risposta(`${testoOrari()}\n\nPosso aiutarti con altro?`, MENU.azioni);
+  }
+  if (t === 'account' || contiene(t, 'password', 'profilo', 'account', 'notifiche', 'notifica',
+    'install', 'scaricare il sito', 'schermata home')) {
+    return risposta(testoAccount(), MENU.azioni);
   }
   return risposta(`Non sono sicuro di aver capito. ${MENU.testo}`, MENU.azioni);
 }

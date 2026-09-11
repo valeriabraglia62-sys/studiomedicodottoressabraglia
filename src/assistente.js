@@ -41,10 +41,12 @@ const soloMedico = (utente) => utente?.ruolo === 'admin';
 const SCHEDE = [
   { id: 'riepilogo', nome: 'Oggi', parole: ['oggi', 'riepilog', 'cruscott'] },
   { id: 'prenotazioni', nome: 'Prenotazioni', parole: ['prenotazion', 'agenda', 'appuntament', 'da confermare'] },
+  { id: 'chiusure', nome: 'Chiusure', parole: ['chiusur', 'ferie', 'giorni bloccat'] },
   { id: 'medicine', nome: 'Medicinali', parole: ['medicin', 'farmac', 'ricett'] },
   { id: 'specialistiche', nome: 'Visite specialistiche', parole: ['specialist'] },
   { id: 'esami', nome: 'Esami del sangue', parole: ['esami', 'esame', 'analisi', 'sangue'] },
   { id: 'pazienti', nome: 'Pazienti', parole: ['pazient', 'anagrafic', 'fascicol'] },
+  { id: 'collaboratori', nome: 'Collaboratori', parole: ['collaborator', 'segretari', 'accessi al pannello'] },
   { id: 'sistema', nome: 'Stato del sistema', parole: ['sistema', 'stato del', 'backup', 'copia'] }
 ];
 
@@ -265,6 +267,31 @@ function cercaCodice(codice, utente) {
   };
 }
 
+/**
+ * Notifiche, installazione, password: cose che chi lavora chiede spesso e che
+ * l'assistente non esegue — si limita a dire dove si trovano, come per
+ * "cerca" e i codici.
+ */
+function testoAccount(utente) {
+  const password = soloMedico(utente)
+    ? '🔐 **La tua password**: oggi si cambia solo quando qualcuno te ne genera una provvisoria ' +
+      'nuova, non puoi ancora sceglierla quando vuoi. Per un collaboratore: scheda Collaboratori → ' +
+      'sul suo accesso, "Rinnova password" — gliene generi una provvisoria, che sceglie lui al ' +
+      'primo ingresso.'
+    : '🔐 **La tua password**: chiedi al medico di rinnovartela dalla scheda Collaboratori. Te ne ' +
+      'genera una provvisoria, e la sostituisci tu con una tua al primo ingresso.';
+
+  return {
+    testo: '**Account e notifiche**\n\n' +
+      `${password}\n\n` +
+      '🔔 **Notifiche sul dispositivo**: pulsante "Attiva notifiche" in alto, accanto a "Esci".\n\n' +
+      '📲 **Installare il pannello come app**: su Android o computer, pulsante "Installa" in alto. ' +
+      'Su iPhone/iPad: Safari → Condividi → Aggiungi alla schermata Home.',
+    azioni: AZIONI_BASE,
+    vai: soloMedico(utente) ? { scheda: 'collaboratori', cerca: '' } : null
+  };
+}
+
 function aiuto() {
   return risposta(
     '**Cosa so fare**\n\n' +
@@ -277,7 +304,8 @@ function aiuto() {
     '• "annulla PRE-1234-ABCD" — annullo l\'appuntamento (con conferma; il paziente riceve l\'email)\n' +
     '• "blocca il 15/10" oppure "blocca domani dalle 10:30 alle 12" — chiudo le prenotazioni per quel giorno o quella fascia (con conferma)\n' +
     '• "che chiusure ci sono" — l\'elenco dei giorni e delle fasce bloccate\n' +
-    '• "apri i medicinali" — ti porto sulla scheda giusta\n\n' +
+    '• "apri i medicinali" — ti porto sulla scheda giusta\n' +
+    '• "notifiche", "installa l\'app", "password" — come attivarle, dove si trovano\n\n' +
     'Per registrare una richiesta mentre sei al telefono, usa "Al telefono" qui sopra: ' +
     'sono le stesse domande che vede il paziente.');
 }
@@ -534,6 +562,11 @@ export function assiste(domanda, utente) {
   if (codice) return cercaCodice(codice[0], utente);
 
   if (contiene(t, 'aiuto', 'cosa sai fare', 'cosa puoi fare', 'come funzion')) return aiuto();
+
+  if (contiene(t, 'password', 'notifiche', 'notifica', 'install', 'schermata home',
+    'mio account', 'account personale')) {
+    return testoAccount(utente);
+  }
 
   const ricerca = t.match(/^\s*(?:cerca|trova|cerc[ah]mi|chi e'|chi è)\s+(.{2,})$/i);
   if (ricerca) return cercaPaziente(ricerca[1].trim());
