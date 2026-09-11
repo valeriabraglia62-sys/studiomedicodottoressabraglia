@@ -229,6 +229,20 @@ CREATE TABLE IF NOT EXISTS chat_messaggi (
   creato_il   TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_chat_messaggi ON chat_messaggi(sessione_id, id);
+
+-- Un dispositivo (telefono, PC) su cui una persona ha acceso le notifiche.
+-- Una persona puo' averne piu' d'uno (casa e telefono); uno stesso account
+-- puo' comparire piu' volte, una riga per dispositivo. L'endpoint e' unico:
+-- e' il browser a generarlo, e identifica il dispositivo in modo certo.
+CREATE TABLE IF NOT EXISTS iscrizioni_notifiche (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  utente_id  INTEGER NOT NULL REFERENCES utenti(id) ON DELETE CASCADE,
+  endpoint   TEXT NOT NULL UNIQUE,
+  p256dh     TEXT NOT NULL,
+  auth       TEXT NOT NULL,
+  creato_il  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_iscrizioni_utente ON iscrizioni_notifiche(utente_id);
 `);
 
 // Colonne aggiunte dopo il primo rilascio: su un database gia' esistente

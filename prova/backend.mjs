@@ -1549,6 +1549,41 @@ console.log('\nTrecento prenotazioni diverse in contemporanea');
   verifica('ogni prenotazione ha le sue consegne in coda', inCoda >= totale, `prenotazioni ${totale}, coda ${inCoda}`);
 }
 
+console.log('\nNotifiche push: iscrizione e disiscrizione');
+{
+  const senzaVapid = await chiama('GET', '/api/push/chiave-pubblica');
+  verifica('senza VAPID configurato, la chiave pubblica risponde 404 e non rompe niente',
+    senzaVapid.stato === 404, `stato ${senzaVapid.stato}`);
+
+  const negato = await chiama('POST', '/api/push/iscrivi', { iscrizione: {} });
+  verifica('iscriversi senza account e\' negato', negato.stato === 401);
+
+  const reg = registraPazienteDiretto({
+    nome: 'Push', cognome: 'Prova', telefono: '3339990002',
+    email: 'push.prova@example.it', password: 'PasswordPushProva26!'
+  });
+  verificaEmailDiretto(reg.token);
+  const tok = creaSessioneDiretta(reg.utente.id).token;
+
+  const malformata = await chiama('POST', '/api/push/iscrivi', { iscrizione: { endpoint: 'https://esempio.it/x' } }, tok);
+  verifica('un\'iscrizione senza le chiavi e\' rifiutata', malformata.stato === 400);
+
+  const endpoint = 'https://push.esempio.it/dispositivo-di-prova';
+  const iscritto = await chiama('POST', '/api/push/iscrivi', {
+    iscrizione: { endpoint, keys: { p256dh: 'chiave-p256dh-di-prova', auth: 'chiave-auth-di-prova' } }
+  }, tok);
+  verifica('iscrizione valida accettata', iscritto.stato === 200, JSON.stringify(iscritto.dati));
+
+  const riga = db.prepare('SELECT utente_id FROM iscrizioni_notifiche WHERE endpoint = ?').get(endpoint);
+  verifica('il dispositivo e\' salvato ed e\' collegato all\'account giusto',
+    riga?.utente_id === reg.utente.id, JSON.stringify(riga));
+
+  const disiscritto = await chiama('POST', '/api/push/disiscrivi', { endpoint }, tok);
+  verifica('disiscrizione riuscita', disiscritto.stato === 200);
+  verifica('il dispositivo sparisce dalla tabella',
+    !db.prepare('SELECT 1 FROM iscrizioni_notifiche WHERE endpoint = ?').get(endpoint));
+}
+
 console.log('\nIn produzione la cifratura dei backup e\' obbligatoria');
 {
   const { spawnSync } = await import('child_process');

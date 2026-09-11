@@ -2,10 +2,11 @@ import crypto from 'crypto';
 import { db } from './db.js';
 import { config } from './config.js';
 import { accoda } from './outbox.js';
+import * as push from './push.js';
 import {
   DURATA_SLOT_MINUTI, dataValida, giornoSettimana, minutiDaOra, oraDaMinuti,
   oggiISO, minutiCorrentiRoma, aggiungiGiorni, trovaAmbulatorio, GIORNI_PRENOTABILI,
-  chiusureDelGiorno, slotBloccatoDaChiusura
+  chiusureDelGiorno, slotBloccatoDaChiusura, formattaDataEstesa
 } from './orari.js';
 import {
   emailConfermaPaziente, emailNuovaPrenotazioneAdmin,
@@ -297,8 +298,9 @@ export function creaPrenotazione(datiGrezzi, { forza = false, confermata = false
     return prenotazione;
   });
 
+  let prenotazione;
   try {
-    return transazione();
+    prenotazione = transazione();
   } catch (err) {
     // Violazione dell'indice unico: due pazienti hanno scelto lo stesso slot
     // nello stesso istante. Il database ne fa passare uno solo.
@@ -307,6 +309,20 @@ export function creaPrenotazione(datiGrezzi, { forza = false, confermata = false
     }
     throw err;
   }
+
+  // Solo la richiesta ancora da vedere avvisa lo studio sul dispositivo: una
+  // prenotazione nata gia' confermata (dal pannello) l'ha appena scritta lo
+  // studio stesso, e avvisarlo di quello che ha appena fatto non serve.
+  if (!nasceConfermata) {
+    push.notificaStaff({
+      titolo: 'Nuova richiesta di visita',
+      corpo: `${prenotazione.paziente_nome} ${prenotazione.paziente_cognome} — `
+        + `${formattaDataEstesa(prenotazione.data)} alle ${prenotazione.ora_inizio}`,
+      url: '/admin.html#prenotazioni'
+    });
+  }
+
+  return prenotazione;
 }
 
 const SELECT_COMPLETO = `
@@ -403,8 +419,9 @@ export function confermaPrenotazione(codice, chi = null, correzioni = {}, { forz
     return aggiornata;
   });
 
+  let aggiornata;
   try {
-    return transazione();
+    aggiornata = transazione();
   } catch (err) {
     if (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || /UNIQUE constraint/i.test(err.message)) {
       throw new ErroreDominio(
@@ -412,6 +429,14 @@ export function confermaPrenotazione(codice, chi = null, correzioni = {}, { forz
     }
     throw err;
   }
+
+  push.notificaPaziente(aggiornata.paziente_id, {
+    titolo: cambiata ? 'Visita confermata con una modifica' : 'Visita confermata',
+    corpo: `${formattaDataEstesa(aggiornata.data)} alle ${aggiornata.ora_inizio} — ${aggiornata.ambulatorio_nome}`,
+    url: '/'
+  });
+
+  return aggiornata;
 }
 
 /**
@@ -446,7 +471,13 @@ export function rifiutaPrenotazione(codice, motivo, chi = null) {
     return aggiornata;
   });
 
-  return transazione();
+  const aggiornata = transazione();
+  push.notificaPaziente(aggiornata.paziente_id, {
+    titolo: 'Richiesta di visita non accolta',
+    corpo: `${formattaDataEstesa(aggiornata.data)} alle ${aggiornata.ora_inizio}`,
+    url: '/'
+  });
+  return aggiornata;
 }
 
 export function annullaPrenotazione(codice, { da = 'paziente', chi = null } = {}) {
@@ -544,8 +575,9 @@ export function riprogramma(codice, correzioni = {}, chi = null, { forza = false
     return aggiornata;
   });
 
+  let aggiornata;
   try {
-    return transazione();
+    aggiornata = transazione();
   } catch (err) {
     if (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || /UNIQUE constraint/i.test(err.message)) {
       throw new ErroreDominio(
@@ -553,6 +585,14 @@ export function riprogramma(codice, correzioni = {}, chi = null, { forza = false
     }
     throw err;
   }
+
+  push.notificaPaziente(aggiornata.paziente_id, {
+    titolo: 'Appuntamento spostato',
+    corpo: `Adesso è ${formattaDataEstesa(aggiornata.data)} alle ${aggiornata.ora_inizio} — ${aggiornata.ambulatorio_nome}`,
+    url: '/'
+  });
+
+  return aggiornata;
 }
 
 export function elencoAdmin({ dal, al, stato, ambulatorio_id, cerca, pagina = 1, perPagina = 50 } = {}) {

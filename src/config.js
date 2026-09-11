@@ -96,6 +96,18 @@ export const config = {
     }
   },
 
+  // Notifiche push sul dispositivo (telefono o computer), oltre alle email.
+  // La coppia di chiavi si genera una volta sola e resta la stessa per sempre:
+  // cambiarla scollega di colpo tutti i dispositivi gia' iscritti, che
+  // dovrebbero riattivare le notifiche da capo.
+  vapid: {
+    publicKey: (process.env.VAPID_PUBLIC_KEY || '').trim(),
+    privateKey: (process.env.VAPID_PRIVATE_KEY || '').trim(),
+    get enabled() {
+      return Boolean(this.publicKey && this.privateKey);
+    }
+  },
+
   dbFile: FILE_ARCHIVIO,
 
   // Dove finiscono le copie di sicurezza. Il valore predefinito le tiene accanto

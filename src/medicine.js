@@ -1,5 +1,6 @@
 import { db } from './db.js';
 import { accoda, avvisoAncoraInCoda } from './outbox.js';
+import * as push from './push.js';
 import { trovaAmbulatorio } from './orari.js';
 import {
   ErroreDominio, generaCodice, trovaOCreaPaziente, telefonoValido, emailValida
@@ -183,7 +184,13 @@ export function creaRichiesta(dati) {
     return richiesta;
   });
 
-  return transazione();
+  const richiesta = transazione();
+  push.notificaStaff({
+    titolo: `Nuova richiesta di ${TIPI[tipo].cosaChiede}`,
+    corpo: `${richiesta.nome} ${richiesta.cognome} — ${richiesta.codice}`,
+    url: '/admin.html#medicine'
+  });
+  return richiesta;
 }
 
 /**
@@ -436,7 +443,7 @@ export const abitualiDelPaziente = (pazienteId) => db.prepare(`
 /** Va bene cosi' come l'ha chiesta il paziente. */
 export function conferma(codice, chi = null, { numeroRicetta = null } = {}) {
   const richiesta = daGestire(codice, ['nuova']);
-  return db.transaction(() => {
+  const aggiornata = db.transaction(() => {
     const aggiornata = applica(richiesta, {
       stato: 'confermata',
       numero_ricetta: testoPulito(numeroRicetta, 40) || null,
@@ -446,12 +453,18 @@ export function conferma(codice, chi = null, { numeroRicetta = null } = {}) {
     avvisa(aggiornata, emailMedicinaConfermata);
     return aggiornata;
   })();
+  push.notificaPaziente(aggiornata.paziente_id, {
+    titolo: 'Richiesta approvata',
+    corpo: `La sua richiesta di ${TIPI[aggiornata.tipo].cosaChiede} è stata approvata — ${aggiornata.codice}`,
+    url: '/'
+  });
+  return aggiornata;
 }
 
 /** Non si puo' fare. Il motivo finisce nell'email: un no secco non aiuta nessuno. */
 export function rifiuta(codice, motivo, chi = null) {
   const richiesta = daGestire(codice, ['nuova']);
-  return db.transaction(() => {
+  const aggiornata = db.transaction(() => {
     const aggiornata = applica(
       richiesta,
       { stato: 'rifiutata', motivo_rifiuto: testoPulito(motivo, 300) || null },
@@ -460,6 +473,12 @@ export function rifiuta(codice, motivo, chi = null) {
     avvisa(aggiornata, emailMedicinaRifiutata);
     return aggiornata;
   })();
+  push.notificaPaziente(aggiornata.paziente_id, {
+    titolo: 'Richiesta non accolta',
+    corpo: `La sua richiesta di ${TIPI[aggiornata.tipo].cosaChiede} non è stata accolta — ${aggiornata.codice}`,
+    url: '/'
+  });
+  return aggiornata;
 }
 
 /**

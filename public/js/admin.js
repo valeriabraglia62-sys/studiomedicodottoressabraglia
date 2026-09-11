@@ -5,6 +5,7 @@
  */
 
 import { montaChat } from './chat.js';
+import { collegaNotifiche } from './push-client.js';
 
 const $ = (sel, dove = document) => dove.querySelector(sel);
 const $$ = (sel, dove = document) => [...dove.querySelectorAll(sel)];
@@ -364,6 +365,7 @@ function collegaCambioPassword() {
       avvisa('Password aggiornata. Da adesso la conosci solo tu.', 'ok');
       mostraPannello(utenteAttivo);
       await riempiAmbulatori();
+      collegaNotifiche($('#btn-notifiche'), api);
       apriScheda('riepilogo');
     } catch (err) {
       errore.classList.add('errore');
@@ -2101,6 +2103,7 @@ async function avvia() {
     mostraPannello(utente);
     if (utente?.deve_cambiare_password) return;
     await riempiAmbulatori();
+    collegaNotifiche($('#btn-notifiche'), api);
     apriScheda(location.hash.slice(1) || 'riepilogo');
   } catch {
     esci();

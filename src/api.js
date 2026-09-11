@@ -19,6 +19,7 @@ import * as attesa from './attesa.js';
 import * as chiusure from './chiusure.js';
 import * as statistiche from './statistiche.js';
 import * as utenti from './utenti.js';
+import * as push from './push.js';
 import { eseguiBackup, statoBackup } from './backup.js';
 import { statoCoda, riprovaTutto, accoda } from './outbox.js';
 import {
@@ -467,6 +468,28 @@ router.post('/auth/logout', (req, res) => {
 router.get('/auth/me', (req, res) => {
   if (!req.utente) return res.status(401).json({ success: false, message: 'Sessione scaduta.' });
   ok(res, { utente: req.utente });
+});
+
+// ---- Notifiche sul dispositivo ---------------------------------------------
+//
+// Un canale in piu' oltre all'email, per chi accende il permesso dal browser.
+// La chiave pubblica e' dati, non un segreto: serve al browser per iscriversi
+// ed e' fatta apposta per essere incollata nel codice del client.
+
+router.get('/push/chiave-pubblica', (_req, res) => {
+  const chiave = push.chiavePubblica();
+  if (!chiave) return res.status(404).json({ success: false, message: 'Notifiche non configurate.' });
+  ok(res, { chiave });
+});
+
+router.post('/push/iscrivi', richiedeAccount, (req, res) => {
+  push.iscrivi(req.utente.id, req.body?.iscrizione);
+  ok(res, {});
+});
+
+router.post('/push/disiscrivi', richiedeAccount, (req, res) => {
+  push.disiscrivi(req.body?.endpoint);
+  ok(res, {});
 });
 
 router.get('/paziente/prenotazioni', richiedePaziente, (req, res) =>

@@ -4,6 +4,7 @@
  */
 
 import { montaChat } from './chat.js';
+import { collegaNotifiche } from './push-client.js';
 
 const $ = (sel, dove = document) => dove.querySelector(sel);
 const $$ = (sel, dove = document) => [...dove.querySelectorAll(sel)];
@@ -992,6 +993,7 @@ async function entraNelSito(utente) {
   collegaFormMedicine();
   collegaFormRicerca();
   collegaChat();
+  collegaNotifiche($('#btn-notifiche'), api);
 
   $('#mese-precedente').addEventListener('click', () => cambiaMese(-1));
   $('#mese-successivo').addEventListener('click', () => cambiaMese(1));
