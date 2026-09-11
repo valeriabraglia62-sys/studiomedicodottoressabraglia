@@ -64,18 +64,22 @@
   \node[anchor=north west, text=white, align=left, font=\bfseries\rmfamily\fontsize{30}{34}\selectfont]
     at (0.7,13.95) {Prenota online,\\[2pt]senza telefonare.};
 
-  % Sottotitolo
+  % Sottotitolo — una riga sola adesso: la seconda ("sempre aperto, anche di
+  % notte") ha lasciato il posto alla pillola con l'indirizzo, spostata più
+  % in alto per stare proprio li'.
   \node[anchor=north west, text=white!88!studioteal, align=left, font=\sffamily\fontsize{13}{16}\selectfont]
-    at (0.7,11.55) {Ambulatori di Arceto e Casalgrande\\sempre aperto, anche di notte};
+    at (0.7,11.55) {Ambulatori di Arceto e Casalgrande};
 
-  % ---- Pillola con l'indirizzo del sito, a cavallo del bordo -------------
+  % ---- Pillola con l'indirizzo del sito, dentro la fascia teal -----------
   \node[
     draw=studioteal, line width=1.4pt, fill=white, rounded corners=0.6cm,
     inner xsep=0.55cm, inner ysep=0.30cm,
     font=\bfseries\sffamily\fontsize{13}{15}\selectfont, text=studioteal
-  ] at (\larghezza/2,10.05) {studiomedicobragliavaleria.it};
+  ] at (\larghezza/2,10.85) {studiomedicobragliavaleria.it};
 
-  % ---- Le quattro funzioni -------------------------------------------------
+  % ---- Le cinque funzioni ---------------------------------------------------
+  % "Registrati" per prima, subito sotto la pillola dell'indirizzo: e' il
+  % passo prima di tutti gli altri.
   \def\riga#1#2#3{%
     % #1 = coordinata y del centro dell'icona, #2 = titolo, #3 = descrizione
     \node[fill=studioteal, rounded corners=0.16cm, minimum width=1.05cm, minimum height=1.05cm]
@@ -86,31 +90,37 @@
       at (1.95,#1-0.02) {#3};
   }
 
-  \riga{8.55}{Prenota una visita}{Scegli ambulatorio, giorno e orario\\dal calendario}
-  \riga{6.85}{Richiedi ricette e impegnative}{Medicinali, visite specialistiche,\\esami del sangue}
-  \riga{5.15}{Ricevi un avviso}{Una notifica quando la tua\\richiesta è pronta}
-  \riga{3.45}{Installa il sito come app}{Un'icona sul telefono, gratis,\\senza App Store}
+  \riga{9.30}{Registrati}{Crea il tuo account in un minuto}
+  \riga{7.70}{Prenota una visita}{Scegli ambulatorio, giorno e orario\\dal calendario}
+  \riga{6.10}{Richiedi ricette e impegnative}{Medicinali, visite specialistiche,\\esami del sangue}
+  \riga{4.50}{Ricevi un avviso}{Una notifica quando la tua\\richiesta è pronta}
+  \riga{2.90}{Installa il sito come app}{Un'icona sul telefono, gratis,\\senza App Store}
 
   % Icone (linee bianche sopra i quadratini teal disegnati da \riga)
+  % Persona (registrati)
+  \begin{scope}[shift={(1.15,9.30)}, white, line width=1.1pt, line cap=round, line join=round]
+    \draw (0,0.10) circle (0.135);
+    \draw (-0.26,-0.30) arc (180:360:0.26cm and 0.20cm);
+  \end{scope}
   % Calendario
-  \begin{scope}[shift={(1.15,8.55)}, white, line width=1.1pt, line cap=round, line join=round]
+  \begin{scope}[shift={(1.15,7.70)}, white, line width=1.1pt, line cap=round, line join=round]
     \draw (-0.30,-0.28) rectangle (0.30,0.28);
     \draw (-0.30,0.10) -- (0.30,0.10);
     \draw (-0.14,0.28) -- (-0.14,0.38);
     \draw (0.14,0.28) -- (0.14,0.38);
   \end{scope}
   % Capsula (medicinale)
-  \begin{scope}[shift={(1.15,6.85)}, rotate=45]
+  \begin{scope}[shift={(1.15,6.10)}, rotate=45]
     \draw[white, line width=1.1pt, rounded corners=0.14cm] (-0.34,-0.15) rectangle (0.34,0.15);
     \draw[white, line width=1.1pt] (-0.02,-0.15) -- (-0.02,0.15);
   \end{scope}
   % Campanella (notifica)
-  \begin{scope}[shift={(1.15,5.15)}, white, line width=1.1pt, line cap=round, line join=round]
+  \begin{scope}[shift={(1.15,4.50)}, white, line width=1.1pt, line cap=round, line join=round]
     \draw (-0.24,-0.05) arc (200:-20:0.26cm) -- (0.30,-0.05) -- (-0.30,-0.05) -- cycle;
     \draw (-0.08,-0.22) arc (180:360:0.08cm);
   \end{scope}
   % Telefono (installa)
-  \begin{scope}[shift={(1.15,3.45)}, white, line width=1.1pt, line cap=round, line join=round,
+  \begin{scope}[shift={(1.15,2.90)}, white, line width=1.1pt, line cap=round, line join=round,
                 rounded corners=0.07cm]
     \draw (-0.20,-0.36) rectangle (0.20,0.36);
     \draw (-0.08,0.26) -- (0.08,0.26);
@@ -120,10 +130,10 @@
   \node[
     fill=studioteal, rounded corners=0.55cm, inner xsep=0.7cm, inner ysep=0.38cm,
     font=\bfseries\rmfamily\fontsize{16}{19}\selectfont, text=white
-  ] (cta) at (\larghezza/2,1.55) {Scopri il sito \ $\rightarrow$};
+  ] (cta) at (\larghezza/2,1.35) {Scopri il sito \ $\rightarrow$};
 
   \node[anchor=north, text=studiogrigio, font=\sffamily\fontsize{10.5}{13}\selectfont]
-    at (\larghezza/2,0.85) {studiomedicobragliavaleria.it};
+    at (\larghezza/2,0.65) {studiomedicobragliavaleria.it};
 
 \end{tikzpicture}
 \end{document}
