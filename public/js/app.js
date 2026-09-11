@@ -78,6 +78,7 @@ function collegaAccessoPaziente() {
     $('#form-registra-paziente').hidden = quale !== 'registra';
     $('#form-password-dimenticata').hidden = quale !== 'password-dimenticata';
     $('#form-reset-password').hidden = quale !== 'reset-password';
+    $('#form-email-dimenticata').hidden = quale !== 'email-dimenticata';
     statoAccount.hidden = true;
   };
   $('#vai-registra').addEventListener('click', (e) => { e.preventDefault(); mostraModulo('registra'); });
@@ -85,6 +86,10 @@ function collegaAccessoPaziente() {
   $('#vai-password-dimenticata').addEventListener('click',
     (e) => { e.preventDefault(); mostraModulo('password-dimenticata'); });
   $('#vai-login-da-dimenticata').addEventListener('click',
+    (e) => { e.preventDefault(); mostraModulo('login'); });
+  $('#vai-email-dimenticata').addEventListener('click',
+    (e) => { e.preventDefault(); mostraModulo('email-dimenticata'); });
+  $('#vai-login-da-email-dimenticata').addEventListener('click',
     (e) => { e.preventDefault(); mostraModulo('login'); });
 
   // Link dal sito Reimposta password: /?reset=<token>. Il token resta solo in
@@ -117,6 +122,19 @@ function collegaAccessoPaziente() {
       form.reset();
       mostraModulo('login');
       mostraStato('Password reimpostata. Accedi con quella nuova.', 'ok');
+    });
+  });
+
+  $('#form-email-dimenticata').addEventListener('submit', (evento) => {
+    evento.preventDefault();
+    const form = evento.currentTarget;
+    inviaProtetto(form, async () => {
+      const dati = await api('/auth/email/dimenticata', { method: 'POST', body: datiModulo(form) });
+      form.reset();
+      mostraModulo('login');
+      mostraStato(dati.message
+        || 'Se il numero corrisponde a un account, ti abbiamo mandato un promemoria all\'indirizzo collegato.',
+        'ok');
     });
   });
 

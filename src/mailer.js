@@ -451,6 +451,21 @@ export const emailRegistrazioneEsistente = ({ to, nome }) => componiEmail({
     'Se non sei stato tu, puoi ignorare questo messaggio.'
 });
 
+/**
+ * "Non ricordo l'email": la risposta al telefono che l'ha chiesta. Arriva
+ * solo qui, nella casella vera — mai mostrata sullo schermo di chi l'ha
+ * chiesta, altrimenti basterebbe sapere il numero di qualcuno per scoprire il
+ * suo indirizzo.
+ */
+export const emailPromemoriaIndirizzo = ({ to, nome }) => componiEmail({
+  to,
+  subject: 'Il tuo indirizzo per accedere al sito',
+  titolo: 'Il tuo indirizzo di accesso',
+  intro: `Gentile ${esc(nome || '')}, hai chiesto un promemoria dell'indirizzo con cui accedi ` +
+    `al sito. È questo: ${esc(to)}.`,
+  chiusura: 'Se non sei stato tu a chiederlo, ignora questo messaggio: il tuo account resta invariato.'
+});
+
 export const emailIndirizzoCambiato = ({ to, nuovo }) => componiEmail({
   to,
   subject: 'Il tuo indirizzo di accesso è stato cambiato',

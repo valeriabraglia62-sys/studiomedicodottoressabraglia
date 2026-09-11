@@ -101,10 +101,8 @@
       <p class="piccolo tenue" style="margin:.7rem 0 0">
         Non hai un account? <a href="#" id="vai-registra">Crea account</a><br>
         Password dimenticata? <a href="#" id="vai-password-dimenticata">Reimpostala</a><br>
-        Non hai ricevuto l'email di conferma? <a href="#" id="rinvia-verifica">Rinvia il link</a>
-      </p>
-      <p class="piccolo tenue" style="margin:.6rem 0 0">
-        Non ricordi con quale email ti sei registrato? Contatta lo studio: te lo diciamo noi.
+        Non hai ricevuto l'email di conferma? <a href="#" id="rinvia-verifica">Rinvia il link</a><br>
+        Non ricordi l'email? <a href="#" id="vai-email-dimenticata">Recuperala</a>
       </p>
     </form>
 
@@ -119,6 +117,21 @@
       <button class="bottone largo" type="submit">Invia il link</button>
       <p class="piccolo tenue" style="margin:.7rem 0 0">
         <a href="#" id="vai-login-da-dimenticata">Torna all'accesso</a>
+      </p>
+    </form>
+
+    <form id="form-email-dimenticata" class="carta" hidden>
+      <h3>Non ricordo l'email</h3>
+      <p class="piccolo tenue">
+        Scrivi il numero di telefono che hai usato in fase di registrazione: se corrisponde a un
+        account, mandiamo un promemoria dell'indirizzo all'email collegata (non qui a schermo,
+        per sicurezza).
+      </p>
+      <div class="campo"><label for="dimenticata-telefono">Telefono</label>
+        <input id="dimenticata-telefono" name="telefono" type="tel" autocomplete="tel" required></div>
+      <button class="bottone largo" type="submit">Invia il promemoria</button>
+      <p class="piccolo tenue" style="margin:.7rem 0 0">
+        <a href="#" id="vai-login-da-email-dimenticata">Torna all'accesso</a>
       </p>
     </form>
 

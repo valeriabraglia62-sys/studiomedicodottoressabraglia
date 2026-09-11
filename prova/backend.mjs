@@ -1637,6 +1637,41 @@ console.log('\nPassword dimenticata (il paziente da solo)');
   verifica('lo stesso link non si può riusare', riusato.stato === 400);
 }
 
+console.log('\nEmail dimenticata: il telefono come indizio, mai l\'indirizzo sullo schermo');
+{
+  const reg = registraPazienteDiretto({
+    nome: 'Smemorato', cognome: 'DelTelefono', telefono: '3339990040',
+    email: 'smemorato.deltelefono@example.it', password: 'PasswordQualsiasi26!'
+  });
+  verificaEmailDiretto(reg.token);
+
+  const conMatch = await chiama('POST', '/api/auth/email/dimenticata', { telefono: '333 999 0040' });
+  const senzaMatch = await chiama('POST', '/api/auth/email/dimenticata', { telefono: '3339990041' });
+  verifica('la risposta e\' identica che il telefono corrisponda o no',
+    conMatch.stato === senzaMatch.stato && conMatch.dati.message === senzaMatch.dati.message,
+    JSON.stringify([conMatch.dati, senzaMatch.dati]));
+  verifica('l\'indirizzo email non compare mai nella risposta',
+    !JSON.stringify(conMatch.dati).includes('smemorato.deltelefono'));
+
+  const ultima = db.prepare("SELECT payload FROM outbox WHERE tipo = 'email' ORDER BY id DESC LIMIT 1").get();
+  const payload = JSON.parse(ultima.payload);
+  verifica('il promemoria e\' stato messo in coda verso l\'indirizzo vero',
+    payload.to === 'smemorato.deltelefono@example.it', payload.to);
+
+  // Due account diversi con lo stesso telefono (un numero di famiglia): non
+  // si sceglie a caso chi avvisare, si risponde come se non ci fosse nessuno.
+  const reg2 = registraPazienteDiretto({
+    nome: 'Secondo', cognome: 'StessoTelefono', telefono: '3339990040',
+    email: 'secondo.stessotelefono@example.it', password: 'PasswordQualsiasi26!'
+  });
+  verificaEmailDiretto(reg2.token);
+  const primaCoda = db.prepare("SELECT COUNT(*) n FROM outbox").get().n;
+  const ambiguo = await chiama('POST', '/api/auth/email/dimenticata', { telefono: '3339990040' });
+  const dopoCoda = db.prepare("SELECT COUNT(*) n FROM outbox").get().n;
+  verifica('un telefono ambiguo (due account) non manda niente a nessuno',
+    ambiguo.stato === 200 && dopoCoda === primaCoda, `coda prima ${primaCoda}, dopo ${dopoCoda}`);
+}
+
 console.log('\nLo staff corregge i dati di un paziente e gli reimposta la password');
 {
   const reg = registraPazienteDiretto({

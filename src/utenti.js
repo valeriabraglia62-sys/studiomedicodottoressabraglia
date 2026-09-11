@@ -250,6 +250,31 @@ export function preparaRinvioVerifica(email) {
   return { utente: pubblico(u), token };
 }
 
+/**
+ * "Non ricordo l'email": l'unico indizio che si puo' dare senza gia' sapere
+ * l'indirizzo e' il telefono. Non lo si dice mai a chi chiede: l'email parte
+ * verso l'indirizzo registrato e basta, e solo il titolare di quella casella
+ * scopre qualcosa — chi ha solo indovinato un numero non impara nulla,
+ * nemmeno se corrisponde davvero a un paziente.
+ *
+ * Se il telefono risulta su piu' di un account verificato (un numero di
+ * famiglia usato da due persone diverse), non si sceglie a caso chi avvisare:
+ * si risponde come se non ci fosse nessuna corrispondenza. Indovinare quale
+ * dei due sarebbe un azzardo su un archivio sanitario.
+ */
+export function richiediPromemoriaEmail(telefono) {
+  const numero = pulisciTelefono(telefono);
+  if (!numero) return null;
+  const trovati = db.prepare(`
+    SELECT u.* FROM utenti u
+    JOIN pazienti p ON p.id = u.paziente_id
+    WHERE u.ruolo = 'paziente' AND u.email_verificata = 1
+      AND replace(replace(replace(replace(replace(
+        p.telefono, ' ', ''), '.', ''), '-', ''), '(', ''), ')', '') = ?
+  `).all(numero);
+  return trovati.length === 1 ? { utente: pubblico(trovati[0]) } : null;
+}
+
 const ORE_VALIDITA_RESET = 2;
 
 /**

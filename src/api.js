@@ -25,7 +25,7 @@ import { statoCoda, riprovaTutto, accoda } from './outbox.js';
 import {
   verificaConnessioneEmail, emailVerificaPaziente, emailIndirizzoCambiato,
   emailRegistrazioneEsistente, emailResetPasswordPaziente, emailPasswordPazienteRipristinata,
-  emailDatiPazienteAggiornatiDalloStudio
+  emailDatiPazienteAggiornatiDalloStudio, emailPromemoriaIndirizzo
 } from './mailer.js';
 import { linkGoogleCalendar } from './evento.js';
 
@@ -411,6 +411,14 @@ router.post('/auth/password/dimenticata', limiteRegistrazione, (req, res) => {
 router.post('/auth/password/reset', limiteRegistrazione, (req, res) => {
   utenti.confermaResetPassword(req.body?.token, req.body?.nuova);
   ok(res, { message: 'Password reimpostata. Ora puoi accedere con quella nuova.' });
+});
+
+router.post('/auth/email/dimenticata', limiteRegistrazione, (req, res) => {
+  const esito = utenti.richiediPromemoriaEmail(req.body?.telefono);
+  if (esito) accoda('email', emailPromemoriaIndirizzo({ to: esito.utente.email, nome: esito.utente.nome }));
+  // Stessa risposta sempre: ne' se il numero corrisponde a un account, ne'
+  // quale sia l'indirizzo, trapela da qui.
+  ok(res, { message: 'Se il numero corrisponde a un account, ti abbiamo mandato un promemoria all\'indirizzo collegato.' });
 });
 
 router.post('/auth/login', limiteLogin, via(async (req, res) => {
