@@ -64,22 +64,61 @@ function collegaAccessoPaziente() {
   };
 
   // Ritorno dal link di verifica: /?email=verificata oppure /?email=nonvalida
-  const esitoVerifica = new URLSearchParams(location.search).get('email');
+  const parametri = new URLSearchParams(location.search);
+  const esitoVerifica = parametri.get('email');
   if (esitoVerifica === 'verificata') {
     mostraStato('Indirizzo confermato. Ora puoi accedere con la tua email e password.', 'ok');
   } else if (esitoVerifica === 'nonvalida') {
     mostraStato('Link di verifica non valido o scaduto. Richiedine uno nuovo qui sotto.', 'errore');
   }
-  if (esitoVerifica) history.replaceState(null, '', location.pathname + location.hash);
 
-  // Un solo modulo per volta: "Crea account" / "Torna all'accesso".
+  // Un solo modulo per volta.
   const mostraModulo = (quale) => {
     $('#form-login-paziente').hidden = quale !== 'login';
     $('#form-registra-paziente').hidden = quale !== 'registra';
+    $('#form-password-dimenticata').hidden = quale !== 'password-dimenticata';
+    $('#form-reset-password').hidden = quale !== 'reset-password';
     statoAccount.hidden = true;
   };
   $('#vai-registra').addEventListener('click', (e) => { e.preventDefault(); mostraModulo('registra'); });
   $('#vai-login').addEventListener('click', (e) => { e.preventDefault(); mostraModulo('login'); });
+  $('#vai-password-dimenticata').addEventListener('click',
+    (e) => { e.preventDefault(); mostraModulo('password-dimenticata'); });
+  $('#vai-login-da-dimenticata').addEventListener('click',
+    (e) => { e.preventDefault(); mostraModulo('login'); });
+
+  // Link dal sito Reimposta password: /?reset=<token>. Il token resta solo in
+  // memoria, mai riscritto nell'indirizzo: e' un segreto monouso, non deve
+  // restare nella cronologia del browser ne' finire in uno screenshot condiviso.
+  const tokenReset = parametri.get('reset');
+  if (tokenReset) mostraModulo('reset-password'); else if (esitoVerifica) mostraModulo('login');
+  if (esitoVerifica || tokenReset) history.replaceState(null, '', location.pathname + location.hash);
+
+  $('#form-password-dimenticata').addEventListener('submit', (evento) => {
+    evento.preventDefault();
+    const form = evento.currentTarget;
+    inviaProtetto(form, async () => {
+      const dati = await api('/auth/password/dimenticata', { method: 'POST', body: datiModulo(form) });
+      form.reset();
+      mostraModulo('login');
+      mostraStato(dati.message
+        || 'Se l\'indirizzo corrisponde a un account, ti abbiamo inviato un\'email per reimpostare la password.',
+        'ok');
+    });
+  });
+
+  $('#form-reset-password').addEventListener('submit', (evento) => {
+    evento.preventDefault();
+    const form = evento.currentTarget;
+    inviaProtetto(form, async () => {
+      await api('/auth/password/reset', {
+        method: 'POST', body: { token: tokenReset, nuova: $('#reset-password').value }
+      });
+      form.reset();
+      mostraModulo('login');
+      mostraStato('Password reimpostata. Accedi con quella nuova.', 'ok');
+    });
+  });
 
   $('#form-login-paziente').addEventListener('submit', (evento) => {
     evento.preventDefault();

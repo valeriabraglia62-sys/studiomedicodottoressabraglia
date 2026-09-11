@@ -182,14 +182,15 @@ a { color: var(--verde); }
 /* Una alla volta (la mostra/nasconde js/app.js): ognuna prende tutta
    l'altezza dello schermo invece di stare impilata e schiacciata fra le
    altre. 100dvh conta l'altezza vera su telefono, senza le barre del
-   browser che vanno e vengono; dove manca il supporto resta 100vh. */
+   browser che vanno e vengono; dove manca il supporto resta 100vh.
+   Il contenuto parte dall'alto (niente centratura verticale): sezioni corte
+   come "Ambulatori" altrimenti avrebbero il titolo piu' in basso di quelle
+   piene come "Prenota", e sembrerebbero disallineate fra loro. */
 .sezione {
   padding: 3rem 0;
   min-height: 100vh;
   min-height: 100dvh;
   box-sizing: border-box;
-  display: flex;
-  align-items: center;
 }
 .sezione > .contenitore > header { margin-bottom: 1.75rem; max-width: 60ch; }
 

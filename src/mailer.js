@@ -447,7 +447,7 @@ export const emailRegistrazioneEsistente = ({ to, nome }) => componiEmail({
   intro: `Gentile ${esc(nome || '')}, qualcuno ha provato a registrarsi sul sito ` +
     'con questo indirizzo, che però ha già un account.',
   chiusura: 'Se sei stato tu, accedi con la tua password: non serve registrarsi di nuovo. ' +
-    'Se hai dimenticato la password usa "Rinvia il link" dalla pagina di accesso. ' +
+    'Se hai dimenticato la password usa "Password dimenticata?" dalla pagina di accesso. ' +
     'Se non sei stato tu, puoi ignorare questo messaggio.'
 });
 
@@ -459,6 +459,51 @@ export const emailIndirizzoCambiato = ({ to, nuovo }) => componiEmail({
     'Da ora usa quella per entrare.',
   chiusura: 'Se non sei stato tu a farlo, contatta subito lo studio: qualcuno ' +
     'potrebbe aver avuto accesso al tuo account.'
+});
+
+/**
+ * "Password dimenticata": arriva a chi la chiede, sempre — se l'indirizzo non
+ * corrisponde a un account, semplicemente non parte, e chi ha chiesto vede la
+ * stessa risposta di chi ce l'ha. Il link vale 2 ore, non 24: chi lo chiede e'
+ * fuori dal proprio account adesso, non sta aspettando comodo.
+ */
+export const emailResetPasswordPaziente = ({ to, nome, url }) => componiEmail({
+  to,
+  subject: 'Reimposta la tua password',
+  titolo: 'Reimposta la tua password',
+  intro: `Gentile ${esc(nome || '')}, qualcuno ha chiesto di reimpostare la password di questo account.`,
+  righe: [['Validità del link', '2 ore']],
+  azione: { testo: 'Scegli una nuova password', url },
+  chiusura: 'Se non sei stato tu, ignora questo messaggio: la tua password resta quella di sempre.'
+});
+
+/**
+ * Lo studio ha generato una password provvisoria per un paziente che non
+ * riusciva ad accedere — la stessa procedura di chi lavora nello studio, solo
+ * che qui la password parte per email invece che essere consegnata a voce.
+ */
+export const emailPasswordPazienteRipristinata = ({ to, nome, passwordProvvisoria }) => componiEmail({
+  to,
+  subject: 'La tua password è stata reimpostata',
+  titolo: 'Nuova password provvisoria',
+  intro: `Gentile ${esc(nome || '')}, lo studio ha reimpostato la password del tuo account su tua richiesta.`,
+  righe: [['Password provvisoria', passwordProvvisoria]],
+  chiusura: 'Accedi con questa password, poi cambiala subito da "Modifica account" con una che ricordi solo tu. ' +
+    'Se non hai chiesto tu questo cambio, contatta subito lo studio.'
+});
+
+/**
+ * Lo studio ha corretto nome, cognome o telefono dalla scheda del paziente.
+ * L'email che cambia ha gia' la sua: qui basta un avviso, non serve altro da
+ * confermare — non e' una credenziale, e' un'anagrafica.
+ */
+export const emailDatiPazienteAggiornatiDalloStudio = ({ to, nome }) => componiEmail({
+  to,
+  subject: 'I tuoi dati sono stati aggiornati',
+  titolo: 'Dati aggiornati',
+  intro: `Gentile ${esc(nome || '')}, lo studio ha aggiornato i tuoi dati anagrafici ` +
+    '(nome, cognome o telefono) sulla tua scheda.',
+  chiusura: 'Se qualcosa non ti risulta corretto, contatta lo studio.'
 });
 
 export const emailAttesaRegistrata = (v) => componiEmail({

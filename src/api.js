@@ -24,7 +24,8 @@ import { eseguiBackup, statoBackup } from './backup.js';
 import { statoCoda, riprovaTutto, accoda } from './outbox.js';
 import {
   verificaConnessioneEmail, emailVerificaPaziente, emailIndirizzoCambiato,
-  emailRegistrazioneEsistente
+  emailRegistrazioneEsistente, emailResetPasswordPaziente, emailPasswordPazienteRipristinata,
+  emailDatiPazienteAggiornatiDalloStudio
 } from './mailer.js';
 import { linkGoogleCalendar } from './evento.js';
 
@@ -349,6 +350,11 @@ const basePubblica = () =>
   config.pubblico.url || `http://localhost:${config.port}`;
 const linkVerificaEmail = (token) =>
   `${basePubblica()}/api/auth/verifica-email?token=${encodeURIComponent(token)}`;
+// Qui il link porta al sito, non a una rotta del server: scegliere la nuova
+// password e' un gesto che serve una pagina, non un redirect secco come la
+// verifica dell'email.
+const linkResetPassword = (token) =>
+  `${basePubblica()}/?reset=${encodeURIComponent(token)}`;
 
 router.post('/auth/register', limiteRegistrazione, (req, res) => {
   const esito = utenti.registraPaziente(req.body || {});
@@ -388,6 +394,23 @@ router.post('/auth/verifica-email/rinvia', limiteRegistrazione, (req, res) => {
   }
   // Risposta uguale in ogni caso: non si rivela se l'account esiste.
   ok(res, { message: 'Se l\'indirizzo corrisponde a un account da confermare, l\'email è ripartita.' });
+});
+
+router.post('/auth/password/dimenticata', limiteRegistrazione, (req, res) => {
+  const esito = utenti.preparaResetPassword(req.body?.email);
+  if (esito) {
+    accoda('email', emailResetPasswordPaziente({
+      to: esito.utente.email, nome: esito.utente.nome, url: linkResetPassword(esito.token)
+    }));
+  }
+  // Stessa risposta indipendentemente dal fatto che l'account esista: chi
+  // prova a scoprire quali email sono nostre pazienti non ottiene nulla.
+  ok(res, { message: 'Se l\'indirizzo corrisponde a un account, ti abbiamo inviato un\'email per reimpostare la password.' });
+});
+
+router.post('/auth/password/reset', limiteRegistrazione, (req, res) => {
+  utenti.confermaResetPassword(req.body?.token, req.body?.nuova);
+  ok(res, { message: 'Password reimpostata. Ora puoi accedere con quella nuova.' });
 });
 
 router.post('/auth/login', limiteLogin, via(async (req, res) => {
@@ -703,6 +726,31 @@ admin.get('/pazienti', (req, res) => ok(res, {
     dimessi: req.query.dimessi === '1'
   })
 }));
+
+/**
+ * Nome, cognome, telefono, email, password: identita' e credenziali, non
+ * dati clinici. Per questo le corregge chiunque lavori nello studio, medico o
+ * segreteria — a differenza del fascicolo completo, riservato al medico.
+ */
+admin.patch('/pazienti/:id/profilo', (req, res) => {
+  const esito = utenti.aggiornaProfiloPazienteDaStaff(req.params.id, req.body || {});
+  if (esito.emailCambiata && esito.emailVecchia) {
+    accoda('email', emailIndirizzoCambiato({ to: esito.emailVecchia, nuovo: esito.profilo.email }));
+  } else if (esito.haAccesso && esito.profilo.email) {
+    accoda('email', emailDatiPazienteAggiornatiDalloStudio({
+      to: esito.profilo.email, nome: esito.profilo.nome
+    }));
+  }
+  ok(res, { profilo: esito.profilo, emailCambiata: esito.emailCambiata });
+});
+
+admin.post('/pazienti/:id/password', (req, res) => {
+  const esito = utenti.resettaPasswordPazienteDaStaff(req.params.id);
+  accoda('email', emailPasswordPazienteRipristinata({
+    to: esito.utente.email, nome: esito.utente.nome, passwordProvvisoria: esito.password_provvisoria
+  }));
+  ok(res, esito);
+});
 
 /**
  * Dimettere e cancellare li puo' fare solo il medico.

@@ -337,7 +337,13 @@ for (const [tabella, colonna, tipo] of [
   // Una chiusura puo' coprire solo una fascia oraria invece dell'intera
   // giornata: ora_inizio/ora_fine a NULL = tutto il giorno (com'era prima).
   ['chiusure', 'ora_inizio', 'TEXT'],
-  ['chiusure', 'ora_fine', 'TEXT']
+  ['chiusure', 'ora_fine', 'TEXT'],
+  // Password dimenticata: lo stesso meccanismo del link di verifica (token
+  // monouso, scadenza breve), ma per reimpostare la password invece di
+  // confermare l'indirizzo. Colonne separate da quelle della verifica: sono
+  // due link diversi, e non devono poter essere scambiati l'uno per l'altro.
+  ['utenti', 'token_reset_password', 'TEXT'],
+  ['utenti', 'token_reset_password_scade', 'TEXT']
 ]) {
   const presente = db.prepare(`PRAGMA table_info(${tabella})`).all().some((c) => c.name === colonna);
   if (!presente) db.exec(`ALTER TABLE ${tabella} ADD COLUMN ${colonna} ${tipo}`);

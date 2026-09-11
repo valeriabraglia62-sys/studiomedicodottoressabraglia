@@ -1593,6 +1593,117 @@ console.log('\nTrecento prenotazioni diverse in contemporanea');
   verifica('ogni prenotazione ha le sue consegne in coda', inCoda >= totale, `prenotazioni ${totale}, coda ${inCoda}`);
 }
 
+console.log('\nPassword dimenticata (il paziente da solo)');
+{
+  const reg = registraPazienteDiretto({
+    nome: 'Smemorato', cognome: 'Prova', telefono: '3339990010',
+    email: 'smemorato.prova@example.it', password: 'PasswordVecchia2026!'
+  });
+  verificaEmailDiretto(reg.token);
+  const vecchiaSessione = creaSessioneDiretta(reg.utente.id).token;
+
+  const sconosciuto = await chiama('POST', '/api/auth/password/dimenticata', { email: 'nessuno.qui@example.it' });
+  const conosciuto = await chiama('POST', '/api/auth/password/dimenticata', { email: 'smemorato.prova@example.it' });
+  verifica('la risposta e\' identica che l\'account esista o no',
+    sconosciuto.stato === conosciuto.stato
+    && sconosciuto.dati.message === conosciuto.dati.message, JSON.stringify([sconosciuto.dati, conosciuto.dati]));
+
+  const riga = db.prepare('SELECT token_reset_password FROM utenti WHERE id = ?').get(reg.utente.id);
+  verifica('e\' stato generato un token di reset', Boolean(riga.token_reset_password));
+
+  const senzaToken = await chiama('POST', '/api/auth/password/reset', { nuova: 'PasswordNuova2026!' });
+  verifica('resettare senza token e\' rifiutato', senzaToken.stato === 400);
+
+  // Il token grezzo non torna dall'API (solo l'impronta finisce nel db): lo
+  // recuperiamo dalla funzione diretta, come per la verifica email.
+  const modUtenti = await import('../src/utenti.js');
+  const rifatto = modUtenti.preparaResetPassword('smemorato.prova@example.it');
+  const reset = await chiama('POST', '/api/auth/password/reset', { token: rifatto.token, nuova: 'PasswordNuova2026!' });
+  verifica('con un token valido la password si reimposta', reset.stato === 200, JSON.stringify(reset.dati));
+
+  const vecchiaBloccata = await chiama('GET', '/api/paziente/profilo', null, vecchiaSessione);
+  verifica('il reset chiude le sessioni aperte', vecchiaBloccata.stato === 403);
+
+  const conVecchia = await chiama('POST', '/api/auth/login',
+    { email: 'smemorato.prova@example.it', password: 'PasswordVecchia2026!' });
+  verifica('la password vecchia non entra più', conVecchia.stato === 401);
+
+  const conNuova = await chiama('POST', '/api/auth/login',
+    { email: 'smemorato.prova@example.it', password: 'PasswordNuova2026!' });
+  verifica('la password nuova funziona', conNuova.stato === 200);
+
+  const riusato = await chiama('POST', '/api/auth/password/reset',
+    { token: rifatto.token, nuova: 'AltraPasswordAncora2026!' });
+  verifica('lo stesso link non si può riusare', riusato.stato === 400);
+}
+
+console.log('\nLo staff corregge i dati di un paziente e gli reimposta la password');
+{
+  const reg = registraPazienteDiretto({
+    nome: 'Corretto', cognome: 'DalloStudio', telefono: '3339990020',
+    email: 'corretto.dallostudio@example.it', password: 'PasswordOriginaria26!'
+  });
+  verificaEmailDiretto(reg.token);
+  const idPaz = db.prepare('SELECT paziente_id FROM utenti WHERE id = ?').get(reg.utente.id).paziente_id;
+
+  const negato = await chiama('PATCH', `/api/admin/pazienti/${idPaz}/profilo`,
+    { nome: 'Corretto', cognome: 'DalloStudio', telefono: '3339990021', email: 'corretto.dallostudio@example.it' });
+  verifica('modificare i dati senza credenziali e\' negato', negato.stato === 401);
+
+  // Una segretaria vera, non il medico: e' il punto della richiesta — dati e
+  // password del paziente non sono riservati al solo medico. La sessione si
+  // crea diretta (come altrove nel file) invece che passando dal login: la
+  // rotta di accesso ha un freno anti-abuso per IP, e un file di prove che fa
+  // decine di login veri lo farebbe scattare per conto suo.
+  const creata = await chiama('POST', '/api/admin/utenti',
+    { nome: 'Segreteria Prova2', email: 'segreteria.prova2@example.it', ruolo: 'segretaria' }, token);
+  db.prepare('UPDATE utenti SET cambio_password = 0 WHERE id = ?').run(creata.dati.utente.id);
+  const tokSegAttivo = creaSessioneDiretta(creata.dati.utente.id).token;
+
+  const modifica = await chiama('PATCH', `/api/admin/pazienti/${idPaz}/profilo`, {
+    nome: 'Corretto', cognome: 'DalloStudio', telefono: '3339990099', email: 'corretto.dallostudio@example.it'
+  }, tokSegAttivo);
+  verifica('la segreteria puo\' correggere telefono ed email di un paziente',
+    modifica.stato === 200 && modifica.dati.profilo?.telefono === '3339990099', JSON.stringify(modifica.dati));
+
+  const inArchivio = db.prepare('SELECT telefono FROM pazienti WHERE id = ?').get(idPaz);
+  verifica('il telefono e\' cambiato davvero in archivio', inArchivio.telefono === '3339990099');
+
+  const nonValido = await chiama('PATCH', `/api/admin/pazienti/${idPaz}/profilo`,
+    { nome: 'Corretto', cognome: 'DalloStudio', telefono: 'abc', email: 'corretto.dallostudio@example.it' },
+    tokSegAttivo);
+  verifica('un telefono non valido viene rifiutato', nonValido.stato === 400);
+
+  const resetPwd = await chiama('POST', `/api/admin/pazienti/${idPaz}/password`, {}, tokSegAttivo);
+  verifica('la segreteria puo\' reimpostare la password del paziente',
+    resetPwd.stato === 200 && Boolean(resetPwd.dati.password_provvisoria), JSON.stringify(resetPwd.dati));
+
+  const conPasswordVecchia = await chiama('POST', '/api/auth/login',
+    { email: 'corretto.dallostudio@example.it', password: 'PasswordOriginaria26!' });
+  verifica('dopo il reset la vecchia password non funziona più', conPasswordVecchia.stato === 401);
+
+  const conPasswordNuova = await chiama('POST', '/api/auth/login',
+    { email: 'corretto.dallostudio@example.it', password: resetPwd.dati.password_provvisoria });
+  verifica('la password provvisoria data dallo studio funziona',
+    conPasswordNuova.stato === 200, JSON.stringify(conPasswordNuova.dati));
+
+  // Un paziente senza account collegato — il classico appuntamento preso allo
+  // sportello, senza registrazione al sito: il server deve dirlo chiaro, non
+  // rispondere con un generico errore tecnico.
+  const senzaAccessoReg = await chiama('POST', '/api/admin/prenotazioni', {
+    forza: true, ambulatorio_id: 1, data: aggiungiGiorni(oggiISO(), 44), ora_inizio: '11:15',
+    nome: 'Senza', cognome: 'Account', telefono: '3339990030', problema: 'sportello, niente sito'
+  }, token);
+  const idPazSenzaAccesso = senzaAccessoReg.dati.prenotazione
+    ? db.prepare('SELECT paziente_id FROM prenotazioni WHERE codice = ?').get(senzaAccessoReg.dati.prenotazione.codice).paziente_id
+    : null;
+  verifica('creata una prenotazione da sportello, senza account collegato', Boolean(idPazSenzaAccesso));
+
+  const resetSenzaAccesso = await chiama('POST', `/api/admin/pazienti/${idPazSenzaAccesso}/password`, {}, token);
+  verifica('reimpostare la password a chi non ha un accesso da\' un errore chiaro (non un 500)',
+    resetSenzaAccesso.stato === 404, JSON.stringify(resetSenzaAccesso.dati));
+}
+
 console.log('\nNotifiche push: iscrizione e disiscrizione');
 {
   const senzaVapid = await chiama('GET', '/api/push/chiave-pubblica');

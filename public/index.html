@@ -100,8 +100,33 @@
       <button class="bottone largo" type="submit">Accedi</button>
       <p class="piccolo tenue" style="margin:.7rem 0 0">
         Non hai un account? <a href="#" id="vai-registra">Crea account</a><br>
+        Password dimenticata? <a href="#" id="vai-password-dimenticata">Reimpostala</a><br>
         Non hai ricevuto l'email di conferma? <a href="#" id="rinvia-verifica">Rinvia il link</a>
       </p>
+      <p class="piccolo tenue" style="margin:.6rem 0 0">
+        Non ricordi con quale email ti sei registrato? Contatta lo studio: te lo diciamo noi.
+      </p>
+    </form>
+
+    <form id="form-password-dimenticata" class="carta" hidden>
+      <h3>Password dimenticata</h3>
+      <p class="piccolo tenue">
+        Scrivi l'email con cui ti sei registrato: se corrisponde a un account, ti mandiamo un
+        link per sceglierne una nuova.
+      </p>
+      <div class="campo"><label for="dimenticata-email">Email</label>
+        <input id="dimenticata-email" name="email" type="email" autocomplete="email" required></div>
+      <button class="bottone largo" type="submit">Invia il link</button>
+      <p class="piccolo tenue" style="margin:.7rem 0 0">
+        <a href="#" id="vai-login-da-dimenticata">Torna all'accesso</a>
+      </p>
+    </form>
+
+    <form id="form-reset-password" class="carta" hidden>
+      <h3>Scegli una nuova password</h3>
+      <div class="campo"><label for="reset-password">Nuova password (almeno 10 caratteri)</label>
+        <input id="reset-password" name="nuova" type="password" autocomplete="new-password" minlength="10" required></div>
+      <button class="bottone largo" type="submit">Salva la nuova password</button>
     </form>
 
     <form id="form-registra-paziente" class="carta" hidden>
@@ -167,20 +192,22 @@
       <a href="#gestisci" data-sezione="gestisci">La mia richiesta</a>
       <a href="#ambulatori" data-sezione="ambulatori">Ambulatori</a>
     </nav>
+    <button type="button" class="bottone secondario piccolo" id="btn-installa" hidden>📲 Installa</button>
+    <button type="button" class="bottone secondario piccolo" id="btn-notifiche" hidden>🔔 Notifiche</button>
     <details class="account-menu" id="menu-account">
       <summary><span id="nome-utente-paziente">Account</span><span aria-hidden="true"> ▾</span></summary>
       <div class="account-tendina">
         <button type="button" id="btn-modifica-account">Modifica account</button>
-        <button type="button" id="btn-installa" hidden>📲 Installa l'app</button>
-        <button type="button" id="btn-notifiche" hidden>🔔 Attiva notifiche</button>
-        <p class="piccolo tenue" id="nota-iphone" style="padding:.5rem .6rem;margin:0" hidden>
-          📱 Su iPhone/iPad: apri questo sito in <strong>Safari</strong>, tocca
-          <strong>Condividi → Aggiungi alla schermata Home</strong>. Da lì l'app si apre a
-          schermo intero e può mandare notifiche.
-        </p>
         <button type="button" id="btn-esci-paziente">Esci</button>
       </div>
     </details>
+  </div>
+  <div class="contenitore">
+    <p class="piccolo tenue" id="nota-iphone" style="margin:.4rem 0 0" hidden>
+      📱 Su iPhone/iPad: apri questo sito in <strong>Safari</strong>, tocca
+      <strong>Condividi → Aggiungi alla schermata Home</strong>. Da lì l'app si apre a schermo
+      intero e può mandare notifiche.
+    </p>
   </div>
 </header>
 

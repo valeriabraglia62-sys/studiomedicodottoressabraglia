@@ -103,6 +103,7 @@
       <button type="button" data-scheda="esami">Esami del sangue</button>
       <button type="button" data-scheda="pazienti">Pazienti</button>
       <button type="button" data-scheda="collaboratori" data-solo-medico hidden>Collaboratori</button>
+      <button type="button" data-scheda="impostazioni">Impostazioni</button>
       <button type="button" data-scheda="sistema">Stato del sistema</button>
     </div>
 
@@ -283,6 +284,27 @@
       </div>
 
       <div id="elenco-collaboratori" style="margin-top:1.5rem"></div>
+    </section>
+
+    <!-- Impostazioni: qui il proprio accesso, non quello altrui. -->
+    <section data-pannello="impostazioni" class="nascosto">
+      <div class="carta" style="max-width:480px">
+        <h3 style="margin-top:0">La tua password</h3>
+        <p class="piccolo tenue">Cambiala quando vuoi, non solo al primo ingresso.</p>
+        <form id="form-mia-password" novalidate>
+          <div class="campo">
+            <label for="mia-pwd-attuale">Password attuale</label>
+            <input id="mia-pwd-attuale" type="password" autocomplete="current-password" required>
+          </div>
+          <div class="campo">
+            <label for="mia-pwd-nuova">Nuova password</label>
+            <input id="mia-pwd-nuova" type="password" autocomplete="new-password" minlength="10" required>
+            <span class="aiuto piccolo tenue">Almeno 10 caratteri.</span>
+          </div>
+          <button type="submit" class="bottone">Cambia password</button>
+        </form>
+        <div id="esito-mia-password"></div>
+      </div>
     </section>
 
     <!-- Sistema -->

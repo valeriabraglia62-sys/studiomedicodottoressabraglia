@@ -250,6 +250,119 @@ export function preparaRinvioVerifica(email) {
   return { utente: pubblico(u), token };
 }
 
+const ORE_VALIDITA_RESET = 2;
+
+/**
+ * "Password dimenticata": lo stesso principio della verifica email — un
+ * link monouso, di breve durata, e la stessa risposta a chi chiede indipendentemente
+ * dal fatto che l'account esista o meno. Due ore e non ventiquattro: qui non
+ * si tratta di aspettare comoda l'email, chi lo chiede e' fuori dal suo
+ * account in questo momento.
+ *
+ * Solo per un account gia' verificato: chi non ha mai confermato l'indirizzo
+ * deve passare da li', non da un'altra porta.
+ */
+export function preparaResetPassword(email) {
+  const u = db.prepare("SELECT * FROM utenti WHERE email = ? AND ruolo = 'paziente'").get(pulisciEmail(email));
+  if (!u || !u.email_verificata) return null;
+  const token = crypto.randomBytes(32).toString('base64url');
+  db.prepare('UPDATE utenti SET token_reset_password = ?, token_reset_password_scade = ? WHERE id = ?')
+    .run(hashTokenVerifica(token), new Date(Date.now() + ORE_VALIDITA_RESET * 3600000).toISOString(), u.id);
+  return { utente: pubblico(u), token };
+}
+
+/** Il link e' arrivato, la nuova password e' scelta: si conferma. */
+export function confermaResetPassword(tokenGrezzo, nuova) {
+  const token = String(tokenGrezzo || '');
+  if (!token) throw new ErroreDominio('Link non valido.', 400);
+  const u = db.prepare('SELECT * FROM utenti WHERE token_reset_password = ?').get(hashTokenVerifica(token));
+  if (!u) throw new ErroreDominio('Link non valido o già usato.', 400);
+  if (new Date(u.token_reset_password_scade) < new Date()) {
+    throw new ErroreDominio('Link scaduto: richiedine uno nuovo dalla pagina di accesso.', 400);
+  }
+  const scelta = String(nuova ?? '');
+  if (scelta.length < LUNGHEZZA_MINIMA_PASSWORD) {
+    throw new ErroreDominio(`La password deve avere almeno ${LUNGHEZZA_MINIMA_PASSWORD} caratteri.`, 400);
+  }
+
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE utenti SET password_hash = ?, token_reset_password = NULL, token_reset_password_scade = NULL
+       WHERE id = ?
+    `).run(hashPassword(scelta), u.id);
+    // Chi ha chiesto il reset potrebbe averlo fatto perche' qualcun altro sa
+    // la password vecchia: un'eventuale sessione rubata va chiusa insieme.
+    db.prepare('DELETE FROM sessioni WHERE utente_id = ?').run(u.id);
+  })();
+  return { utente: pubblico(db.prepare('SELECT * FROM utenti WHERE id = ?').get(u.id)) };
+}
+
+/**
+ * Lo studio corregge i dati di un paziente: nome, cognome, telefono, email.
+ * A differenza di quando lo fa il paziente da solo, qui non serve la
+ * password — chi chiama e' gia' passato dal proprio accesso da staff, che e'
+ * il controllo che conta. Se l'account ha un login collegato, l'email resta
+ * sincronizzata fra le due tabelle, come nel resto del programma.
+ *
+ * Ritorna anche cosa e' cambiato: chi ha chiamato decide da li' quale email
+ * mandare al paziente, se mandarla.
+ */
+export function aggiornaProfiloPazienteDaStaff(pazienteId, { nome, cognome, telefono, email }) {
+  const p = db.prepare('SELECT * FROM pazienti WHERE id = ?').get(Number(pazienteId));
+  if (!p) throw new ErroreDominio('Paziente non trovato.', 404);
+
+  const nomeP = String(nome ?? '').trim();
+  const cognomeP = String(cognome ?? '').trim();
+  const telP = pulisciTelefono(telefono);
+  const emailP = pulisciEmail(email);
+
+  if (nomeP.length < 2 || cognomeP.length < 2) throw new ErroreDominio('Nome e cognome non validi.', 400);
+  if (!telefonoValido(telP)) throw new ErroreDominio('Numero di telefono non valido.', 400);
+  if (emailP && !emailValida(emailP)) throw new ErroreDominio('Indirizzo email non valido.', 400);
+
+  const utenteCollegato = db.prepare("SELECT * FROM utenti WHERE paziente_id = ? AND ruolo = 'paziente'").get(p.id);
+  const emailCambia = emailP && emailP !== pulisciEmail(p.email);
+  if (emailCambia && utenteCollegato
+      && db.prepare('SELECT id FROM utenti WHERE email = ? AND id <> ?').get(emailP, utenteCollegato.id)) {
+    throw new ErroreDominio('Questa email è già usata da un altro account.', 409);
+  }
+
+  db.transaction(() => {
+    db.prepare('UPDATE pazienti SET nome = ?, cognome = ?, telefono = ?, email = ? WHERE id = ?')
+      .run(nomeP, cognomeP, telP, emailP, p.id);
+    if (utenteCollegato) {
+      db.prepare('UPDATE utenti SET nome = ?, email = ? WHERE id = ?')
+        .run(`${nomeP} ${cognomeP}`, emailCambia ? emailP : utenteCollegato.email, utenteCollegato.id);
+    }
+  })();
+
+  return {
+    profilo: { nome: nomeP, cognome: cognomeP, telefono: telP, email: emailP },
+    haAccesso: Boolean(utenteCollegato),
+    emailCambiata: Boolean(emailCambia),
+    emailVecchia: emailCambia ? (utenteCollegato?.email || p.email) : null
+  };
+}
+
+/**
+ * Lo studio genera una password provvisoria per un paziente che non riesce
+ * ad accedere. Come per il collaboratore: si vede una volta sola, nel
+ * database ne resta solo l'impronta, e le sessioni aperte si chiudono —
+ * se qualcuno chiede aiuto perche' non entra piu', meglio chiudere fuori
+ * anche chi fosse entrato con la password vecchia.
+ */
+export function resettaPasswordPazienteDaStaff(pazienteId) {
+  const u = db.prepare("SELECT * FROM utenti WHERE paziente_id = ? AND ruolo = 'paziente'").get(Number(pazienteId));
+  if (!u) throw new ErroreDominio('Questo paziente non ha un accesso al sito.', 404);
+
+  const password = passwordProvvisoria();
+  db.transaction(() => {
+    db.prepare('UPDATE utenti SET password_hash = ? WHERE id = ?').run(hashPassword(password), u.id);
+    db.prepare('DELETE FROM sessioni WHERE utente_id = ?').run(u.id);
+  })();
+  return { utente: pubblico(u), password_provvisoria: password };
+}
+
 function trova(id) {
   const u = db.prepare('SELECT * FROM utenti WHERE id = ?').get(Number(id));
   if (!u || !RUOLI_STAFF.includes(u.ruolo)) {

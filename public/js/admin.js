@@ -388,6 +388,7 @@ const CARICATORI = {
   esami: caricaEsami,
   pazienti: caricaPazienti,
   collaboratori: caricaCollaboratori,
+  impostazioni: caricaImpostazioni,
   sistema: caricaSistema
 };
 
@@ -1518,14 +1519,97 @@ function bottoniUscita(paziente, prenotazioni, medicine) {
   return [dimetti, cancella];
 }
 
-/** Il nome, e se non e' piu' un nostro paziente lo dice sotto. */
+/**
+ * Il nome, e se non e' piu' un nostro paziente lo dice sotto.
+ *
+ * Il fascicolo clinico lo apre solo il medico. "Dati e password" invece la
+ * vede chiunque lavori nello studio: nome, telefono, email e l'accesso al
+ * sito non sono dati clinici, sono la stessa cosa che la segreteria gestisce
+ * gia' per i collaboratori.
+ */
 function cellaNomePaziente(p, medico) {
   const cella = nodo('div');
   cella.append(medico ? apriFascicoloBottone(p) : nodo('span', null, `${p.cognome} ${p.nome}`));
+
+  const identita = nodo('button', null, '✏️ Dati e password');
+  identita.type = 'button';
+  identita.style.cssText = 'display:block;background:none;border:0;padding:0;margin-top:.2rem;'
+    + 'font:inherit;font-size:.8rem;color:var(--testo-tenue);cursor:pointer;text-decoration:underline';
+  identita.addEventListener('click', () => protetto(() => apriSchedaIdentita(p)));
+  cella.append(identita);
+
   if (p.dimesso_il) {
     cella.append(nodo('div', 'piccolo tenue', `Non più assistito dal ${dataEstesa(p.dimesso_il.slice(0, 10))}`));
   }
   return cella;
+}
+
+/**
+ * Nome, cognome, telefono, email, password: quello che ogni collaboratore
+ * puo' correggere per un paziente senza aprire il fascicolo clinico (che
+ * resta del medico). Sostituisce l'elenco come il fascicolo: "torna
+ * all'elenco" lo ripristina.
+ */
+async function apriSchedaIdentita(p) {
+  const contenitore = $('#elenco-pazienti');
+
+  const indietro = nodo('button', 'bottone secondario piccolo', '← Torna all\'elenco');
+  indietro.type = 'button';
+  indietro.addEventListener('click', () => protetto(caricaPazienti));
+
+  const carta = nodo('div', 'carta');
+  carta.append(nodo('strong', null, `${p.cognome} ${p.nome}`));
+
+  const campi = {
+    nome: inputTesto(p.nome, 'Nome'),
+    cognome: inputTesto(p.cognome, 'Cognome'),
+    telefono: inputTesto(p.telefono, '333 1234567'),
+    email: inputTesto(p.email || '', 'nome@esempio.it')
+  };
+  campi.telefono.type = 'tel';
+  campi.email.type = 'email';
+
+  const riga = nodo('div', 'filtri');
+  riga.append(
+    campoModulo('Nome', campi.nome), campoModulo('Cognome', campi.cognome),
+    campoModulo('Telefono', campi.telefono), campoModulo('Email', campi.email)
+  );
+  carta.append(riga);
+
+  const esito = nodo('div');
+
+  const salva = nodo('button', 'bottone', 'Salva dati');
+  salva.type = 'button';
+  salva.addEventListener('click', () => protetto(async () => {
+    const { profilo, emailCambiata } = await api(`/admin/pazienti/${p.id}/profilo`, {
+      method: 'PATCH',
+      body: {
+        nome: campi.nome.value, cognome: campi.cognome.value,
+        telefono: campi.telefono.value, email: campi.email.value
+      }
+    });
+    Object.assign(p, profilo);
+    esito.replaceChildren(nodo('div', 'avviso ok', emailCambiata
+      ? 'Dati salvati. Il paziente è stato avvisato via email del cambio indirizzo.'
+      : 'Dati salvati.'));
+  }));
+
+  // Ha senso solo se il paziente ha davvero un accesso al sito: molti hanno
+  // solo la scheda, senza account, e per loro il server risponderebbe 404 —
+  // il messaggio d'errore lo spiega comunque, ma non serve arrivarci.
+  const resetta = nodo('button', 'bottone secondario', 'Reimposta password');
+  resetta.type = 'button';
+  resetta.addEventListener('click', () => protetto(async () => {
+    const { utente, password_provvisoria } = await api(`/admin/pazienti/${p.id}/password`, { method: 'POST' });
+    mostraPasswordProvvisoria(esito, utente, password_provvisoria);
+    avvisa('Il paziente ha ricevuto anche un\'email con la password nuova.', 'ok');
+  }));
+
+  const azioni = nodo('div', 'azioni');
+  azioni.append(salva, resetta);
+  carta.append(azioni, esito);
+
+  contenitore.replaceChildren(indietro, carta);
 }
 
 function apriFascicoloBottone(p) {
@@ -1730,7 +1814,7 @@ const NOMI_RUOLO = { admin: 'Medico', segretaria: 'Segreteria' };
  * l'impronta. Quindi va mostrata bene, con il pulsante per copiarla, e detto
  * chiaramente che ricaricando la pagina sparisce.
  */
-function mostraPasswordProvvisoria(utente, password) {
+function mostraPasswordProvvisoria(contenitore, utente, password) {
   const box = nodo('div', 'avviso ok');
   box.append(nodo('strong', null, `Accesso pronto per ${utente.nome || utente.email}`));
   box.append(nodo('p', 'piccolo', 'Consegnagli queste due righe. La password compare adesso e mai più: '
@@ -1758,7 +1842,7 @@ function mostraPasswordProvvisoria(utente, password) {
   azioni.append(copia);
   box.append(azioni);
 
-  $('#esito-collaboratore').replaceChildren(box);
+  contenitore.replaceChildren(box);
   box.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
@@ -1782,7 +1866,7 @@ function azioniCollaboratore(u) {
       await protetto(async () => {
         const esito = await azione();
         if (esito?.password_provvisoria) {
-          mostraPasswordProvvisoria(esito.utente, esito.password_provvisoria);
+          mostraPasswordProvvisoria($('#esito-collaboratore'), esito.utente, esito.password_provvisoria);
         }
         await caricaCollaboratori();
       });
@@ -1860,8 +1944,40 @@ function collegaCollaboratori() {
         }
       });
       form.reset();
-      mostraPasswordProvvisoria(esito.utente, esito.password_provvisoria);
+      mostraPasswordProvvisoria($('#esito-collaboratore'), esito.utente, esito.password_provvisoria);
       await caricaCollaboratori();
+    });
+
+    pulsante.disabled = false;
+  });
+}
+
+// ---- Impostazioni -----------------------------------------------------------
+//
+// Il proprio accesso, non quello altrui: qui chiunque lavori nello studio
+// puo' cambiare la propria password quando vuole, non solo la prima volta
+// che entra con quella provvisoria.
+
+async function caricaImpostazioni() {
+  $('#form-mia-password').reset();
+  $('#esito-mia-password').replaceChildren();
+}
+
+function collegaImpostazioni() {
+  const form = $('#form-mia-password');
+  form.addEventListener('submit', async (evento) => {
+    evento.preventDefault();
+    const pulsante = $('button[type="submit"]', form);
+    pulsante.disabled = true;
+    const esito = $('#esito-mia-password');
+
+    await protetto(async () => {
+      await api('/auth/password', {
+        method: 'POST',
+        body: { attuale: $('#mia-pwd-attuale').value, nuova: $('#mia-pwd-nuova').value }
+      });
+      form.reset();
+      esito.replaceChildren(nodo('div', 'avviso ok', 'Password cambiata.'));
     });
 
     pulsante.disabled = false;
@@ -2088,6 +2204,7 @@ async function avvia() {
   collegaAccesso();
   collegaCambioPassword();
   collegaCollaboratori();
+  collegaImpostazioni();
   collegaChiusure();
   collegaFiltri();
 
