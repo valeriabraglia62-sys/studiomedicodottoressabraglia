@@ -97,6 +97,7 @@
     <div class="schede" id="schede">
       <button type="button" data-scheda="riepilogo" class="attiva">Oggi</button>
       <button type="button" data-scheda="prenotazioni">Prenotazioni</button>
+      <button type="button" data-scheda="calendario">Calendario</button>
       <button type="button" data-scheda="chiusure">Chiusure</button>
       <button type="button" data-scheda="medicine">Farmaci</button>
       <button type="button" data-scheda="specialistiche">Visite specialistiche</button>
@@ -153,6 +154,25 @@
         <button type="button" class="bottone secondario" id="pren-azzera">Azzera</button>
       </div>
       <div id="elenco-prenotazioni"></div>
+    </section>
+
+    <!-- Calendario -->
+    <section data-pannello="calendario" class="nascosto">
+      <div class="carta">
+        <div class="calendario-testata">
+          <button type="button" class="bottone secondario piccolo" id="cal-mese-precedente" aria-label="Mese precedente">‹</button>
+          <strong id="cal-etichetta-mese"></strong>
+          <button type="button" class="bottone secondario piccolo" id="cal-mese-successivo" aria-label="Mese successivo">›</button>
+        </div>
+        <div class="calendario" id="cal-griglia" role="grid" aria-label="Calendario delle prenotazioni"></div>
+        <p class="piccolo tenue" style="margin-top:1rem">
+          Il pallino indica i giorni con almeno una prenotazione. Clicca un giorno per vedere tutto.
+        </p>
+      </div>
+      <div class="carta" style="margin-top:1.5rem">
+        <h3 id="cal-giorno-titolo" style="margin-top:0"></h3>
+        <div id="cal-giorno-dettaglio"></div>
+      </div>
     </section>
 
     <!-- Farmaci -->

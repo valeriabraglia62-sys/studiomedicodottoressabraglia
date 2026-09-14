@@ -607,6 +607,48 @@ admin.get('/riepilogo', (_req, res) => {
   });
 });
 
+/**
+ * Quante prenotazioni ci sono in ciascun giorno di un intervallo, per
+ * disegnare i pallini nella griglia mensile del calendario del pannello.
+ */
+admin.get('/calendario', (req, res) => {
+  const oggi = oggiISO();
+  const dal = dataValida(req.query.dal) ? req.query.dal : aggiungiGiorni(oggi, -15);
+  let al = dataValida(req.query.al) ? req.query.al : aggiungiGiorni(dal, 45);
+  if (al < dal) al = dal;
+
+  ok(res, {
+    giorni: db.prepare(`
+      SELECT data, COUNT(*) AS totale
+        FROM prenotazioni
+       WHERE data BETWEEN ? AND ? AND stato IN ('confermata', 'in_attesa')
+       GROUP BY data
+    `).all(dal, al)
+  });
+});
+
+/**
+ * Tutto quello che c'e' in agenda in un giorno preciso, cliccato sul
+ * calendario del pannello: le prenotazioni confermate e quelle ancora da
+ * confermare, in ordine di orario.
+ */
+admin.get('/agenda', (req, res) => {
+  const data = dataValida(req.query.data) ? req.query.data : oggiISO();
+
+  ok(res, {
+    data,
+    prenotazioni: filtraClinico(req, db.prepare(`
+      SELECT p.codice, p.ora_inizio, p.ora_fine, p.problema, p.stato,
+             a.nome AS ambulatorio_nome, pa.nome, pa.cognome, pa.telefono
+        FROM prenotazioni p
+        JOIN ambulatori a ON a.id = p.ambulatorio_id
+        JOIN pazienti pa ON pa.id = p.paziente_id
+       WHERE p.data = ? AND p.stato IN ('confermata', 'in_attesa')
+       ORDER BY p.ora_inizio
+    `).all(data))
+  });
+});
+
 admin.get('/prenotazioni', (req, res) => {
   const esito = prenotazioni.elencoAdmin(req.query);
   ok(res, { ...esito, prenotazioni: filtraClinico(req, esito.prenotazioni) });

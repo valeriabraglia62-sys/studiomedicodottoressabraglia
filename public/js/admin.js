@@ -382,6 +382,7 @@ function collegaCambioPassword() {
 const CARICATORI = {
   riepilogo: caricaRiepilogo,
   prenotazioni: caricaPrenotazioni,
+  calendario: caricaCalendario,
   chiusure: caricaChiusure,
   medicine: caricaMedicine,
   specialistiche: caricaSpecialistiche,
@@ -478,6 +479,118 @@ function collegamentoTelefono(numero) {
   const a = nodo('a', null, numero || '—');
   if (numero) a.href = `tel:${String(numero).replace(/\s/g, '')}`;
   return a;
+}
+
+// ---- Calendario --------------------------------------------------------------
+
+const INIZIALI_GIORNI = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
+
+const statoCalendario = { anno: 0, mese: 0, dataScelta: '', conteggi: new Map() };
+
+const iso = (anno, mese, giorno) =>
+  `${anno}-${String(mese + 1).padStart(2, '0')}-${String(giorno).padStart(2, '0')}`;
+
+async function caricaCalendario() {
+  if (!statoCalendario.dataScelta) {
+    const [a, m] = oggiISO().split('-').map(Number);
+    statoCalendario.anno = a;
+    statoCalendario.mese = m - 1;
+    statoCalendario.dataScelta = oggiISO();
+  }
+  await caricaMeseCalendario();
+  await mostraGiornoCalendario(statoCalendario.dataScelta);
+}
+
+async function caricaMeseCalendario() {
+  const { anno, mese } = statoCalendario;
+  const dal = iso(anno, mese, 1);
+  const al = iso(anno, mese, new Date(Date.UTC(anno, mese + 1, 0)).getUTCDate());
+
+  $('#cal-etichetta-mese').textContent = `${NOMI_MESI[mese]} ${anno}`;
+
+  statoCalendario.conteggi = new Map();
+  try {
+    const { giorni } = await api(`/admin/calendario?dal=${dal}&al=${al}`);
+    for (const g of giorni) statoCalendario.conteggi.set(g.data, g.totale);
+  } catch (err) {
+    avvisa(err.message, 'errore');
+  }
+  disegnaGrigliaCalendario();
+}
+
+function disegnaGrigliaCalendario() {
+  const { anno, mese, dataScelta, conteggi } = statoCalendario;
+  const griglia = $('#cal-griglia');
+  const oggi = oggiISO();
+  const elementi = INIZIALI_GIORNI.map((i) => nodo('div', 'etichetta-giorno', i));
+
+  // La settimana parte da lunedì: la domenica di JS (0) va in settima posizione.
+  const primoGiorno = (new Date(Date.UTC(anno, mese, 1)).getUTCDay() + 6) % 7;
+  for (let i = 0; i < primoGiorno; i++) elementi.push(nodo('div', 'giorno vuoto'));
+
+  const giorniNelMese = new Date(Date.UTC(anno, mese + 1, 0)).getUTCDate();
+  for (let g = 1; g <= giorniNelMese; g++) {
+    const data = iso(anno, mese, g);
+    const totale = conteggi.get(data) || 0;
+
+    const bottone = nodo('button', 'giorno');
+    bottone.type = 'button';
+    bottone.append(nodo('span', null, g));
+    bottone.title = data === oggi ? 'Oggi' : '';
+
+    if (totale > 0) {
+      bottone.append(nodo('span', 'pallino'));
+      bottone.title = `${totale} prenotazion${totale === 1 ? 'e' : 'i'}`;
+    }
+    if (data === dataScelta) bottone.classList.add('scelto');
+
+    bottone.addEventListener('click', () => protetto(() => mostraGiornoCalendario(data)));
+    elementi.push(bottone);
+  }
+
+  griglia.replaceChildren(...elementi);
+}
+
+function cambiaMeseCalendario(passo) {
+  const d = new Date(Date.UTC(statoCalendario.anno, statoCalendario.mese + passo, 1));
+  statoCalendario.anno = d.getUTCFullYear();
+  statoCalendario.mese = d.getUTCMonth();
+  protetto(caricaMeseCalendario);
+}
+
+const TESTO_STATO_AGENDA = { confermata: 'Confermata', in_attesa: 'Da confermare' };
+
+async function mostraGiornoCalendario(data) {
+  statoCalendario.dataScelta = data;
+  disegnaGrigliaCalendario();
+
+  $('#cal-giorno-titolo').textContent = dataEstesa(data);
+  const dettaglio = $('#cal-giorno-dettaglio');
+  dettaglio.replaceChildren(nodo('p', 'tenue piccolo', 'Carico…'));
+
+  const { prenotazioni } = await api(`/admin/agenda?data=${data}`);
+  if (!prenotazioni.length) {
+    dettaglio.replaceChildren(vuoto('Nessuna prenotazione in programma per questo giorno.'));
+    return;
+  }
+
+  dettaglio.replaceChildren(tabella(
+    ['Ora', 'Paziente', 'Telefono', 'Ambulatorio', 'Motivo', 'Stato', 'Codice'],
+    prenotazioni.map((p) => [
+      `${p.ora_inizio}–${p.ora_fine}`,
+      `${p.nome} ${p.cognome}`,
+      { nodo: collegamentoTelefono(p.telefono) },
+      p.ambulatorio_nome,
+      p.problema,
+      { nodo: etichetta(p.stato, TESTO_STATO_AGENDA[p.stato] || p.stato) },
+      { testo: p.codice, classe: 'codice' }
+    ])
+  ));
+}
+
+function collegaCalendario() {
+  $('#cal-mese-precedente').addEventListener('click', () => cambiaMeseCalendario(-1));
+  $('#cal-mese-successivo').addEventListener('click', () => cambiaMeseCalendario(1));
 }
 
 // ---- Pezzi di modulo in comune ---------------------------------------------
@@ -2207,6 +2320,7 @@ async function avvia() {
   collegaImpostazioni();
   collegaChiusure();
   collegaFiltri();
+  collegaCalendario();
 
   registraServiceWorker();
   collegaInstallazione($('#btn-installa'));

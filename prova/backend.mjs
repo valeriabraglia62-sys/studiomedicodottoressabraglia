@@ -736,6 +736,44 @@ console.log('\nRichieste di visita: lo studio conferma o rifiuta');
   verifica('il paziente non annulla una richiesta gia\' rifiutata', annullaRifiutata.stato === 400);
 }
 
+console.log('\nCalendario del pannello: tutto quello di un giorno, con un clic');
+{
+  const { oggiISO, aggiungiGiorni } = await import('../src/orari.js');
+  let g = null;
+  let liberi = [];
+  for (let i = 60; i <= 90 && !g; i++) {
+    const d = aggiungiGiorni(oggiISO(), i);
+    const r = await chiama('GET', `/api/disponibilita?data=${d}&ambulatorio_id=1`);
+    const s = (r.dati.slot || []).filter((x) => x.disponibile);
+    if (s.length >= 1) { g = d; liberi = s; }
+  }
+  verifica('trovato un giorno libero per la prova del calendario', Boolean(g));
+
+  const creata = await chiama('POST', '/api/prenotazioni', {
+    ambulatorio_id: 1, data: g, ora_inizio: liberi[0].ora_inizio,
+    nome: 'Calen', cognome: 'Dario', telefono: '3330009988',
+    email: 'calen.dario.prova@example.it', problema: 'controllo di routine'
+  });
+  const codice = creata.dati.prenotazione?.codice;
+  await chiama('POST', `/api/admin/prenotazioni/${codice}/conferma`, {}, token);
+
+  const mese = await chiama('GET', `/api/admin/calendario?dal=${g}&al=${g}`, null, token);
+  verifica('il calendario conta la prenotazione in quel giorno',
+    mese.stato === 200 && mese.dati.giorni?.some((x) => x.data === g && x.totale >= 1),
+    JSON.stringify(mese.dati.giorni));
+
+  const agenda = await chiama('GET', `/api/admin/agenda?data=${g}`, null, token);
+  verifica('l\'agenda del giorno mostra la prenotazione appena confermata',
+    agenda.stato === 200 && agenda.dati.prenotazioni?.some((p) => p.codice === codice));
+
+  const senzaCredenziali = await chiama('GET', `/api/admin/agenda?data=${g}`);
+  verifica('l\'agenda di un giorno e\' chiusa senza credenziali', senzaCredenziali.stato === 401);
+
+  const vuota = await chiama('GET', `/api/admin/agenda?data=${aggiungiGiorni(g, 200)}`, null, token);
+  verifica('un giorno senza niente in programma risponde con la lista vuota',
+    vuota.stato === 200 && Array.isArray(vuota.dati.prenotazioni) && vuota.dati.prenotazioni.length === 0);
+}
+
 console.log('\nChiusure (giorni e fasce orarie bloccate)');
 {
   const { oggiISO, aggiungiGiorni } = await import('../src/orari.js');
