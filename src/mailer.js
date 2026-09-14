@@ -563,9 +563,9 @@ export const emailPostoLibero = (v, slot) => componiEmail({
  */
 const PAROLE_TIPO = {
   medicina: {
-    corta: 'medicinali',
-    titoloAdmin: 'Nuova richiesta di medicinali',
-    riga: 'Medicinali',
+    corta: 'farmaci',
+    titoloAdmin: 'Nuova richiesta di farmaci',
+    riga: 'Farmaci',
     documento: 'ricetta',
     etichettaNumero: 'Numero della ricetta',
     quandoPronta: 'La avviseremo quando la ricetta sarà pronta per il ritiro.',

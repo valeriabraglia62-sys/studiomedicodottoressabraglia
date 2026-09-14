@@ -44,9 +44,9 @@ export const STATI = ['nuova', 'confermata', 'rifiutata', 'consegnata'];
 export const TIPI = {
   medicina: {
     prefisso: 'MED',
-    etichetta: 'Medicinali',
-    cosaChiede: 'medicinali',
-    vuoto: 'Indica quali medicinali ti servono.'
+    etichetta: 'Farmaci',
+    cosaChiede: 'farmaci',
+    vuoto: 'Indica quali farmaci ti servono.'
   },
   specialistica: {
     prefisso: 'SPE',
@@ -497,7 +497,7 @@ export function modifica(codice, correzioni = {}, chi = null) {
   const richiesta = daGestire(codice, ['nuova', 'confermata']);
 
   const farmaci = testoPulito(correzioni.farmaci ?? richiesta.farmaci, 1500);
-  if (farmaci.length < 2) throw new ErroreDominio('Indica quali medicinali sono stati approvati.');
+  if (farmaci.length < 2) throw new ErroreDominio('Indica quali farmaci sono stati approvati.');
 
   const note = testoPulito(correzioni.note ?? richiesta.note, 500) || null;
   const ambulatorio = correzioni.ambulatorio_id

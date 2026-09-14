@@ -1032,7 +1032,7 @@ console.log('\nL\'assistente del pannello');
 
   const situazione = await chiedi('come va oggi');
   verifica('"come va oggi" mette in fila tutti i conteggi',
-    ['Oggi', 'Medicinali', 'specialistiche', 'Esami', 'confermare'].every((p) => situazione.testo.includes(p)),
+    ['Oggi', 'Farmaci', 'specialistiche', 'Esami', 'confermare'].every((p) => situazione.testo.includes(p)),
     situazione.testo.slice(0, 120));
 
   const sospeso = await chiedi('cosa devo vedere');

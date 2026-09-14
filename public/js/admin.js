@@ -424,7 +424,7 @@ async function caricaRiepilogo() {
       scheda: 'prenotazioni',
       filtri: { '#pren-dal': oggiISO(), '#pren-al': '', '#pren-stato': 'confermata', '#pren-cerca': '' }
     }],
-    ['Medicinali da evadere', riepilogo.medicine_da_evadere, {
+    ['Farmaci da evadere', riepilogo.medicine_da_evadere, {
       scheda: 'medicine', filtri: { '#med-stato': 'nuova' }
     }],
     ['Pazienti in archivio', riepilogo.pazienti, {
@@ -1117,7 +1117,7 @@ function riquadroAllegati(allegati) {
 
 const PAROLE_TIPO = {
   medicina: {
-    icona: '💊', titolo: 'Nuova richiesta di medicinali', campo: 'Medicinali',
+    icona: '💊', titolo: 'Nuova richiesta di farmaci', campo: 'Farmaci',
     ritiro: 'In farmacia', numero: 'Numero della ricetta elettronica'
   },
   specialistica: {
@@ -1676,10 +1676,10 @@ async function apriFascicolo(id) {
     sezioneFascicolo('🔁 Prende di solito', (abituali || []).map((a) => rigaAbituale(a)),
       'Ancora niente: l\'elenco si riempie da solo a ogni richiesta confermata.'),
 
-    sezioneFascicolo('💊 Medicinali approvati',
+    sezioneFascicolo('💊 Farmaci approvati',
       medicinali.filter(accolta).map((m) => rigaMedicinaFascicolo(m)),
-      'Nessun medicinale approvato per questo paziente.'),
-    sezioneFascicolo('📋 Altre richieste di medicinali',
+      'Nessun farmaco approvato per questo paziente.'),
+    sezioneFascicolo('📋 Altre richieste di farmaci',
       medicinali.filter((m) => !accolta(m)).map((m) => rigaMedicinaFascicolo(m)), null),
 
     // Le specialistiche e gli esami restano interi, accolti e non, senza

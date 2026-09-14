@@ -309,7 +309,7 @@ const REGOLE = {
   telefono: (v) => (telefonoValido(v) ? '' : 'Numero non valido (esempio: 333 1234567).'),
   email: (v) => (!v.trim() || emailValida(v) ? '' : 'Indirizzo email non valido.'),
   problema: (v) => (v.trim().length >= 3 ? '' : 'Descrivi brevemente il motivo della visita.'),
-  farmaci: (v) => (v.trim().length >= 2 ? '' : 'Indica almeno un medicinale.')
+  farmaci: (v) => (v.trim().length >= 2 ? '' : 'Indica almeno un farmaco.')
 };
 
 function segnalaCampo(campo, errore) {
@@ -878,7 +878,7 @@ function schedaPrenotazione(p, annullabile) {
 }
 
 const NOME_TIPO = {
-  medicina: 'Medicinali',
+  medicina: 'Farmaci',
   specialistica: 'Visita specialistica',
   esami: 'Esami del sangue'
 };

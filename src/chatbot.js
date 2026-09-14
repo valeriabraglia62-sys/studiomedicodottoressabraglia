@@ -125,7 +125,7 @@ const MENU = {
   testo: 'Come posso aiutarti?',
   azioni: [
     { id: 'prenota', etichetta: '📅 Prenota una visita' },
-    { id: 'medicine', etichetta: '💊 Richiedi medicinali' },
+    { id: 'medicine', etichetta: '💊 Richiedi farmaci' },
     { id: 'specialistica', etichetta: '🩺 Visita specialistica' },
     { id: 'esami', etichetta: '🧪 Esami del sangue' },
     { id: 'stato', etichetta: '🔍 Controlla o annulla' },
@@ -169,9 +169,9 @@ const RICHIESTE_CHAT = {
     tipo: 'medicina',
     icona: '💊',
     parole: ['medicin', 'farmac', 'ricett', 'pastigl'],
-    domanda: 'Quali medicinali ti servono? Elencali pure tutti in un messaggio.',
-    riChiedi: 'Scrivi il nome dei medicinali che ti servono.',
-    etichettaCampo: 'Medicinali',
+    domanda: 'Quali farmaci ti servono? Elencali pure tutti in un messaggio.',
+    riChiedi: 'Scrivi il nome dei farmaci che ti servono.',
+    etichettaCampo: 'Farmaci',
     chiusura: 'Lo studio la prenderà in carico e ti avviseremo quando la ricetta è pronta.'
   },
   specialistica: {
@@ -386,7 +386,7 @@ function gestisci(stato, testo) {
   }
   if (contiene(t, 'aiuto', 'help')) {
     return risposta(
-      'Posso aiutarti a prenotare una visita, richiedere medicinali, una visita specialistica ' +
+      'Posso aiutarti a prenotare una visita, richiedere farmaci, una visita specialistica ' +
       'o gli esami del sangue, oppure a controllare una prenotazione che hai già.\n\n' +
       'Per specialistiche ed esami, alla fine puoi allegare la foto della richiesta dello specialista.\n\n' +
       'Se sbagli una risposta puoi scrivere "indietro" per rifarla, senza ricominciare tutto. ' +

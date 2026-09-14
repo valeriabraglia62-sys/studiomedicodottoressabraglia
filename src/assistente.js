@@ -42,7 +42,7 @@ const SCHEDE = [
   { id: 'riepilogo', nome: 'Oggi', parole: ['oggi', 'riepilog', 'cruscott'] },
   { id: 'prenotazioni', nome: 'Prenotazioni', parole: ['prenotazion', 'agenda', 'appuntament', 'da confermare'] },
   { id: 'chiusure', nome: 'Chiusure', parole: ['chiusur', 'ferie', 'giorni bloccat'] },
-  { id: 'medicine', nome: 'Medicinali', parole: ['medicin', 'farmac', 'ricett'] },
+  { id: 'medicine', nome: 'Farmaci', parole: ['medicin', 'farmac', 'ricett'] },
   { id: 'specialistiche', nome: 'Visite specialistiche', parole: ['specialist'] },
   { id: 'esami', nome: 'Esami del sangue', parole: ['esami', 'esame', 'analisi', 'sangue'] },
   { id: 'pazienti', nome: 'Pazienti', parole: ['pazient', 'anagrafic', 'fascicol'] },
@@ -70,7 +70,7 @@ export function benvenuto(utente) {
 
   return risposta(
     `Ciao${utente?.nome ? ' ' + utente.nome : ''}. ${apertura}\n\n` +
-    `Chiedimi pure: "quante prenotazioni ho oggi", "cerca Rossi", "apri i medicinali", ` +
+    `Chiedimi pure: "quante prenotazioni ho oggi", "cerca Rossi", "apri i farmaci", ` +
     `oppure incolla un codice e te lo trovo.`);
 }
 
@@ -102,7 +102,7 @@ function riepilogo() {
   const n = numeri();
   const righe = [
     `📅 Oggi: ${plurale(n.oggi, 'visita', 'visite')}${n.domani ? `, domani ${n.domani}` : ''}`,
-    `💊 Medicinali da vedere: ${n.medicine}`,
+    `💊 Farmaci da vedere: ${n.medicine}`,
     `🩺 Visite specialistiche da vedere: ${n.specialistiche}`,
     `🧪 Esami da vedere: ${n.esami}`,
     `📝 Richieste di visita da confermare: ${n.daConfermare}`
@@ -122,14 +122,14 @@ function daVedere() {
   const n = numeri();
   const code = [
     { n: n.daConfermare, testo: 'richieste di visita da confermare', scheda: 'prenotazioni' },
-    { n: n.medicine, testo: 'di medicinali', scheda: 'medicine' },
+    { n: n.medicine, testo: 'di farmaci', scheda: 'medicine' },
     { n: n.specialistiche, testo: 'di visite specialistiche', scheda: 'specialistiche' },
     { n: n.esami, testo: 'di esami del sangue', scheda: 'esami' }
   ].filter((c) => c.n > 0);
 
   const sempre = [
     { scheda: 'prenotazioni', etichetta: '📅 Prenotazioni' },
-    { scheda: 'medicine', etichetta: '💊 Medicinali' }
+    { scheda: 'medicine', etichetta: '💊 Farmaci' }
   ].map((s) => ({ id: `apri ${s.scheda}`, etichetta: s.etichetta }));
 
   // Anche le code che non sono fra i tre fissi meritano il loro bottone, se
@@ -226,7 +226,7 @@ function cercaPaziente(chi) {
 }
 
 const NOME_TIPO = {
-  medicina: 'Richiesta di medicinali',
+  medicina: 'Richiesta di farmaci',
   specialistica: 'Visita specialistica',
   esami: 'Esami del sangue'
 };
@@ -304,7 +304,7 @@ function aiuto() {
     '• "annulla PRE-1234-ABCD" — annullo l\'appuntamento (con conferma; il paziente riceve l\'email)\n' +
     '• "blocca il 15/10" oppure "blocca domani dalle 10:30 alle 12" — chiudo le prenotazioni per quel giorno o quella fascia (con conferma)\n' +
     '• "che chiusure ci sono" — l\'elenco dei giorni e delle fasce bloccate\n' +
-    '• "apri i medicinali" — ti porto sulla scheda giusta\n' +
+    '• "apri i farmaci" — ti porto sulla scheda giusta\n' +
     '• "notifiche", "installa l\'app", "password" — come attivarle, dove si trovano\n\n' +
     'Per registrare una richiesta mentre sei al telefono, usa "Al telefono" qui sopra: ' +
     'sono le stesse domande che vede il paziente.');
@@ -614,7 +614,7 @@ function quantiSono(t) {
     return risposta(`Esami del sangue da vedere: ${n.esami}.`);
   }
   if (contiene(t, 'medicin', 'farmac', 'ricett')) {
-    return risposta(`Richieste di medicinali da vedere: ${n.medicine}.`);
+    return risposta(`Richieste di farmaci da vedere: ${n.medicine}.`);
   }
   if (contiene(t, 'confermare', 'in attesa', 'richiest')) {
     return risposta(`Richieste di visita da confermare: ${n.daConfermare}. ` +

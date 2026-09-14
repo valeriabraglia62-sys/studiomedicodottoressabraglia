@@ -111,7 +111,7 @@ export function esportaMedicine({ dal, al } = {}) {
       FROM richieste_medicine ${filtro} ORDER BY creata_il
   `).all(...par);
 
-  const intestazioni = ['Codice', 'Cognome', 'Nome', 'Telefono', 'Email', 'Medicinali',
+  const intestazioni = ['Codice', 'Cognome', 'Nome', 'Telefono', 'Email', 'Farmaci',
     'Note', 'Stato', 'Origine', 'Ricevuta il'];
 
   const corpo = righe.map((r) => Object.values(r).map(cella).join(';')).join('\r\n');
