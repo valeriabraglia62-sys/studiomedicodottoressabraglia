@@ -442,7 +442,7 @@ const AMBULATORI_INIZIALI = [
     id: 2,
     nome: 'Ambulatorio di Casalgrande',
     indirizzo: 'Via Canale, 29 - Casalgrande',
-    telefono: '3472450118',
+    telefono: '3291545236',
     orari: { 1: ['17:30', '19:00'], 3: ['08:30', '10:00'], 4: ['17:30', '19:00'], 5: ['08:30', '10:00'] }
   }
 ];
