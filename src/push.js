@@ -57,12 +57,17 @@ export function disiscrivi(endpoint) {
  * compresa la pulizia nel catch, ha la sua rete di sicurezza.
  */
 async function inviaAlDispositivo(dispositivo, messaggio) {
+  // Solo le ultime cifre dell'endpoint, mai l'indirizzo intero: basta per
+  // distinguere un dispositivo dall'altro nei log, senza scriverne li' anche
+  // l'indirizzo del servizio push (che identifica il dispositivo stesso).
+  const targa = dispositivo.endpoint.slice(-10);
   try {
     const sub = {
       endpoint: dispositivo.endpoint,
       keys: { p256dh: dispositivo.p256dh, auth: dispositivo.auth }
     };
     await webpush.sendNotification(sub, JSON.stringify({ url: '/', ...messaggio }));
+    console.log(`[push] inviata a ...${targa} — "${messaggio.titolo || ''}"`);
   } catch (err) {
     try {
       // 404/410: il browser ha revocato l'iscrizione (disinstallata, permessi
@@ -70,8 +75,9 @@ async function inviaAlDispositivo(dispositivo, messaggio) {
       // dispositivo che non c'e' piu'.
       if (err.statusCode === 404 || err.statusCode === 410) {
         db.prepare('DELETE FROM iscrizioni_notifiche WHERE endpoint = ?').run(dispositivo.endpoint);
+        console.log(`[push] iscrizione ...${targa} non piu' valida (${err.statusCode}), tolta`);
       } else {
-        console.error('[push] invio fallito:', err.statusCode || err.message);
+        console.error(`[push] invio a ...${targa} fallito:`, err.statusCode || err.message);
       }
     } catch (errInterno) {
       console.error('[push] anche la pulizia della iscrizione e\' fallita:', errInterno.message);
@@ -91,6 +97,7 @@ export function notificaUtente(utenteId, messaggio) {
   if (!config.vapid.enabled || !utenteId) return;
   try {
     const dispositivi = db.prepare('SELECT * FROM iscrizioni_notifiche WHERE utente_id = ?').all(utenteId);
+    console.log(`[push] notificaUtente ${utenteId}: ${dispositivi.length} dispositivi iscritti`);
     for (const d of dispositivi) inviaAlDispositivo(d, messaggio);
   } catch (err) {
     console.error('[push] notificaUtente:', err.message);
@@ -119,6 +126,7 @@ export function notificaStaff(messaggio) {
       JOIN utenti u ON u.id = i.utente_id
       WHERE u.ruolo IN (${RUOLI_STAFF.map(() => '?').join(',')}) AND u.attivo = 1
     `).all(...RUOLI_STAFF);
+    console.log(`[push] notificaStaff: ${dispositivi.length} dispositivi iscritti`);
     for (const d of dispositivi) inviaAlDispositivo(d, messaggio);
   } catch (err) {
     console.error('[push] notificaStaff:', err.message);
