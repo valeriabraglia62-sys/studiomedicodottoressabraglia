@@ -784,10 +784,30 @@ const collegaFormMedicine = () => MODULI_RICHIESTA.forEach(collegaFormRichiesta)
 
 // ---- Ricerca e annullamento ------------------------------------------------
 
+/**
+ * Cerca un codice e mostra la scheda, condivisa fra l'invio del modulo e un
+ * clic su una delle "ultime richieste" qui sotto: stessa logica, un punto solo.
+ */
+async function cercaEmostra(codice) {
+  const esito = $('#esito-ricerca');
+  esito.replaceChildren(nodo('p', 'tenue piccolo', 'Cerco…'));
+  // PRE e' l'appuntamento; MED, SPE ed ESA sono tutte richieste, e stanno
+  // insieme. L'elenco va tenuto allineato ai prefissi in medicine.js: se
+  // domani nascesse un quarto tipo e ci si dimenticasse di aggiungerlo qui,
+  // il paziente cercherebbe il suo codice fra le prenotazioni e si
+  // sentirebbe dire che non esiste.
+  if (['MED', 'SPE', 'ESA'].some((p) => codice.startsWith(p))) {
+    const { richiesta } = await api(`/medicine/${codice}`);
+    esito.replaceChildren(schedaRichiesta(richiesta));
+  } else {
+    const dati = await api(`/prenotazioni/${codice}`);
+    esito.replaceChildren(schedaPrenotazione(dati.prenotazione, dati.annullabile));
+  }
+}
+
 function collegaFormRicerca() {
   const form = $('#form-ricerca');
   const campo = $('#codice-ricerca');
-  const esito = $('#esito-ricerca');
 
   form.addEventListener('submit', (evento) => {
     evento.preventDefault();
@@ -798,26 +818,63 @@ function collegaFormRicerca() {
       return;
     }
     segnalaCampo(campo, '');
-
-    inviaProtetto(form, async () => {
-      esito.replaceChildren(nodo('p', 'tenue piccolo', 'Cerco…'));
-      // PRE e' l'appuntamento; MED, SPE ed ESA sono tutte richieste, e stanno
-      // insieme. L'elenco va tenuto allineato ai prefissi in medicine.js: se
-      // domani nascesse un quarto tipo e ci si dimenticasse di aggiungerlo qui,
-      // il paziente cercherebbe il suo codice fra le prenotazioni e si
-      // sentirebbe dire che non esiste.
-      if (['MED', 'SPE', 'ESA'].some((p) => codice.startsWith(p))) {
-        const { richiesta } = await api(`/medicine/${codice}`);
-        esito.replaceChildren(schedaRichiesta(richiesta));
-      } else {
-        const dati = await api(`/prenotazioni/${codice}`);
-        esito.replaceChildren(schedaPrenotazione(dati.prenotazione, dati.annullabile));
-      }
-    });
+    inviaProtetto(form, () => cercaEmostra(codice));
   });
 
   // Il messaggio di errore sparisce appena l'utente ricomincia a scrivere.
   campo.addEventListener('input', () => segnalaCampo(campo, ''));
+}
+
+/**
+ * Le ultime richieste di chi ha fatto l'accesso, cliccabili: evita di dover
+ * tenere a mente o ricopiare i codici ricevuti via email. Solo un elenco, non
+ * sostituisce la ricerca manuale — resta per chi cerca un codice piu' vecchio
+ * o quello di qualcun altro (es. un familiare) di cui ha solo il codice.
+ */
+async function caricaCodiciRecenti() {
+  const contenitore = $('#codici-recenti');
+  if (!contenitore) return;
+
+  try {
+    const [{ prenotazioni: pren }, { richieste }] = await Promise.all([
+      api('/paziente/prenotazioni'),
+      api('/paziente/medicine')
+    ]);
+
+    const voci = [
+      ...pren.map((p) => ({
+        codice: p.codice, stato: p.stato, quando: `${p.data}T${p.ora_inizio}`,
+        etichetta: `Visita del ${dataEstesa(p.data)}`
+      })),
+      ...richieste.map((r) => ({
+        codice: r.codice, stato: r.stato, quando: r.creata_il,
+        etichetta: NOME_TIPO[r.tipo] || NOME_TIPO.medicina
+      }))
+    ].sort((a, b) => (a.quando < b.quando ? 1 : -1)).slice(0, 8);
+
+    if (!voci.length) { contenitore.hidden = true; return; }
+
+    const elenco = nodo('div', 'elenco-codici');
+    for (const v of voci) {
+      const riga = nodo('button', 'riga-codice');
+      riga.type = 'button';
+      riga.append(
+        nodo('span', 'codice piccolo', v.codice),
+        nodo('span', 'tenue piccolo', v.etichetta),
+        nodo('span', `etichetta ${v.stato}`, v.stato)
+      );
+      riga.addEventListener('click', () => {
+        $('#codice-ricerca').value = v.codice;
+        cercaEmostra(v.codice).catch((err) => avvisa(err.message, 'errore'));
+      });
+      elenco.append(riga);
+    }
+
+    contenitore.replaceChildren(nodo('p', 'piccolo tenue', 'Le tue ultime richieste:'), elenco);
+    contenitore.hidden = false;
+  } catch {
+    contenitore.hidden = true; // niente di grave: resta comunque la ricerca manuale
+  }
 }
 
 function schedaPrenotazione(p, annullabile) {
@@ -1108,6 +1165,8 @@ async function entraNelSito(utente) {
   } catch (err) {
     avvisa(err.message, 'errore');
   }
+
+  caricaCodiciRecenti();
 }
 
 async function avvia() {

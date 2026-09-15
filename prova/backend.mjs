@@ -970,6 +970,66 @@ console.log('\nIl paziente modifica il proprio profilo');
     `${attacco.stato} ${JSON.stringify(bersDopo)}`);
 }
 
+console.log('\nLe ultime richieste del paziente (per la lista "codici recenti" sul sito)');
+{
+  const senzaCredenziali = await chiama('GET', '/api/paziente/prenotazioni');
+  verifica('le prenotazioni del paziente sono chiuse senza credenziali', senzaCredenziali.stato === 403);
+
+  const reg1 = registraPazienteDiretto({
+    nome: 'Elenco', cognome: 'Primo', telefono: '3339990070',
+    email: 'elenco.primo@example.it', password: 'PasswordElenco2026!'
+  });
+  verificaEmailDiretto(reg1.token);
+  const tok1 = creaSessioneDiretta(reg1.utente.id).token;
+
+  let g = null;
+  let liberi = [];
+  for (let i = 1; i <= 44 && !g; i++) {
+    const d = aggiungiGiorni(oggiISO(), i);
+    const r = await chiama('GET', `/api/disponibilita?data=${d}&ambulatorio_id=1`);
+    const s = (r.dati.slot || []).filter((x) => x.disponibile);
+    if (s.length >= 1) { g = d; liberi = s; }
+  }
+  verifica('trovato un giorno libero per la prova dell\'elenco', Boolean(g));
+
+  const prenotata = await chiama('POST', '/api/prenotazioni', {
+    ambulatorio_id: 1, data: g, ora_inizio: liberi[0].ora_inizio,
+    nome: 'Elenco', cognome: 'Primo', telefono: '3339990070',
+    email: 'elenco.primo@example.it', problema: 'controllo'
+  }, tok1);
+  const codicePren = prenotata.dati.prenotazione?.codice;
+
+  const richiesta = await chiama('POST', '/api/medicine', {
+    nome: 'Elenco', cognome: 'Primo', telefono: '3339990070',
+    email: 'elenco.primo@example.it', farmaci: 'Tachipirina', tipo: 'medicina'
+  }, tok1);
+  const codiceRich = richiesta.dati.richiesta?.codice;
+
+  const elencoPren = await chiama('GET', '/api/paziente/prenotazioni', null, tok1);
+  verifica('la prenotazione compare nel proprio elenco',
+    elencoPren.stato === 200 && elencoPren.dati.prenotazioni?.some((p) => p.codice === codicePren));
+
+  const elencoMed = await chiama('GET', '/api/paziente/medicine', null, tok1);
+  verifica('la richiesta di farmaci compare nel proprio elenco',
+    elencoMed.stato === 200 && elencoMed.dati.richieste?.some((r) => r.codice === codiceRich));
+
+  // Isolamento: un secondo paziente non deve vedere niente del primo.
+  const reg2 = registraPazienteDiretto({
+    nome: 'Elenco', cognome: 'Secondo', telefono: '3339990071',
+    email: 'elenco.secondo@example.it', password: 'PasswordElenco2026!'
+  });
+  verificaEmailDiretto(reg2.token);
+  const tok2 = creaSessioneDiretta(reg2.utente.id).token;
+
+  const elencoAltrui = await chiama('GET', '/api/paziente/prenotazioni', null, tok2);
+  verifica('un altro paziente non vede le prenotazioni di qualcun altro',
+    elencoAltrui.stato === 200 && !elencoAltrui.dati.prenotazioni?.some((p) => p.codice === codicePren));
+
+  const elencoMedAltrui = await chiama('GET', '/api/paziente/medicine', null, tok2);
+  verifica('un altro paziente non vede le richieste di qualcun altro',
+    elencoMedAltrui.stato === 200 && !elencoMedAltrui.dati.richieste?.some((r) => r.codice === codiceRich));
+}
+
 console.log('\nLo studio prenota scegliendo un paziente dall\'archivio');
 {
   const reg = registraPazienteDiretto({

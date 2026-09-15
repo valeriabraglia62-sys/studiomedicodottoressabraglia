@@ -355,7 +355,29 @@ th {
 
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--verde-tenue); }
-td.codice { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem; white-space: nowrap; }
+.codice { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem; white-space: nowrap; }
+
+/* ---- Elenco codici recenti (schermata "Controlla o annulla") ----------- */
+
+.elenco-codici { display: flex; flex-direction: column; gap: .4rem; }
+
+.riga-codice {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  width: 100%;
+  padding: .6rem .8rem;
+  border: 1px solid var(--bordo);
+  border-radius: var(--raggio-piccolo);
+  background: var(--carta);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: var(--transizione);
+}
+
+.riga-codice:hover { background: var(--verde-tenue); border-color: var(--verde); }
+.riga-codice span:nth-child(2) { flex: 1; }
 
 /* ---- Finestre modali --------------------------------------------------- */
 
