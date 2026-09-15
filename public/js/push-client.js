@@ -13,6 +13,12 @@
  * schede aperte, per non interrompere di sorpresa chi sta compilando un
  * modulo: qui si salta l'attesa solo quando l'utente lo chiede esplicitamente.
  */
+// Diventa true solo nell'istante in cui si clicca "Aggiorna": e' quello che
+// distingue un cambio di service worker chiesto dall'utente da uno che il
+// browser decide da solo in background (es. riprendendo un'app rimasta a
+// lungo in secondo piano) — solo il primo deve far ricaricare la pagina.
+let aggiornamentoRichiesto = false;
+
 function mostraBannerAggiornamento(registrazione) {
   if (document.getElementById('banner-aggiornamento')) return; // gia' mostrato
   const banner = document.createElement('div');
@@ -25,6 +31,7 @@ function mostraBannerAggiornamento(registrazione) {
   bottone.type = 'button';
   bottone.textContent = 'Aggiorna';
   bottone.addEventListener('click', () => {
+    aggiornamentoRichiesto = true;
     registrazione.waiting?.postMessage('salta-attesa');
     banner.remove();
   });
@@ -68,10 +75,13 @@ export function registraServiceWorker() {
     setInterval(() => registrazione.update().catch(() => {}), 10 * 60 * 1000);
   }).catch(() => { /* niente di grave: si riprova dopo */ });
 
-  let ricaricato = false;
+  // Si ricarica SOLO se il cambio di controller e' stato chiesto col click su
+  // "Aggiorna": un cambio "spontaneo" non deve far sparire una pagina che
+  // nessuno ha chiesto di ricaricare — e non deve nemmeno essere scambiato
+  // per un buon motivo per considerare l'iscrizione alle notifiche perduta.
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (ricaricato) return;
-    ricaricato = true;
+    if (!aggiornamentoRichiesto) return;
+    aggiornamentoRichiesto = false;
     location.reload();
   });
 }
