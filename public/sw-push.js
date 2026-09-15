@@ -67,3 +67,19 @@ self.addEventListener('notificationclick', (evento) => {
     })
   );
 });
+
+/**
+ * Aggiornamenti: di norma un service worker nuovo resta "in attesa" finche'
+ * non si chiudono tutte le schede aperte, cosi' un deploy non interrompe di
+ * sorpresa chi sta compilando un modulo. Qui si salta l'attesa solo su
+ * richiesta esplicita — il click su "Aggiorna" nel banner che mostra
+ * push-client.js — e si prende subito il controllo delle pagine aperte, cosi'
+ * un solo ricaricamento basta a vedere la versione nuova.
+ */
+self.addEventListener('message', (evento) => {
+  if (evento.data === 'salta-attesa') self.skipWaiting();
+});
+
+self.addEventListener('activate', (evento) => {
+  evento.waitUntil(self.clients.claim());
+});

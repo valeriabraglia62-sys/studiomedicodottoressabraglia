@@ -430,6 +430,38 @@ tbody tr:hover { background: var(--verde-tenue); }
 
 @keyframes entra { from { opacity: 0; transform: translateY(8px); } }
 
+/* ---- Banner "nuova versione disponibile" -------------------------------- */
+
+.banner-aggiornamento {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 90;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: .75rem;
+  padding: .75rem 1rem;
+  background: var(--verde-scuro);
+  color: #fff;
+  font-size: .9rem;
+  box-shadow: var(--ombra-alta);
+  animation: entra .25s ease;
+}
+
+.banner-aggiornamento button {
+  background: #fff;
+  color: var(--verde-scuro);
+  border: none;
+  border-radius: var(--raggio-piccolo);
+  padding: .4rem .9rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 /* ---- Chatbot ----------------------------------------------------------- */
 
 .chat-apri {

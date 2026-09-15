@@ -7,15 +7,73 @@
  */
 
 /**
+ * Il banner "è disponibile una versione più recente", con un pulsante per
+ * aggiornare subito — come fa Gmail. Un service worker nuovo (dopo un
+ * deploy) di norma resta "in attesa" finche' non si chiudono tutte le
+ * schede aperte, per non interrompere di sorpresa chi sta compilando un
+ * modulo: qui si salta l'attesa solo quando l'utente lo chiede esplicitamente.
+ */
+function mostraBannerAggiornamento(registrazione) {
+  if (document.getElementById('banner-aggiornamento')) return; // gia' mostrato
+  const banner = document.createElement('div');
+  banner.id = 'banner-aggiornamento';
+  banner.className = 'banner-aggiornamento';
+
+  const testo = document.createElement('span');
+  testo.textContent = 'È disponibile una versione più recente.';
+  const bottone = document.createElement('button');
+  bottone.type = 'button';
+  bottone.textContent = 'Aggiorna';
+  bottone.addEventListener('click', () => {
+    registrazione.waiting?.postMessage('salta-attesa');
+    banner.remove();
+  });
+
+  banner.append(testo, bottone);
+  document.body.append(banner);
+}
+
+/**
  * Registra il service worker appena la pagina si carica, per chiunque —
  * anche prima del login. Serve a farsi riconoscere come "installabile" da
  * subito: se lo si registrasse solo al momento di attivare le notifiche,
  * chi non le attiva mai non vedrebbe mai il pulsante "Installa".
+ *
+ * Collega anche l'aggiornamento automatico: appena il nuovo service worker
+ * prende il controllo (dopo il click su "Aggiorna"), la pagina si ricarica
+ * da sola — un solo tocco, non serve saperlo fare a mano.
  */
 export function registraServiceWorker() {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw-push.js').catch(() => { /* niente di grave: si riprova dopo */ });
-  }
+  if (!('serviceWorker' in navigator)) return;
+
+  navigator.serviceWorker.register('/sw-push.js').then((registrazione) => {
+    const avvisaSeInAttesa = () => {
+      // "controller" presente = non e' la primissima visita: c'era gia' un
+      // service worker attivo, quindi questo e' davvero un aggiornamento.
+      if (registrazione.waiting && navigator.serviceWorker.controller) {
+        mostraBannerAggiornamento(registrazione);
+      }
+    };
+    avvisaSeInAttesa();
+
+    registrazione.addEventListener('updatefound', () => {
+      registrazione.installing?.addEventListener('statechange', function () {
+        if (this.state === 'installed') avvisaSeInAttesa();
+      });
+    });
+
+    // Il browser controlla da solo, ma non spesso: un controllo ogni po' fa
+    // comparire il banner in tempi ragionevoli anche a scheda tenuta aperta
+    // a lungo (tipico del pannello), invece di aspettare la prossima visita.
+    setInterval(() => registrazione.update().catch(() => {}), 10 * 60 * 1000);
+  }).catch(() => { /* niente di grave: si riprova dopo */ });
+
+  let ricaricato = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (ricaricato) return;
+    ricaricato = true;
+    location.reload();
+  });
 }
 
 /** true su iPhone/iPad — anche su iPadOS recenti, che si presentano come "Mac" ma con lo schermo touch. */
