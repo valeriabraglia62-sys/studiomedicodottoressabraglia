@@ -157,11 +157,15 @@ function chiaveComeBytes(base64Url) {
 }
 
 /**
- * Mostra il pulsante solo se ha senso premerlo: il browser deve supportare le
- * notifiche, il permesso non deve essere gia' stato negato in passato, e non
- * deve esserci gia' un'iscrizione attiva su questo dispositivo. Dopo il click
- * il pulsante sparisce comunque, riuscito o no: uno che resta li' dopo un
- * rifiuto confonderebbe soltanto ("perche' non succede niente?").
+ * Mostra il pulsante solo se serve davvero: il browser deve supportare le
+ * notifiche e il permesso non deve essere gia' stato negato in passato. Se il
+ * permesso invece e' gia' stato concesso ma manca l'iscrizione tecnica (su
+ * iOS capita: dopo che l'app viene terminata e riaperta dal sistema, il
+ * dispositivo a volte "dimentica" l'iscrizione anche se le notifiche restano
+ * autorizzate), la si rifa' da sola in silenzio — richiedere il permesso e'
+ * l'unica parte che ha davvero bisogno di un click dell'utente, ripetere
+ * l'iscrizione no. Cosi' non ricompare piu' un pulsante che confonderebbe
+ * solo ("le ho gia' attivate, perche' me lo richiede?").
  */
 export async function collegaNotifiche(bottone, api, avvisa) {
   if (!bottone) return;
@@ -178,17 +182,34 @@ export async function collegaNotifiche(bottone, api, avvisa) {
     // .ready aspetta che per questa pagina ci sia davvero un service worker
     // ATTIVO, non solo registrato: subito dopo un'apertura "a freddo" (tipico
     // di iOS, dopo aver chiuso del tutto l'app dal multitasking) .register()
-    // puo' risolvere un attimo prima che lo sia ancora, e interrogare
-    // getSubscription() in quel momento puo' dare "non iscritto" anche
-    // quando l'iscrizione c'e' ed e' valida — da qui il pulsante che
-    // ricompare senza che le notifiche si siano davvero disattivate.
+    // puo' risolvere un attimo prima che lo sia ancora.
     registrazione = await navigator.serviceWorker.ready;
-    if (await registrazione.pushManager.getSubscription()) return; // gia' iscritto
   } catch (err) {
     dillo(`Non riesco a registrare il service worker: ${err.message}`);
     return; // Niente service worker, niente pulsante: non si spiegherebbe l'errore a nessuno.
   }
 
+  const iscrivi = async () => {
+    const { chiave } = await api('/push/chiave-pubblica');
+    const iscrizione = await registrazione.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: chiaveComeBytes(chiave)
+    });
+    await api('/push/iscrivi', { method: 'POST', body: { iscrizione: iscrizione.toJSON() } });
+  };
+
+  if (Notification.permission === 'granted') {
+    try {
+      if (await registrazione.pushManager.getSubscription()) return; // gia' iscritto, tutto a posto
+      await iscrivi(); // permesso gia' dato: si rifa' l'iscrizione senza disturbare nessuno
+    } catch (err) {
+      dillo(`Non sono riuscito a rinnovare l'iscrizione alle notifiche: ${err.message}`);
+    }
+    return;
+  }
+
+  // Qui il permesso non e' mai stato chiesto: serve il pulsante, e serve il
+  // click per poterlo chiedere.
   bottone.hidden = false;
   bottone.addEventListener('click', async () => {
     bottone.disabled = true;
@@ -204,12 +225,7 @@ export async function collegaNotifiche(bottone, api, avvisa) {
         return;
       }
 
-      const { chiave } = await api('/push/chiave-pubblica');
-      const iscrizione = await registrazione.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: chiaveComeBytes(chiave)
-      });
-      await api('/push/iscrivi', { method: 'POST', body: { iscrizione: iscrizione.toJSON() } });
+      await iscrivi();
       bottone.hidden = true;
       avvisa?.('Notifiche attivate.', 'ok');
     } catch (err) {
