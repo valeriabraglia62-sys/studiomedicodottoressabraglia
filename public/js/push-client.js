@@ -210,6 +210,11 @@ export async function collegaNotifiche(bottone, api, avvisa) {
 
   // Qui il permesso non e' mai stato chiesto: serve il pulsante, e serve il
   // click per poterlo chiedere.
+  //
+  // NOTA TEMPORANEA DI DIAGNOSI: mostra il valore letto di Notification.permission
+  // quando il pulsante ricompare, per capire se davvero legge "default" invece
+  // di "granted" in quel momento. Da togliere una volta risolto.
+  avvisa?.(`[diagnosi] permission="${Notification.permission}" — mostro il pulsante`, 'errore');
   bottone.hidden = false;
   bottone.addEventListener('click', async () => {
     bottone.disabled = true;
