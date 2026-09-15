@@ -590,8 +590,12 @@ admin.get('/riepilogo', (_req, res) => {
         `SELECT COUNT(*) n FROM prenotazioni WHERE data > ? AND stato = 'confermata'`, oggi),
       richieste_visita_da_confermare: conta(
         `SELECT COUNT(*) n FROM prenotazioni WHERE stato = 'in_attesa'`),
-      medicine_da_evadere: conta(
-        `SELECT COUNT(*) n FROM richieste_medicine WHERE stato = 'nuova'`),
+      farmaci_da_evadere: conta(
+        `SELECT COUNT(*) n FROM richieste_medicine WHERE stato = 'nuova' AND tipo = 'medicina'`),
+      specialistiche_da_evadere: conta(
+        `SELECT COUNT(*) n FROM richieste_medicine WHERE stato = 'nuova' AND tipo = 'specialistica'`),
+      esami_da_evadere: conta(
+        `SELECT COUNT(*) n FROM richieste_medicine WHERE stato = 'nuova' AND tipo = 'esami'`),
       pazienti: conta('SELECT COUNT(*) n FROM pazienti'),
       consegne_in_attesa: statoCoda().in_attesa
     },

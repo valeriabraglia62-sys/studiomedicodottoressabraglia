@@ -637,6 +637,35 @@ let token = null;
   verifica('un token inventato non apre nulla', finto.stato === 401);
 }
 
+console.log('\nRiepilogo: farmaci, specialistiche ed esami contati separatamente');
+{
+  const prima = (await chiama('GET', '/api/admin/riepilogo', null, token)).dati.riepilogo;
+
+  const farmaco = await chiama('POST', '/api/medicine', {
+    nome: 'Conta', cognome: 'Farmaci', telefono: '3339990080',
+    email: 'conta.farmaci@example.com', farmaci: 'Tachipirina', tipo: 'medicina'
+  });
+  const specialistica = await chiama('POST', '/api/medicine', {
+    nome: 'Conta', cognome: 'Specialistica', telefono: '3339990081',
+    email: 'conta.specialistica@example.com', farmaci: 'Visita cardiologica', tipo: 'specialistica'
+  });
+  const esame = await chiama('POST', '/api/medicine', {
+    nome: 'Conta', cognome: 'Esami', telefono: '3339990082',
+    email: 'conta.esami@example.com', farmaci: 'Emocromo', tipo: 'esami'
+  });
+  verifica('creata una richiesta per ciascuno dei tre tipi',
+    farmaco.stato === 201 && specialistica.stato === 201 && esame.stato === 201);
+
+  const dopo = (await chiama('GET', '/api/admin/riepilogo', null, token)).dati.riepilogo;
+  verifica('il conteggio dei farmaci sale di uno',
+    dopo.farmaci_da_evadere === prima.farmaci_da_evadere + 1);
+  verifica('il conteggio delle specialistiche sale di uno, non quello dei farmaci',
+    dopo.specialistiche_da_evadere === prima.specialistiche_da_evadere + 1
+    && dopo.farmaci_da_evadere === prima.farmaci_da_evadere + 1);
+  verifica('il conteggio degli esami sale di uno, non gli altri due',
+    dopo.esami_da_evadere === prima.esami_da_evadere + 1);
+}
+
 console.log('\nRichieste di visita: lo studio conferma o rifiuta');
 {
   const { oggiISO, aggiungiGiorni } = await import('../src/orari.js');

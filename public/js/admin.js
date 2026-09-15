@@ -429,8 +429,14 @@ async function caricaRiepilogo() {
       scheda: 'prenotazioni',
       filtri: { '#pren-dal': oggiISO(), '#pren-al': '', '#pren-stato': 'confermata', '#pren-cerca': '' }
     }],
-    ['Farmaci da evadere', riepilogo.medicine_da_evadere, {
+    ['Farmaci da evadere', riepilogo.farmaci_da_evadere, {
       scheda: 'medicine', filtri: { '#med-stato': 'nuova' }
+    }],
+    ['Specialistiche da evadere', riepilogo.specialistiche_da_evadere, {
+      scheda: 'specialistiche', filtri: { '#spe-stato': 'nuova' }
+    }],
+    ['Esami da evadere', riepilogo.esami_da_evadere, {
+      scheda: 'esami', filtri: { '#esa-stato': 'nuova' }
     }],
     ['Pazienti in archivio', riepilogo.pazienti, {
       scheda: 'pazienti', filtri: { '#paz-cerca': '' }
