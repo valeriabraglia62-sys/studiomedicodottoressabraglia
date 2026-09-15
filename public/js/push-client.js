@@ -164,7 +164,15 @@ export async function collegaNotifiche(bottone, api, avvisa) {
 
   let registrazione;
   try {
-    registrazione = await navigator.serviceWorker.register('/sw-push.js');
+    await navigator.serviceWorker.register('/sw-push.js');
+    // .ready aspetta che per questa pagina ci sia davvero un service worker
+    // ATTIVO, non solo registrato: subito dopo un'apertura "a freddo" (tipico
+    // di iOS, dopo aver chiuso del tutto l'app dal multitasking) .register()
+    // puo' risolvere un attimo prima che lo sia ancora, e interrogare
+    // getSubscription() in quel momento puo' dare "non iscritto" anche
+    // quando l'iscrizione c'e' ed e' valida — da qui il pulsante che
+    // ricompare senza che le notifiche si siano davvero disattivate.
+    registrazione = await navigator.serviceWorker.ready;
     if (await registrazione.pushManager.getSubscription()) return; // gia' iscritto
   } catch (err) {
     dillo(`Non riesco a registrare il service worker: ${err.message}`);
