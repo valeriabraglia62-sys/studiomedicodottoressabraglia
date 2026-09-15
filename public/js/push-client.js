@@ -206,11 +206,31 @@ export async function collegaNotifiche(bottone, api, avvisa) {
 
   try {
     if (await registrazione.pushManager.getSubscription()) return; // gia' iscritto, tutto a posto
+
+    // Si chiede il permesso esplicitamente, anche senza un gesto: per le
+    // specifiche, se la decisione (concesso o negato) e' gia' stata presa in
+    // passato, il browser risponde subito con quella, senza mostrare nessun
+    // popup e senza bisogno di un click — e lo fa controllando lo stato vero,
+    // non necessariamente il valore (che su iOS puo' essere bacato) che
+    // Notification.permission riportava un attimo prima.
+    const permesso = await Notification.requestPermission();
+    if (permesso !== 'granted') {
+      // NOTA TEMPORANEA DI DIAGNOSI: da togliere una volta risolto.
+      avvisa?.(`[diagnosi] requestPermission() senza gesto ha risposto "${permesso}"`, 'errore');
+      throw new Error('permesso non ancora concesso');
+    }
+
     await iscrivi(); // il permesso c'era gia' davvero: nessun popup, nessun pulsante
     return;
-  } catch {
-    // Il permesso non e' ancora stato dato per davvero (o e' scaduto il
-    // gesto): serve il pulsante, e serve il click per poterlo chiedere.
+  } catch (err) {
+    // NOTA TEMPORANEA DI DIAGNOSI: da togliere una volta risolto. Se il
+    // permesso era "granted" ma qualcos'altro e' andato storto (es. iscrivi()
+    // stessa fallita), lo si vuole vedere anche qui.
+    if (Notification.permission === 'granted' || err?.message !== 'permesso non ancora concesso') {
+      avvisa?.(`[diagnosi] tentativo silenzioso fallito: ${err?.message || err}`, 'errore');
+    }
+    // Il permesso non e' ancora stato dato per davvero: serve il pulsante, e
+    // serve il click per poterlo chiedere.
   }
 
   bottone.hidden = false;
