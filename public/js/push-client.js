@@ -158,20 +158,18 @@ function chiaveComeBytes(base64Url) {
 
 /**
  * Mostra il pulsante solo se serve davvero: il browser deve supportare le
- * notifiche e il permesso non deve essere gia' stato negato in passato.
+ * notifiche, il permesso non deve essere gia' stato negato in passato, e non
+ * deve esserci gia' un'iscrizione attiva su questo dispositivo.
  *
- * Non ci si fida del valore di Notification.permission per decidere se
- * provare l'iscrizione in silenzio: su iOS, subito dopo aver riaperto l'app
- * (anche solo passando a un'altra app e tornando indietro, senza chiuderla
- * del tutto), quella proprieta' puo' leggere "default" anche quando il
- * permesso e' gia' stato concesso in passato — un difetto della piattaforma,
- * confermato in diagnosi, non qualcosa che dipenda da questo codice.
- *
- * Percio' si prova SEMPRE a iscriversi senza chiedere nulla, prima di
- * mostrare qualunque pulsante: se il permesso c'e' davvero gia' (anche se la
- * proprieta' mentiva), funziona senza che compaia alcun popup; se il
- * permesso non e' mai stato dato, il browser rifiuta la richiesta perche' non
- * c'e' un gesto dell'utente dietro, e solo allora si mostra il pulsante.
+ * Diagnosticato con un utente reale: su iOS, dopo aver riaperto l'app (basta
+ * anche solo cambiare app e tornare indietro), l'iscrizione tecnica puo'
+ * "perdersi" anche restando il permesso concesso. Non c'e' modo di rimediare
+ * senza un tocco vero: Safari rifiuta SEMPRE (risponde "denied", anche se il
+ * permesso reale e' un altro) qualunque richiesta — persino solo per
+ * controllare lo stato — che non nasca da un gesto genuino dell'utente in
+ * quell'istante; provato e confermato, non e' aggirabile da codice. Quando
+ * ricompare, pero', basta un tocco: siccome il permesso vero c'e' gia', non
+ * mostra nessun popup e va a buon fine subito.
  */
 export async function collegaNotifiche(bottone, api, avvisa) {
   if (!bottone) return;
@@ -190,50 +188,19 @@ export async function collegaNotifiche(bottone, api, avvisa) {
     // di iOS, dopo aver chiuso del tutto l'app dal multitasking) .register()
     // puo' risolvere un attimo prima che lo sia ancora.
     registrazione = await navigator.serviceWorker.ready;
+    if (await registrazione.pushManager.getSubscription()) return; // gia' iscritto
   } catch (err) {
     dillo(`Non riesco a registrare il service worker: ${err.message}`);
     return; // Niente service worker, niente pulsante: non si spiegherebbe l'errore a nessuno.
   }
 
-  const iscrivi = async () => {
-    const { chiave } = await api('/push/chiave-pubblica');
-    const iscrizione = await registrazione.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: chiaveComeBytes(chiave)
-    });
-    await api('/push/iscrivi', { method: 'POST', body: { iscrizione: iscrizione.toJSON() } });
-  };
-
-  try {
-    if (await registrazione.pushManager.getSubscription()) return; // gia' iscritto, tutto a posto
-
-    // Si chiede il permesso esplicitamente, anche senza un gesto: per le
-    // specifiche, se la decisione (concesso o negato) e' gia' stata presa in
-    // passato, il browser risponde subito con quella, senza mostrare nessun
-    // popup e senza bisogno di un click — e lo fa controllando lo stato vero,
-    // non necessariamente il valore (che su iOS puo' essere bacato) che
-    // Notification.permission riportava un attimo prima.
-    const permesso = await Notification.requestPermission();
-    if (permesso !== 'granted') {
-      // NOTA TEMPORANEA DI DIAGNOSI: da togliere una volta risolto.
-      avvisa?.(`[diagnosi] requestPermission() senza gesto ha risposto "${permesso}"`, 'errore');
-      throw new Error('permesso non ancora concesso');
-    }
-
-    await iscrivi(); // il permesso c'era gia' davvero: nessun popup, nessun pulsante
-    return;
-  } catch (err) {
-    // NOTA TEMPORANEA DI DIAGNOSI: da togliere una volta risolto. Se il
-    // permesso era "granted" ma qualcos'altro e' andato storto (es. iscrivi()
-    // stessa fallita), lo si vuole vedere anche qui.
-    if (Notification.permission === 'granted' || err?.message !== 'permesso non ancora concesso') {
-      avvisa?.(`[diagnosi] tentativo silenzioso fallito: ${err?.message || err}`, 'errore');
-    }
-    // Il permesso non e' ancora stato dato per davvero: serve il pulsante, e
-    // serve il click per poterlo chiedere.
-  }
-
+  // Chi lo ha gia' attivato in passato su questo dispositivo (tracciato qui,
+  // non lato server) vede un testo diverso: non e' la prima volta, e
+  // "Attiva notifiche" suonerebbe come se si fossero spente da sole.
+  const giaAttivatoPrima = localStorage.getItem('studio-medico-notifiche-ok') === '1';
+  bottone.textContent = giaAttivatoPrima ? '🔔 Conferma le notifiche' : '🔔 Attiva notifiche';
   bottone.hidden = false;
+
   bottone.addEventListener('click', async () => {
     bottone.disabled = true;
     try {
@@ -248,7 +215,13 @@ export async function collegaNotifiche(bottone, api, avvisa) {
         return;
       }
 
-      await iscrivi();
+      const { chiave } = await api('/push/chiave-pubblica');
+      const iscrizione = await registrazione.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: chiaveComeBytes(chiave)
+      });
+      await api('/push/iscrivi', { method: 'POST', body: { iscrizione: iscrizione.toJSON() } });
+      try { localStorage.setItem('studio-medico-notifiche-ok', '1'); } catch { /* ignora */ }
       bottone.hidden = true;
       avvisa?.('Notifiche attivate.', 'ok');
     } catch (err) {
