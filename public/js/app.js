@@ -1087,7 +1087,7 @@ async function entraNelSito(utente) {
   collegaFormMedicine();
   collegaFormRicerca();
   collegaChat();
-  collegaNotifiche($('#btn-notifiche'), api);
+  collegaNotifiche($('#btn-notifiche'), api, avvisa);
 
   $('#mese-precedente').addEventListener('click', () => cambiaMese(-1));
   $('#mese-successivo').addEventListener('click', () => cambiaMese(1));

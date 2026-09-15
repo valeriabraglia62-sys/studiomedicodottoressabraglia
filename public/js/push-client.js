@@ -95,8 +95,9 @@ function chiaveComeBytes(base64Url) {
  * il pulsante sparisce comunque, riuscito o no: uno che resta li' dopo un
  * rifiuto confonderebbe soltanto ("perche' non succede niente?").
  */
-export async function collegaNotifiche(bottone, api) {
+export async function collegaNotifiche(bottone, api, avvisa) {
   if (!bottone) return;
+  const dillo = (messaggio) => { console.error('[notifiche]', messaggio); avvisa?.(messaggio, 'errore'); };
 
   if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
     return; // Il pulsante resta nascosto: su questo browser non si puo' fare.
@@ -107,7 +108,8 @@ export async function collegaNotifiche(bottone, api) {
   try {
     registrazione = await navigator.serviceWorker.register('/sw-push.js');
     if (await registrazione.pushManager.getSubscription()) return; // gia' iscritto
-  } catch {
+  } catch (err) {
+    dillo(`Non riesco a registrare il service worker: ${err.message}`);
     return; // Niente service worker, niente pulsante: non si spiegherebbe l'errore a nessuno.
   }
 
@@ -120,7 +122,11 @@ export async function collegaNotifiche(bottone, api) {
       // di rete prima, considera il gesto "scaduto" e ignora la richiesta in
       // silenzio, senza mostrare nessun popup e senza un errore da intercettare.
       const permesso = await Notification.requestPermission();
-      if (permesso !== 'granted') { bottone.hidden = true; return; }
+      if (permesso !== 'granted') {
+        dillo(`Permesso non concesso (stato: ${permesso}). Le notifiche restano disattivate.`);
+        bottone.hidden = true;
+        return;
+      }
 
       const { chiave } = await api('/push/chiave-pubblica');
       const iscrizione = await registrazione.pushManager.subscribe({
@@ -129,8 +135,9 @@ export async function collegaNotifiche(bottone, api) {
       });
       await api('/push/iscrivi', { method: 'POST', body: { iscrizione: iscrizione.toJSON() } });
       bottone.hidden = true;
+      avvisa?.('Notifiche attivate.', 'ok');
     } catch (err) {
-      console.error('[notifiche]', err);
+      dillo(`Non sono riuscito ad attivare le notifiche: ${err.message}`);
       bottone.disabled = false;
     }
   });

@@ -369,7 +369,7 @@ function collegaCambioPassword() {
       avvisa('Password aggiornata. Da adesso la conosci solo tu.', 'ok');
       mostraPannello(utenteAttivo);
       await riempiAmbulatori();
-      collegaNotifiche($('#btn-notifiche'), api);
+      collegaNotifiche($('#btn-notifiche'), api, avvisa);
       apriScheda('riepilogo');
     } catch (err) {
       errore.classList.add('errore');
@@ -2342,7 +2342,7 @@ async function avvia() {
     mostraPannello(utente);
     if (utente?.deve_cambiare_password) return;
     await riempiAmbulatori();
-    collegaNotifiche($('#btn-notifiche'), api);
+    collegaNotifiche($('#btn-notifiche'), api, avvisa);
     apriScheda(location.hash.slice(1) || 'riepilogo');
   } catch {
     esci();
