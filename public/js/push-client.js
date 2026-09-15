@@ -24,9 +24,24 @@ function suIOS() {
     || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
-/** Mostra l'elemento (di solito una nota) solo su iPhone/iPad. */
+/**
+ * true se il sito gira gia' come app installata (aperta dall'icona sulla
+ * schermata Home), non dentro una scheda di Safari. Su iPhone/iPad questo e'
+ * `navigator.standalone`; altrove (Chrome/Edge) e' lo standard
+ * `display-mode: standalone`.
+ */
+function giaInstallato() {
+  return navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+}
+
+/**
+ * Mostra l'elemento (di solito la nota su come installare) solo su
+ * iPhone/iPad, e solo se non e' gia' installato: chi la vede gia' aperta
+ * dall'icona sulla Home non deve leggere "aggiungila alla schermata Home",
+ * confonderebbe soltanto.
+ */
 export function mostraSuIOS(elemento) {
-  if (elemento && suIOS()) elemento.hidden = false;
+  if (elemento && suIOS() && !giaInstallato()) elemento.hidden = false;
 }
 
 // Chrome (Android e computer) avvisa quando il sito e' pronto per essere
@@ -100,10 +115,14 @@ export async function collegaNotifiche(bottone, api) {
   bottone.addEventListener('click', async () => {
     bottone.disabled = true;
     try {
-      const { chiave } = await api('/push/chiave-pubblica');
+      // Il permesso va chiesto SUBITO, come prima cosa: Safari/iOS lo lega al
+      // gesto dell'utente (il click) e, se in mezzo c'e' anche una sola await
+      // di rete prima, considera il gesto "scaduto" e ignora la richiesta in
+      // silenzio, senza mostrare nessun popup e senza un errore da intercettare.
       const permesso = await Notification.requestPermission();
       if (permesso !== 'granted') { bottone.hidden = true; return; }
 
+      const { chiave } = await api('/push/chiave-pubblica');
       const iscrizione = await registrazione.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: chiaveComeBytes(chiave)

@@ -1,5 +1,5 @@
 /**
- * Pannello di gestione. Il token di sessione vive in sessionStorage e viaggia
+ * Pannello di gestione. Il token di sessione vive in localStorage e viaggia
  * nell'intestazione Authorization: se il server risponde 401 si torna
  * automaticamente alla schermata di accesso, senza pagine bianche.
  */
@@ -23,9 +23,13 @@ const ETICHETTE_MEDICINE = {
   consegnata: 'Consegnata'
 };
 
-// Trade-off: il refresh mantiene l'accesso, ma la chiusura della scheda lo
-// elimina. Un cookie httpOnly richiederebbe una migrazione CSRF coordinata.
-let token = sessionStorage.getItem(CHIAVE_TOKEN) || '';
+// localStorage invece di sessionStorage apposta: su iPhone/iPad, riaprire
+// l'app installata dalla schermata Home puo' avviare un processo nuovo che
+// azzera sessionStorage, chiedendo l'accesso ogni volta. Resta cosi' loggato
+// finche' non si esce esplicitamente col bottone "Esci" — il telefono e' gia'
+// protetto da codice/Face ID. Un cookie httpOnly richiederebbe una
+// migrazione CSRF coordinata.
+let token = localStorage.getItem(CHIAVE_TOKEN) || '';
 
 // ---- Utilità ---------------------------------------------------------------
 
@@ -292,7 +296,7 @@ function chiediNuovaPassword() {
 function esci(messaggio) {
   token = '';
   utenteAttivo = null;
-  sessionStorage.removeItem(CHIAVE_TOKEN);
+  localStorage.removeItem(CHIAVE_TOKEN);
   mostraSchermata('accesso');
   if (messaggio) avvisa(messaggio, 'errore');
 }
@@ -314,7 +318,7 @@ function collegaAccesso() {
         body: { email: $('#acc-email').value, password: $('#acc-password').value }
       });
       token = dati.token;
-      sessionStorage.setItem(CHIAVE_TOKEN, token);
+      localStorage.setItem(CHIAVE_TOKEN, token);
       $('#acc-password').value = '';
       mostraPannello(dati.utente);
       if (!dati.utente?.deve_cambiare_password) {

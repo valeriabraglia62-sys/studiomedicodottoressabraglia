@@ -741,7 +741,10 @@ console.log('\nCalendario del pannello: tutto quello di un giorno, con un clic')
   const { oggiISO, aggiungiGiorni } = await import('../src/orari.js');
   let g = null;
   let liberi = [];
-  for (let i = 60; i <= 90 && !g; i++) {
+  // Restare ben dentro i 60 giorni prenotabili (GIORNI_PRENOTABILI): oltre,
+  // ogni giorno risulta senza slot per definizione e la ricerca fallirebbe
+  // sempre, non per sfortuna.
+  for (let i = 45; i <= 59 && !g; i++) {
     const d = aggiungiGiorni(oggiISO(), i);
     const r = await chiama('GET', `/api/disponibilita?data=${d}&ambulatorio_id=1`);
     const s = (r.dati.slot || []).filter((x) => x.disponibile);
@@ -1763,8 +1766,23 @@ console.log('\nLo staff corregge i dati di un paziente e gli reimposta la passwo
   // Un paziente senza account collegato — il classico appuntamento preso allo
   // sportello, senza registrazione al sito: il server deve dirlo chiaro, non
   // rispondere con un generico errore tecnico.
+  //
+  // L'orario si cerca al volo, invece di uno fisso: a questo punto del file
+  // le prove di carico qui sopra hanno gia' riempito buona parte degli slot
+  // dei prossimi due mesi, e un giorno/ora scelti a priori rischiano di
+  // trovarsi gia' occupati.
+  let giornoSportello = null;
+  let oraSportello = null;
+  for (let i = 1; i <= 60 && !giornoSportello; i++) {
+    const d = aggiungiGiorni(oggiISO(), i);
+    const r = await chiama('GET', `/api/disponibilita?data=${d}&ambulatorio_id=1`);
+    const libero = (r.dati.slot || []).find((x) => x.disponibile);
+    if (libero) { giornoSportello = d; oraSportello = libero.ora_inizio; }
+  }
+  verifica('trovato un orario libero per la prova dello sportello', Boolean(giornoSportello));
+
   const senzaAccessoReg = await chiama('POST', '/api/admin/prenotazioni', {
-    forza: true, ambulatorio_id: 1, data: aggiungiGiorni(oggiISO(), 44), ora_inizio: '11:15',
+    forza: true, ambulatorio_id: 1, data: giornoSportello, ora_inizio: oraSportello,
     nome: 'Senza', cognome: 'Account', telefono: '3339990030', problema: 'sportello, niente sito'
   }, token);
   const idPazSenzaAccesso = senzaAccessoReg.dati.prenotazione
