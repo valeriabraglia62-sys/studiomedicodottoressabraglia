@@ -1855,6 +1855,63 @@ console.log('\nLo staff corregge i dati di un paziente e gli reimposta la passwo
     resetSenzaAccesso.stato === 404, JSON.stringify(resetSenzaAccesso.dati));
 }
 
+console.log('\nPromemoria: il giorno prima della visita, una volta sola');
+{
+  const { inviaPromemoriaDovuti } = await import('../src/promemoria.js');
+  const { minutiCorrentiRoma } = await import('../src/orari.js');
+
+  const reg = registraPazienteDiretto({
+    nome: 'Promemoria', cognome: 'Prova', telefono: '3339990060',
+    email: 'promemoria.prova@example.it', password: 'PasswordPromemoria26!'
+  });
+  verificaEmailDiretto(reg.token);
+  const idPaz = db.prepare('SELECT paziente_id FROM utenti WHERE id = ?').get(reg.utente.id).paziente_id;
+
+  // Un appuntamento a 24 ore esatte da adesso: cade proprio al centro della
+  // finestra di 30 minuti che inviaPromemoriaDovuti() controlla.
+  const oraCorrente = minutiCorrentiRoma();
+  const oraTesto = `${String(Math.floor(oraCorrente / 60)).padStart(2, '0')}:${String(oraCorrente % 60).padStart(2, '0')}`;
+  const domani = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const ora = new Date().toISOString();
+
+  // Ambulatorio 2 apposta: il giorno "domani" e l'orario corrente potrebbero
+  // coincidere con uno slot gia' usato da altre prove sull'ambulatorio 1
+  // (es. la corsa allo stesso orario), che non tocca mai il 2.
+  db.prepare(`
+    INSERT INTO prenotazioni
+      (codice, ambulatorio_id, data, ora_inizio, ora_fine, paziente_id, problema, stato, origine, creata_il)
+    VALUES ('PRE-PROM-TEST', 2, ?, ?, ?, ?, 'prova promemoria', 'confermata', 'sito', ?)
+  `).run(domani, oraTesto, oraTesto, idPaz, ora);
+
+  // Una seconda prenotazione, fra una settimana: fuori dalla finestra, non
+  // deve ricevere niente.
+  const fraUnaSettimana = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+  db.prepare(`
+    INSERT INTO prenotazioni
+      (codice, ambulatorio_id, data, ora_inizio, ora_fine, paziente_id, problema, stato, origine, creata_il)
+    VALUES ('PRE-PROM-LONTANO', 2, ?, ?, ?, ?, 'troppo presto per il promemoria', 'confermata', 'sito', ?)
+  `).run(fraUnaSettimana, oraTesto, oraTesto, idPaz, ora);
+
+  const primoGiro = inviaPromemoriaDovuti();
+  verifica('solo la prenotazione di domani riceve il promemoria', primoGiro === 1, `inviati: ${primoGiro}`);
+
+  const dopoInvio = db.prepare('SELECT promemoria_il FROM prenotazioni WHERE codice = ?').get('PRE-PROM-TEST');
+  verifica('la prenotazione di domani e\' segnata come avvisata', Boolean(dopoInvio.promemoria_il));
+
+  const lontana = db.prepare('SELECT promemoria_il FROM prenotazioni WHERE codice = ?').get('PRE-PROM-LONTANO');
+  verifica('quella fra una settimana resta non avvisata', lontana.promemoria_il === null);
+
+  const email = db.prepare(
+    "SELECT payload FROM outbox WHERE tipo = 'email' ORDER BY id DESC LIMIT 1"
+  ).get();
+  const payload = JSON.parse(email.payload);
+  verifica('il promemoria via email e\' stato messo in coda per il paziente giusto',
+    payload.to === 'promemoria.prova@example.it', payload.to);
+
+  const secondoGiro = inviaPromemoriaDovuti();
+  verifica('la stessa prenotazione non riceve il promemoria due volte', secondoGiro === 0, `inviati: ${secondoGiro}`);
+}
+
 console.log('\nNotifiche push: iscrizione e disiscrizione');
 {
   const senzaVapid = await chiama('GET', '/api/push/chiave-pubblica');

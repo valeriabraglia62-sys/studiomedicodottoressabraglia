@@ -2,9 +2,12 @@ import { db } from './db.js';
 import { accoda } from './outbox.js';
 import { dettaglio, minutiAllAppuntamento } from './prenotazioni.js';
 import { emailPromemoriaPaziente } from './mailer.js';
+import { formattaDataEstesa } from './orari.js';
+import * as push from './push.js';
 
 /**
- * Promemoria al paziente il giorno prima della visita.
+ * Promemoria al paziente il giorno prima della visita — email (sempre) e
+ * notifica push (se ha un dispositivo iscritto).
  *
  * La colonna promemoria_il segna quando e' stato accodato: e' cio' che impedisce
  * di inviarlo due volte anche se il server viene riavviato di continuo.
@@ -29,6 +32,12 @@ export function inviaPromemoriaDovuti() {
 
   const segna = db.transaction((prenotazione) => {
     accoda('email', emailPromemoriaPaziente(prenotazione));
+    push.notificaPaziente(prenotazione.paziente_id, {
+      titolo: 'Promemoria: visita domani',
+      corpo: `${formattaDataEstesa(prenotazione.data)} alle ${prenotazione.ora_inizio} — ` +
+        `${prenotazione.ambulatorio_nome}`,
+      url: '/'
+    });
     db.prepare('UPDATE prenotazioni SET promemoria_il = ? WHERE id = ?')
       .run(new Date().toISOString(), prenotazione.id);
   });
