@@ -156,20 +156,21 @@ function chiaveComeBytes(base64Url) {
   return byte;
 }
 
+const CHIAVE_NOTIFICHE_OK = 'studio-medico-notifiche-ok';
+
 /**
- * Mostra il pulsante solo se serve davvero: il browser deve supportare le
- * notifiche, il permesso non deve essere gia' stato negato in passato, e non
- * deve esserci gia' un'iscrizione attiva su questo dispositivo.
+ * Un solo pulsante, tre stati possibili, capiti guardando
+ * `bottone.dataset.statoNotifiche`: "spento" (mai attivate, o disattivate di
+ * proposito → far partire l'iscrizione), "acceso" (iscritto → disattivarle),
+ * "negato" (il permesso e' stato tolto dalle impostazioni del telefono → non
+ * si puo' richiederlo di nuovo da codice, si puo' solo spiegare come fare a
+ * mano). Un solo listener di click, che guarda lo stato attuale e decide.
  *
  * Diagnosticato con un utente reale: su iOS, dopo aver riaperto l'app (basta
  * anche solo cambiare app e tornare indietro), l'iscrizione tecnica puo'
- * "perdersi" anche restando il permesso concesso. Non c'e' modo di rimediare
- * senza un tocco vero: Safari rifiuta SEMPRE (risponde "denied", anche se il
- * permesso reale e' un altro) qualunque richiesta — persino solo per
- * controllare lo stato — che non nasca da un gesto genuino dell'utente in
- * quell'istante; provato e confermato, non e' aggirabile da codice. Quando
- * ricompare, pero', basta un tocco: siccome il permesso vero c'e' gia', non
- * mostra nessun popup e va a buon fine subito.
+ * "perdersi" anche restando il permesso concesso, e in quel caso il pulsante
+ * torna a "spento" pur non essendo stato davvero disattivato — un tocco pero'
+ * basta a rimetterlo a posto, senza popup, perche' il permesso vero c'e' gia'.
  */
 export async function collegaNotifiche(bottone, api, avvisa) {
   if (!bottone) return;
@@ -178,7 +179,6 @@ export async function collegaNotifiche(bottone, api, avvisa) {
   if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
     return; // Il pulsante resta nascosto: su questo browser non si puo' fare.
   }
-  if (Notification.permission === 'denied') return;
 
   let registrazione;
   try {
@@ -188,20 +188,22 @@ export async function collegaNotifiche(bottone, api, avvisa) {
     // di iOS, dopo aver chiuso del tutto l'app dal multitasking) .register()
     // puo' risolvere un attimo prima che lo sia ancora.
     registrazione = await navigator.serviceWorker.ready;
-    if (await registrazione.pushManager.getSubscription()) return; // gia' iscritto
   } catch (err) {
     dillo(`Non riesco a registrare il service worker: ${err.message}`);
     return; // Niente service worker, niente pulsante: non si spiegherebbe l'errore a nessuno.
   }
 
-  // Chi lo ha gia' attivato in passato su questo dispositivo (tracciato qui,
-  // non lato server) vede un testo diverso: non e' la prima volta, e
-  // "Attiva notifiche" suonerebbe come se si fossero spente da sole.
-  const giaAttivatoPrima = localStorage.getItem('studio-medico-notifiche-ok') === '1';
-  bottone.textContent = giaAttivatoPrima ? '🔔 Conferma le notifiche' : '🔔 Attiva notifiche';
-  bottone.hidden = false;
+  const mostra = (stato) => {
+    bottone.dataset.statoNotifiche = stato;
+    bottone.disabled = false;
+    bottone.hidden = false;
+    if (stato === 'negato') bottone.textContent = '🔕 Notifiche disattivate';
+    else if (stato === 'acceso') bottone.textContent = '🔕 Disattiva notifiche';
+    else bottone.textContent = localStorage.getItem(CHIAVE_NOTIFICHE_OK) === '1'
+      ? '🔔 Conferma le notifiche' : '🔔 Attiva notifiche';
+  };
 
-  bottone.addEventListener('click', async () => {
+  const attiva = async () => {
     bottone.disabled = true;
     try {
       // Il permesso va chiesto SUBITO, come prima cosa: Safari/iOS lo lega al
@@ -211,7 +213,7 @@ export async function collegaNotifiche(bottone, api, avvisa) {
       const permesso = await Notification.requestPermission();
       if (permesso !== 'granted') {
         dillo(`Permesso non concesso (stato: ${permesso}). Le notifiche restano disattivate.`);
-        bottone.hidden = true;
+        mostra(permesso === 'denied' ? 'negato' : 'spento');
         return;
       }
 
@@ -221,12 +223,56 @@ export async function collegaNotifiche(bottone, api, avvisa) {
         applicationServerKey: chiaveComeBytes(chiave)
       });
       await api('/push/iscrivi', { method: 'POST', body: { iscrizione: iscrizione.toJSON() } });
-      try { localStorage.setItem('studio-medico-notifiche-ok', '1'); } catch { /* ignora */ }
-      bottone.hidden = true;
+      try { localStorage.setItem(CHIAVE_NOTIFICHE_OK, '1'); } catch { /* ignora */ }
       avvisa?.('Notifiche attivate.', 'ok');
+      mostra('acceso');
     } catch (err) {
       dillo(`Non sono riuscito ad attivare le notifiche: ${err.message}`);
-      bottone.disabled = false;
+      mostra('spento');
     }
+  };
+
+  const disattiva = async () => {
+    bottone.disabled = true;
+    try {
+      const iscrizione = await registrazione.pushManager.getSubscription();
+      if (iscrizione) {
+        // Prima lo si toglie dal server, poi dal browser: se si interrompe a
+        // meta' meglio restare iscritti su un dispositivo di troppo (il
+        // server lo pulira' da solo al prossimo invio fallito) che restare
+        // convinti di aver disattivato senza esserci riusciti davvero.
+        await api('/push/disiscrivi', { method: 'POST', body: { endpoint: iscrizione.endpoint } });
+        await iscrizione.unsubscribe();
+      }
+      try { localStorage.removeItem(CHIAVE_NOTIFICHE_OK); } catch { /* ignora */ }
+      avvisa?.('Notifiche disattivate.', 'ok');
+      mostra('spento');
+    } catch (err) {
+      dillo(`Non sono riuscito a disattivare le notifiche: ${err.message}`);
+      mostra('acceso');
+    }
+  };
+
+  const spiegaNegato = () => avvisa?.(
+    'Le notifiche sono disattivate dalle impostazioni del telefono, non da qui: non possiamo ' +
+    'richiederle di nuovo noi. Per riattivarle: apri Impostazioni, cerca il nome di questa app ' +
+    'installata, apri Notifiche e attiva "Consenti notifiche".',
+    'errore'
+  );
+
+  bottone.addEventListener('click', () => {
+    const stato = bottone.dataset.statoNotifiche;
+    if (stato === 'acceso') disattiva();
+    else if (stato === 'negato') spiegaNegato();
+    else attiva();
   });
+
+  if (Notification.permission === 'denied') { mostra('negato'); return; }
+
+  try {
+    const iscrizione = await registrazione.pushManager.getSubscription();
+    mostra(iscrizione ? 'acceso' : 'spento');
+  } catch (err) {
+    dillo(`Non riesco a leggere lo stato delle notifiche: ${err.message}`);
+  }
 }
