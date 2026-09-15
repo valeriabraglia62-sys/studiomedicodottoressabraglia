@@ -158,14 +158,20 @@ function chiaveComeBytes(base64Url) {
 
 /**
  * Mostra il pulsante solo se serve davvero: il browser deve supportare le
- * notifiche e il permesso non deve essere gia' stato negato in passato. Se il
- * permesso invece e' gia' stato concesso ma manca l'iscrizione tecnica (su
- * iOS capita: dopo che l'app viene terminata e riaperta dal sistema, il
- * dispositivo a volte "dimentica" l'iscrizione anche se le notifiche restano
- * autorizzate), la si rifa' da sola in silenzio — richiedere il permesso e'
- * l'unica parte che ha davvero bisogno di un click dell'utente, ripetere
- * l'iscrizione no. Cosi' non ricompare piu' un pulsante che confonderebbe
- * solo ("le ho gia' attivate, perche' me lo richiede?").
+ * notifiche e il permesso non deve essere gia' stato negato in passato.
+ *
+ * Non ci si fida del valore di Notification.permission per decidere se
+ * provare l'iscrizione in silenzio: su iOS, subito dopo aver riaperto l'app
+ * (anche solo passando a un'altra app e tornando indietro, senza chiuderla
+ * del tutto), quella proprieta' puo' leggere "default" anche quando il
+ * permesso e' gia' stato concesso in passato — un difetto della piattaforma,
+ * confermato in diagnosi, non qualcosa che dipenda da questo codice.
+ *
+ * Percio' si prova SEMPRE a iscriversi senza chiedere nulla, prima di
+ * mostrare qualunque pulsante: se il permesso c'e' davvero gia' (anche se la
+ * proprieta' mentiva), funziona senza che compaia alcun popup; se il
+ * permesso non e' mai stato dato, il browser rifiuta la richiesta perche' non
+ * c'e' un gesto dell'utente dietro, e solo allora si mostra il pulsante.
  */
 export async function collegaNotifiche(bottone, api, avvisa) {
   if (!bottone) return;
@@ -198,23 +204,15 @@ export async function collegaNotifiche(bottone, api, avvisa) {
     await api('/push/iscrivi', { method: 'POST', body: { iscrizione: iscrizione.toJSON() } });
   };
 
-  if (Notification.permission === 'granted') {
-    try {
-      if (await registrazione.pushManager.getSubscription()) return; // gia' iscritto, tutto a posto
-      await iscrivi(); // permesso gia' dato: si rifa' l'iscrizione senza disturbare nessuno
-    } catch (err) {
-      dillo(`Non sono riuscito a rinnovare l'iscrizione alle notifiche: ${err.message}`);
-    }
+  try {
+    if (await registrazione.pushManager.getSubscription()) return; // gia' iscritto, tutto a posto
+    await iscrivi(); // il permesso c'era gia' davvero: nessun popup, nessun pulsante
     return;
+  } catch {
+    // Il permesso non e' ancora stato dato per davvero (o e' scaduto il
+    // gesto): serve il pulsante, e serve il click per poterlo chiedere.
   }
 
-  // Qui il permesso non e' mai stato chiesto: serve il pulsante, e serve il
-  // click per poterlo chiedere.
-  //
-  // NOTA TEMPORANEA DI DIAGNOSI: mostra il valore letto di Notification.permission
-  // quando il pulsante ricompare, per capire se davvero legge "default" invece
-  // di "granted" in quel momento. Da togliere una volta risolto.
-  avvisa?.(`[diagnosi] permission="${Notification.permission}" — mostro il pulsante`, 'errore');
   bottone.hidden = false;
   bottone.addEventListener('click', async () => {
     bottone.disabled = true;
