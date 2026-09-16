@@ -1382,6 +1382,37 @@ console.log('\nGli annullamenti vecchi non ingombrano l\'elenco');
   verifica('e il paziente col suo codice la vede sempre', dalPaziente.stato === 200);
 }
 
+console.log('\nStessa cosa per farmaci/specialistiche/esami: rifiutata resta un giorno, poi sgombera');
+{
+  const creata = await chiama('POST', '/api/medicine', {
+    nome: 'Vecchia', cognome: 'Rifiutata', telefono: '3339990097',
+    email: 'vecchia.rifiutata@example.com', farmaci: 'Verifica sparizione dall elenco', tipo: 'medicina'
+  });
+  const codice = creata.dati.richiesta?.codice;
+  const rifiutata = await chiama('POST', `/api/admin/medicine/${codice}/rifiuta`,
+    { motivo: 'prova di sparizione' }, token);
+  verifica('la richiesta e\' stata rifiutata', rifiutata.stato === 200, JSON.stringify(rifiutata.dati));
+
+  const appena = await chiama('GET', '/api/admin/medicine?tipo=medicina', null, token);
+  verifica('appena rifiutata si vede ancora',
+    appena.dati.richieste.some((r) => r.codice === codice));
+
+  // La si invecchia di tre giorni senza aspettare tre giorni.
+  db.prepare('UPDATE richieste_medicine SET gestita_il = ? WHERE codice = ?')
+    .run(new Date(Date.now() - 3 * 86400000).toISOString(), codice);
+
+  const dopo = await chiama('GET', '/api/admin/medicine?tipo=medicina', null, token);
+  verifica('passato un giorno sparisce dall\'elenco',
+    !dopo.dati.richieste.some((r) => r.codice === codice));
+
+  const cercandola = await chiama('GET', '/api/admin/medicine?tipo=medicina&stato=rifiutata', null, token);
+  verifica('ma chi la cerca fra le rifiutate la ritrova',
+    cercandola.dati.richieste.some((r) => r.codice === codice));
+
+  const dalPaziente = await chiama('GET', `/api/medicine/${codice}`);
+  verifica('e il paziente col suo codice la vede sempre', dalPaziente.stato === 200);
+}
+
 console.log('\nUna visita gia\' fatta sgombera l\'elenco');
 {
   // L'elenco serve a sapere chi deve ancora venire. Una visita di marzo, ad
