@@ -157,6 +157,7 @@ function chiaveComeBytes(base64Url) {
 }
 
 const CHIAVE_NOTIFICHE_OK = 'studio-medico-notifiche-ok';
+const CHIAVE_SUONO = 'studio-medico-notifiche-suono';
 
 /**
  * Un solo pulsante, tre stati possibili, capiti guardando
@@ -193,6 +194,12 @@ export async function collegaNotifiche(bottone, api, avvisa) {
     return; // Niente service worker, niente pulsante: non si spiegherebbe l'errore a nessuno.
   }
 
+  // La casella "Suono", opzionale: esiste solo se la pagina la offre (non
+  // tutte devono per forza averla), quindi ogni uso e' protetto da `?.`.
+  const etichettaSuono = document.getElementById('opzione-suono');
+  const casellaSuono = document.getElementById('notifiche-suono');
+  const suonoAttivo = () => localStorage.getItem(CHIAVE_SUONO) !== '0';
+
   const mostra = (stato) => {
     bottone.dataset.statoNotifiche = stato;
     bottone.disabled = false;
@@ -201,6 +208,11 @@ export async function collegaNotifiche(bottone, api, avvisa) {
     else if (stato === 'acceso') bottone.textContent = '🔕 Disattiva notifiche';
     else bottone.textContent = localStorage.getItem(CHIAVE_NOTIFICHE_OK) === '1'
       ? '🔔 Conferma le notifiche' : '🔔 Attiva notifiche';
+
+    // La scelta del suono ha senso solo mentre le notifiche sono davvero
+    // accese: prima non c'e' ancora niente da rendere silenzioso o sonoro.
+    if (etichettaSuono) etichettaSuono.hidden = stato !== 'acceso';
+    if (casellaSuono && stato === 'acceso') casellaSuono.checked = suonoAttivo();
   };
 
   const attiva = async () => {
@@ -222,7 +234,10 @@ export async function collegaNotifiche(bottone, api, avvisa) {
         userVisibleOnly: true,
         applicationServerKey: chiaveComeBytes(chiave)
       });
-      await api('/push/iscrivi', { method: 'POST', body: { iscrizione: iscrizione.toJSON() } });
+      await api('/push/iscrivi', {
+        method: 'POST',
+        body: { iscrizione: iscrizione.toJSON(), suono: suonoAttivo() }
+      });
       try { localStorage.setItem(CHIAVE_NOTIFICHE_OK, '1'); } catch { /* ignora */ }
       avvisa?.('Notifiche attivate.', 'ok');
       mostra('acceso');
@@ -265,6 +280,18 @@ export async function collegaNotifiche(bottone, api, avvisa) {
     if (stato === 'acceso') disattiva();
     else if (stato === 'negato') spiegaNegato();
     else attiva();
+  });
+
+  casellaSuono?.addEventListener('change', async () => {
+    const suono = casellaSuono.checked;
+    try { localStorage.setItem(CHIAVE_SUONO, suono ? '1' : '0'); } catch { /* ignora */ }
+    if (bottone.dataset.statoNotifiche !== 'acceso') return; // solo un promemoria per la prossima iscrizione
+    try {
+      const iscrizione = await registrazione.pushManager.getSubscription();
+      if (iscrizione) await api('/push/suono', { method: 'POST', body: { endpoint: iscrizione.endpoint, suono } });
+    } catch (err) {
+      dillo(`Non sono riuscito a cambiare l'impostazione del suono: ${err.message}`);
+    }
   });
 
   if (Notification.permission === 'denied') { mostra('negato'); return; }

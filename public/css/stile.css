@@ -115,6 +115,16 @@ a { color: var(--verde); }
 .menu a:hover { background: var(--verde-tenue); color: var(--verde-scuro); }
 .menu a.attivo { background: var(--verde-chiaro); color: var(--verde-scuro); }
 
+.opzione-suono {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  color: var(--testo-tenue);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.opzione-suono input { width: auto; margin: 0; cursor: pointer; }
+
 /* ---- Pulsanti ---------------------------------------------------------- */
 
 .bottone {

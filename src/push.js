@@ -32,21 +32,35 @@ export function chiavePubblica() {
   return config.vapid.enabled ? config.vapid.publicKey : null;
 }
 
-/** Registra (o aggiorna) il dispositivo da cui arriva l'iscrizione. */
-export function iscrivi(utenteId, iscrizione) {
+/**
+ * Registra (o aggiorna) il dispositivo da cui arriva l'iscrizione. `suono` e'
+ * facoltativo (di default acceso): chi non lo manda proprio, come le
+ * iscrizioni fatte prima che esistesse questa scelta, resta con l'avviso
+ * sonoro di sistema, com'era finora.
+ */
+export function iscrivi(utenteId, iscrizione, suono = true) {
   if (!iscrizione?.endpoint || !iscrizione?.keys?.p256dh || !iscrizione?.keys?.auth) {
     throw new ErroreDominio('Iscrizione non valida.', 400);
   }
   db.prepare(`
-    INSERT INTO iscrizioni_notifiche (utente_id, endpoint, p256dh, auth, creato_il)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO iscrizioni_notifiche (utente_id, endpoint, p256dh, auth, suono, creato_il)
+    VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(endpoint) DO UPDATE SET
-      utente_id = excluded.utente_id, p256dh = excluded.p256dh, auth = excluded.auth
-  `).run(utenteId, iscrizione.endpoint, iscrizione.keys.p256dh, iscrizione.keys.auth, new Date().toISOString());
+      utente_id = excluded.utente_id, p256dh = excluded.p256dh, auth = excluded.auth, suono = excluded.suono
+  `).run(utenteId, iscrizione.endpoint, iscrizione.keys.p256dh, iscrizione.keys.auth,
+    suono ? 1 : 0, new Date().toISOString());
 }
 
 export function disiscrivi(endpoint) {
   if (endpoint) db.prepare('DELETE FROM iscrizioni_notifiche WHERE endpoint = ?').run(endpoint);
+}
+
+/** Cambia solo la preferenza del suono per un dispositivo gia' iscritto. */
+export function impostaSuono(endpoint, suono) {
+  if (!endpoint) throw new ErroreDominio('Iscrizione non valida.', 400);
+  const esito = db.prepare('UPDATE iscrizioni_notifiche SET suono = ? WHERE endpoint = ?')
+    .run(suono ? 1 : 0, endpoint);
+  if (esito.changes === 0) throw new ErroreDominio('Dispositivo non trovato.', 404);
 }
 
 /**
@@ -66,7 +80,10 @@ async function inviaAlDispositivo(dispositivo, messaggio) {
       endpoint: dispositivo.endpoint,
       keys: { p256dh: dispositivo.p256dh, auth: dispositivo.auth }
     };
-    await webpush.sendNotification(sub, JSON.stringify({ url: '/', ...messaggio }));
+    // "silenzioso" e non "suono": il service worker (sw-push.js) lo passa
+    // diretto all'opzione `silent` di showNotification, che si chiama cosi'.
+    await webpush.sendNotification(sub,
+      JSON.stringify({ url: '/', silenzioso: !dispositivo.suono, ...messaggio }));
     console.log(`[push] inviata a ...${targa} — "${messaggio.titolo || ''}"`);
   } catch (err) {
     try {

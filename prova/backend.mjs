@@ -1990,9 +1990,30 @@ console.log('\nNotifiche push: iscrizione e disiscrizione');
   }, tok);
   verifica('iscrizione valida accettata', iscritto.stato === 200, JSON.stringify(iscritto.dati));
 
-  const riga = db.prepare('SELECT utente_id FROM iscrizioni_notifiche WHERE endpoint = ?').get(endpoint);
+  const riga = db.prepare('SELECT utente_id, suono FROM iscrizioni_notifiche WHERE endpoint = ?').get(endpoint);
   verifica('il dispositivo e\' salvato ed e\' collegato all\'account giusto',
     riga?.utente_id === reg.utente.id, JSON.stringify(riga));
+  verifica('il suono e\' acceso di default', riga?.suono === 1, JSON.stringify(riga));
+
+  const suonoSpento = await chiama('POST', '/api/push/suono', { endpoint, suono: false }, tok);
+  verifica('si puo\' spegnere il suono di un\'iscrizione', suonoSpento.stato === 200);
+  const dopoSpento = db.prepare('SELECT suono FROM iscrizioni_notifiche WHERE endpoint = ?').get(endpoint);
+  verifica('il suono risulta spento davvero', dopoSpento.suono === 0, JSON.stringify(dopoSpento));
+
+  const suonoRiacceso = await chiama('POST', '/api/push/suono', { endpoint, suono: true }, tok);
+  verifica('e si puo\' riaccendere', suonoRiacceso.stato === 200
+    && db.prepare('SELECT suono FROM iscrizioni_notifiche WHERE endpoint = ?').get(endpoint).suono === 1);
+
+  const suonoIgnoto = await chiama('POST', '/api/push/suono', { endpoint: 'https://non-esiste.esempio.it/x', suono: false }, tok);
+  verifica('cambiare il suono di un\'iscrizione inesistente da\' un errore chiaro', suonoIgnoto.stato === 404);
+
+  const endpointSenzaSuono = 'https://push.esempio.it/dispositivo-senza-audio';
+  await chiama('POST', '/api/push/iscrivi', {
+    iscrizione: { endpoint: endpointSenzaSuono, keys: { p256dh: 'x', auth: 'y' } }, suono: false
+  }, tok);
+  verifica('ci si puo\' iscrivere gia\' col suono spento',
+    db.prepare('SELECT suono FROM iscrizioni_notifiche WHERE endpoint = ?').get(endpointSenzaSuono)?.suono === 0);
+  await chiama('POST', '/api/push/disiscrivi', { endpoint: endpointSenzaSuono }, tok);
 
   const disiscritto = await chiama('POST', '/api/push/disiscrivi', { endpoint }, tok);
   verifica('disiscrizione riuscita', disiscritto.stato === 200);

@@ -343,7 +343,11 @@ for (const [tabella, colonna, tipo] of [
   // confermare l'indirizzo. Colonne separate da quelle della verifica: sono
   // due link diversi, e non devono poter essere scambiati l'uno per l'altro.
   ['utenti', 'token_reset_password', 'TEXT'],
-  ['utenti', 'token_reset_password_scade', 'TEXT']
+  ['utenti', 'token_reset_password_scade', 'TEXT'],
+  // Suono della notifica: acceso di default (com'era finora, in silenzio non
+  // si distingueva da un'altra app), ma disattivabile per chi lo trova
+  // fastidioso — un dispositivo alla volta, non un'impostazione dell'account.
+  ['iscrizioni_notifiche', 'suono', 'INTEGER NOT NULL DEFAULT 1']
 ]) {
   const presente = db.prepare(`PRAGMA table_info(${tabella})`).all().some((c) => c.name === colonna);
   if (!presente) db.exec(`ALTER TABLE ${tabella} ADD COLUMN ${colonna} ${tipo}`);

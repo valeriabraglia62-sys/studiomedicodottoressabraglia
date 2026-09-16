@@ -514,12 +514,17 @@ router.get('/push/chiave-pubblica', (_req, res) => {
 });
 
 router.post('/push/iscrivi', richiedeAccount, (req, res) => {
-  push.iscrivi(req.utente.id, req.body?.iscrizione);
+  push.iscrivi(req.utente.id, req.body?.iscrizione, req.body?.suono !== false);
   ok(res, {});
 });
 
 router.post('/push/disiscrivi', richiedeAccount, (req, res) => {
   push.disiscrivi(req.body?.endpoint);
+  ok(res, {});
+});
+
+router.post('/push/suono', richiedeAccount, (req, res) => {
+  push.impostaSuono(req.body?.endpoint, req.body?.suono !== false);
   ok(res, {});
 });
 

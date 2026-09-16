@@ -51,6 +51,7 @@ self.addEventListener('push', (evento) => {
 
   evento.waitUntil(self.registration.showNotification(dati.titolo || 'Studio Medico Dottoressa Braglia', {
     body: dati.corpo || '',
+    silent: Boolean(dati.silenzioso),
     data: { url: dati.url || '/' }
   }));
 });
