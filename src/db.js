@@ -279,6 +279,12 @@ for (const [tabella, colonna, tipo] of [
   ['prenotazioni', 'ora_originale', 'TEXT'],
   ['prenotazioni', 'riprogrammata_il', 'TEXT'],
   ['prenotazioni', 'riprogrammata_da', 'TEXT'],
+  // Il perche' dello spostamento (facoltativo): non tutti gli spostamenti
+  // hanno bisogno di una spiegazione ("si e' liberato un orario migliore"
+  // non serve dirlo), ma quando il motivo e' dello studio ("il medico non e'
+  // disponibile quel giorno") il paziente se lo aspetta nell'email, non vuole
+  // scoprirlo chiamando.
+  ['prenotazioni', 'motivo_riprogrammazione', 'TEXT'],
   // Le visite chieste dal sito o dal chatbot nascono 'in_attesa': sono
   // richieste, non prenotazioni gia' valide, e lo studio le conferma o le
   // rifiuta dal pannello. Qui si tiene chi e quando le ha confermate, e il

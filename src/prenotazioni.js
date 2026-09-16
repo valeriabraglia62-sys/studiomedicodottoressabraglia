@@ -562,6 +562,12 @@ export function riprogramma(codice, correzioni = {}, chi = null, { forza = false
     throw new ErroreDominio('Non hai spostato niente: giorno, ora e ambulatorio sono gli stessi.');
   }
 
+  // Facoltativo apposta: non tutti gli spostamenti hanno un perche' che
+  // serva dire ("si e' liberato un orario migliore" non lo spiega, lo fa).
+  // Se c'e', vale per QUESTO spostamento: uno spostamento successivo lo
+  // sovrascrive, non lo accumula.
+  const motivo = testoPulito(correzioni.motivo, 300) || null;
+
   const transazione = db.transaction(() => {
     db.prepare(`
       UPDATE prenotazioni
@@ -569,10 +575,11 @@ export function riprogramma(codice, correzioni = {}, chi = null, { forza = false
              data_originale = COALESCE(data_originale, ?),
              ora_originale  = COALESCE(ora_originale, ?),
              riprogrammata_il = ?, riprogrammata_da = ?,
+             motivo_riprogrammazione = ?,
              promemoria_il = NULL
        WHERE id = ?
     `).run(quando.data, quando.ora_inizio, quando.ora_fine, ambulatorio.id,
-      p.data, p.ora_inizio, new Date().toISOString(), chi || null, p.id);
+      p.data, p.ora_inizio, new Date().toISOString(), chi || null, motivo, p.id);
 
     const aggiornata = dettaglio(p.id);
     // Il vecchio appuntamento serve all'email per dire da dove si e' spostato.

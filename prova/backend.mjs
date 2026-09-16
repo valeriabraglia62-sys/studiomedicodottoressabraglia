@@ -806,6 +806,48 @@ console.log('\nCalendario del pannello: tutto quello di un giorno, con un clic')
     vuota.stato === 200 && Array.isArray(vuota.dati.prenotazioni) && vuota.dati.prenotazioni.length === 0);
 }
 
+console.log('\nSpostare un appuntamento, con un motivo facoltativo');
+{
+  const primo = await giornoConSlot(3, 20);
+  verifica('trovato uno slot per la prenotazione da spostare', Boolean(primo.slot));
+
+  const creata = await chiama('POST', '/api/prenotazioni', {
+    ambulatorio_id: 1, data: primo.giorno, ora_inizio: primo.slot.ora_inizio,
+    nome: 'Sposta', cognome: 'Motivo', telefono: '3339990103',
+    email: 'sposta.motivo@example.com', problema: 'controllo di routine'
+  });
+  const codice = creata.dati.prenotazione?.codice;
+  await chiama('POST', `/api/admin/prenotazioni/${codice}/conferma`, {}, token);
+
+  const secondo = await giornoConSlot(21, 40);
+  verifica('trovato un secondo slot dove spostarla', Boolean(secondo.slot));
+
+  const spostata = await chiama('POST', `/api/admin/prenotazioni/${codice}/riprogramma`, {
+    ambulatorio_id: 1, data: secondo.giorno, ora_inizio: secondo.slot.ora_inizio,
+    motivo: 'Il medico non è disponibile quel giorno'
+  }, token);
+  verifica('lo spostamento con motivo va a buon fine e lo salva',
+    spostata.stato === 200
+    && spostata.dati.prenotazione?.motivo_riprogrammazione === 'Il medico non è disponibile quel giorno',
+    JSON.stringify(spostata.dati.prenotazione));
+
+  const emailPaziente = db.prepare(
+    "SELECT payload FROM outbox WHERE tipo = 'email' ORDER BY id DESC LIMIT 5"
+  ).all().map((r) => JSON.parse(r.payload)).find((p) => p.to === 'sposta.motivo@example.com');
+  verifica('il motivo dello spostamento finisce nell\'email al paziente',
+    Boolean(emailPaziente) && /non è disponibile quel giorno/.test(emailPaziente.text || ''),
+    emailPaziente?.text?.slice(0, 300));
+
+  const terzo = await giornoConSlot(41, 55);
+  verifica('trovato un terzo slot per il secondo spostamento', Boolean(terzo.slot));
+  const spostataSenzaMotivo = await chiama('POST', `/api/admin/prenotazioni/${codice}/riprogramma`, {
+    ambulatorio_id: 1, data: terzo.giorno, ora_inizio: terzo.slot.ora_inizio
+  }, token);
+  verifica('uno spostamento successivo senza motivo lo cancella, non lo accumula',
+    spostataSenzaMotivo.stato === 200 && spostataSenzaMotivo.dati.prenotazione?.motivo_riprogrammazione === null,
+    JSON.stringify(spostataSenzaMotivo.dati.prenotazione));
+}
+
 console.log('\nChiusure (giorni e fasce orarie bloccate)');
 {
   const { oggiISO, aggiungiGiorni } = await import('../src/orari.js');

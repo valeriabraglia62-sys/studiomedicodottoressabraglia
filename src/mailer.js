@@ -390,7 +390,8 @@ export const emailPrenotazioneRiprogrammata = (p) => componiEmail({
     ['Adesso è', `${formattaDataEstesa(p.data)} alle ${p.ora_inizio}`],
     ['Ambulatorio', p.ambulatorio_nome],
     ['Indirizzo', p.ambulatorio_indirizzo],
-    ['Motivo', p.problema],
+    ['Motivo della visita', p.problema],
+    ['Motivo dello spostamento', p.motivo_riprogrammazione],
     ['Codice prenotazione', p.codice]
   ],
   azione: { testo: 'Aggiungi al mio Google Calendar', url: linkGoogleCalendar(p) },
@@ -408,6 +409,7 @@ export const emailPrenotazioneRiprogrammataAdmin = (p) => componiEmail({
     ['Prima era', `${formattaDataEstesa(p.data_precedente)} alle ${p.ora_precedente}`],
     ['Adesso è', `${formattaDataEstesa(p.data)} alle ${p.ora_inizio}`],
     ['Ambulatorio', p.ambulatorio_nome],
+    ['Motivo dello spostamento', p.motivo_riprogrammazione],
     ['Codice', p.codice],
     ['Spostata da', p.riprogrammata_da]
   ]

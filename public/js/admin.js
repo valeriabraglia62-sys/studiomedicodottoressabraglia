@@ -1017,7 +1017,8 @@ function schedaPrenotazione(p) {
   if (spostata) {
     carta.append(nodo('div', 'piccolo tenue',
       `Spostata il ${quando(p.riprogrammata_il)}${p.riprogrammata_da ? ` da ${p.riprogrammata_da}` : ''} · ` +
-      `prima era ${dataBreve(p.data_originale)} alle ${p.ora_originale}`));
+      `prima era ${dataBreve(p.data_originale)} alle ${p.ora_originale}`
+      + (p.motivo_riprogrammazione ? ` · ${p.motivo_riprogrammazione}` : '')));
   }
 
   // Richiesta dal sito ancora da valutare. Tre strade, tutte disponibili
@@ -1128,6 +1129,16 @@ function schedaPrenotazione(p) {
     quandoNuovo = selettoreQuando({
       ambulatorio_id: p.ambulatorio_id, data: p.data, ora: p.ora_inizio
     });
+
+    // Facoltativo: non ogni spostamento ha bisogno di una spiegazione, ma
+    // quando il motivo e' dello studio il paziente se lo aspetta nell'email
+    // invece di doverlo chiedere per telefono.
+    const motivo = nodo('input');
+    motivo.placeholder = 'Es. il medico non è disponibile quel giorno (facoltativo)';
+    motivo.maxLength = 300;
+    const campoMotivo = campoModulo('Motivo dello spostamento (facoltativo)', motivo);
+    campoMotivo.style.marginTop = '.6rem';
+
     const conferma = nodo('button', 'bottone', 'Sposta e avvisa il paziente');
     conferma.type = 'button';
     conferma.addEventListener('click', () => {
@@ -1135,7 +1146,7 @@ function schedaPrenotazione(p) {
       protetto(async () => {
         try {
           await api(`/admin/prenotazioni/${p.codice}/riprogramma`,
-            { method: 'POST', body: quandoNuovo.valori() });
+            { method: 'POST', body: { ...quandoNuovo.valori(), motivo: motivo.value } });
           avvisa(`${p.codice}: spostata. Al paziente parte l'email con prima e dopo.`, 'ok');
           await caricaPrenotazioni();
         } finally {
@@ -1145,7 +1156,7 @@ function schedaPrenotazione(p) {
     });
     const azioniSposta = nodo('div', 'azioni');
     azioniSposta.append(conferma);
-    sposta.append(quandoNuovo.riga, quandoNuovo.avviso, azioniSposta);
+    sposta.append(quandoNuovo.riga, quandoNuovo.avviso, campoMotivo, azioniSposta);
   });
   carta.append(sposta);
 
