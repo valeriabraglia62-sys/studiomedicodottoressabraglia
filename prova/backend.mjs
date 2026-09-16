@@ -1406,12 +1406,28 @@ console.log('\nUn annullamento con data lontana compare comunque in cima all\'el
   await chiama('POST', `/api/admin/prenotazioni/${codiceVicina}/conferma`, {}, token);
   await chiama('POST', `/api/prenotazioni/${codiceVicina}/annulla`, { conferma: true });
 
+  // Una da confermare, ancora in mezzo: deve venire prima di tutto il resto,
+  // anche prima di un annullamento appena fatto — e' l'unica delle tre che
+  // richiede davvero un'azione da parte dello studio.
+  const daConfermareSlot = await giornoConSlot(25, 40);
+  verifica('trovato uno slot per la richiesta ancora da confermare', Boolean(daConfermareSlot.slot));
+  const daConfermare = await chiama('POST', '/api/prenotazioni', {
+    ambulatorio_id: 1, data: daConfermareSlot.giorno, ora_inizio: daConfermareSlot.slot.ora_inizio,
+    nome: 'Ancora', cognome: 'DaConfermare', telefono: '3339990102',
+    email: 'ancora.daconfermare@example.com', problema: 'resta da confermare'
+  });
+  const codiceDaConfermare = daConfermare.dati.prenotazione?.codice;
+
   const elenco = await chiama('GET', '/api/admin/prenotazioni', null, token);
   const posizioneAnnullata = elenco.dati.prenotazioni.findIndex((p) => p.codice === codiceVicina);
   const posizioneFutura = elenco.dati.prenotazioni.findIndex((p) => p.codice === codiceFutura);
+  const posizioneDaConfermare = elenco.dati.prenotazioni.findIndex((p) => p.codice === codiceDaConfermare);
   verifica('l\'annullata appena fatta viene prima della confermata con data piu\' lontana',
     posizioneAnnullata !== -1 && posizioneFutura !== -1 && posizioneAnnullata < posizioneFutura,
     `annullata: ${posizioneAnnullata}, futura: ${posizioneFutura}`);
+  verifica('ma la richiesta ancora da confermare viene prima di tutto, anche dell\'annullamento appena fatto',
+    posizioneDaConfermare !== -1 && posizioneDaConfermare < posizioneAnnullata,
+    `da confermare: ${posizioneDaConfermare}, annullata: ${posizioneAnnullata}`);
 }
 
 console.log('\nStessa cosa per farmaci/specialistiche/esami: rifiutata resta un giorno, poi sgombera');

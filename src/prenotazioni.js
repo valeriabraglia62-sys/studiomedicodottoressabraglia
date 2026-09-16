@@ -664,16 +664,19 @@ export function elencoAdmin({ dal, al, stato, ambulatorio_id, cerca, pagina = 1,
   const limite = Math.min(Math.max(Number(perPagina) || 50, 1), 200);
   const offset = (Math.max(Number(pagina) || 1, 1) - 1) * limite;
 
-  // Chi ha appena annullato o rifiutato qualcosa la vuole ritrovare subito,
-  // non sepolta in fondo all'elenco dietro a decine di visite future con una
-  // data piu' avanti della sua: nelle 24 ore di "grazia" (vedi sopra) va in
-  // cima, prima di tutto il resto.
+  // Le richieste da confermare vengono prima di tutto: sono l'unica cosa che
+  // richiede davvero un'azione. Subito dopo, chi e' stato appena annullato o
+  // rifiutato (nelle 24 ore di "grazia", vedi sopra): lo si vuole ritrovare
+  // subito, non sepolto in fondo all'elenco dietro decine di visite future
+  // con una data piu' avanti della sua.
   const righe = db.prepare(
     `${SELECT_COMPLETO} ${filtro}
      ORDER BY
-       CASE WHEN p.stato IN ('annullata', 'rifiutata')
+       CASE
+         WHEN p.stato = 'in_attesa' THEN 0
+         WHEN p.stato IN ('annullata', 'rifiutata')
               AND date(p.annullata_il) >= date('now', '-1 day')
-            THEN 0 ELSE 1 END,
+         THEN 1 ELSE 2 END,
        p.data DESC, p.ora_inizio DESC
      LIMIT ? OFFSET ?`
   ).all(...par, limite, offset);
