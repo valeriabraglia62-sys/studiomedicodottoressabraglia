@@ -1452,6 +1452,26 @@ console.log('\nUna richiesta chiusa resta in vista un giorno, poi va nella sched
     fascicolo.dati.medicine.some((m) => m.codice === codice));
 }
 
+console.log('\nCercare un paziente per nome e cognome insieme, in qualunque maiuscola');
+{
+  const nato = await chiama('POST', '/api/medicine', {
+    nome: 'Ricerca', cognome: 'Composta', telefono: '3339990096',
+    email: 'ricerca.composta@example.com', farmaci: 'Prova ricerca', tipo: 'medicina'
+  });
+  verifica('la persona di prova esiste', nato.stato === 201);
+
+  const trova = async (cerca) => (await chiama('GET',
+    `/api/admin/pazienti?cerca=${encodeURIComponent(cerca)}`, null, token))
+    .dati.pazienti?.some((p) => p.cognome === 'Composta' && p.nome === 'Ricerca');
+
+  verifica('nome e cognome insieme, come scritti', await trova('Ricerca Composta'));
+  verifica('nome e cognome insieme, ma in ordine inverso', await trova('Composta Ricerca'));
+  verifica('nome e cognome insieme, tutto minuscolo', await trova('ricerca composta'));
+  verifica('nome e cognome insieme, maiuscole e minuscole alternate', await trova('RiCeRca coMPOSta'));
+  verifica('con una parola che non c\'entra niente non lo trova',
+    !(await trova('Ricerca Composta Sbagliato')));
+}
+
 console.log('\nChi non e\' piu\' nostro paziente');
 {
   const nato = await chiama('POST', '/api/medicine', {

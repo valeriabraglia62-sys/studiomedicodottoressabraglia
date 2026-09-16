@@ -647,10 +647,12 @@ export function elencoAdmin({ dal, al, stato, ambulatorio_id, cerca, pagina = 1,
     dove.push("(p.stato NOT IN ('confermata', 'in_attesa') OR p.data >= date('now', '-1 day'))");
   }
   if (ambulatorio_id) { dove.push('p.ambulatorio_id = ?'); par.push(ambulatorio_id); }
-  if (cerca) {
+  // Una parola per volta, tutte devono trovare qualcosa: cosi' "mario rossi"
+  // trova chi ha nome Mario e cognome Rossi, anche se sono in campi separati.
+  for (const parola of String(cerca || '').trim().split(/\s+/).filter(Boolean)) {
     dove.push(`(pa.nome LIKE ? OR pa.cognome LIKE ? OR pa.telefono LIKE ?
                 OR pa.email LIKE ? OR p.problema LIKE ? OR p.codice LIKE ?)`);
-    const q = `%${cerca}%`;
+    const q = `%${parola}%`;
     par.push(q, q, q, q, q, q.toUpperCase());
   }
 

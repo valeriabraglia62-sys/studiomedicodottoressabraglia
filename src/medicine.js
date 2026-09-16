@@ -575,9 +575,11 @@ export function elencoAdmin({ stato, tipo, cerca, pagina = 1, perPagina = 50 } =
   // Senza tipo si vede tutto, ed e' voluto: chi apre la scheda al mattino vuole
   // sapere cosa c'e' da fare, non da fare di che genere.
   if (tipo && Object.hasOwn(TIPI, tipo)) { dove.push('r.tipo = ?'); par.push(tipo); }
-  if (cerca) {
+  // Una parola per volta, tutte devono trovare qualcosa: cosi' "mario rossi"
+  // trova chi ha nome Mario e cognome Rossi, anche se sono in campi separati.
+  for (const parola of String(cerca || '').trim().split(/\s+/).filter(Boolean)) {
     dove.push('(r.nome LIKE ? OR r.cognome LIKE ? OR r.telefono LIKE ? OR r.email LIKE ? OR r.farmaci LIKE ? OR r.codice LIKE ?)');
-    const q = `%${cerca}%`;
+    const q = `%${parola}%`;
     par.push(q, q, q, q, q, q.toUpperCase());
   }
 

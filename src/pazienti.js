@@ -111,13 +111,16 @@ export function cancella(id) {
  * una persona diventerebbe impossibile e la dimissione una porta a senso unico.
  */
 export function elenco({ cerca, dimessi = false } = {}) {
-  const q = String(cerca || '').trim();
   const dove = [];
   const par = [];
 
-  if (q) {
+  // Una parola per volta, tutte devono trovare qualcosa (non importa in quale
+  // campo): cosi' "mario rossi" trova chi ha nome Mario e cognome Rossi,
+  // anche se i due si scrivono in campi separati e in un ordine qualsiasi.
+  const parole = String(cerca || '').trim().split(/\s+/).filter(Boolean);
+  for (const parola of parole) {
     dove.push('(p.nome LIKE ? OR p.cognome LIKE ? OR p.telefono LIKE ? OR p.email LIKE ?)');
-    par.push(...Array(4).fill(`%${q}%`));
+    par.push(...Array(4).fill(`%${parola}%`));
   }
   if (!dimessi) dove.push('p.dimesso_il IS NULL');
 

@@ -148,6 +148,9 @@ function testoAccount() {
     'solo dopo aver aggiunto il sito alla schermata Home (vedi sotto).\n\n' +
     '📲 **Installare il sito come app**: su Android o computer, menu account → "Installa l\'app". ' +
     'Su iPhone/iPad: apri Safari, tocca Condividi → Aggiungi alla schermata Home.\n\n' +
+    '📧 **Non trovi le nostre email?** Su Gmail a volte finiscono nella scheda "Promozioni" o ' +
+    '"Aggiornamenti" invece che in "Principale". Aprila da lì e trascinala su "Principale": da quel ' +
+    'momento Gmail le metterà sempre lì.\n\n' +
     'Posso aiutarti con altro?';
 }
 
