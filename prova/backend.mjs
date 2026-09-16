@@ -1107,6 +1107,30 @@ console.log('\nRegistrazione: non svela se l\'email esiste gia\'');
     && !/esiste|gi[àa] regist|409/i.test(JSON.stringify(ripetuto.dati)));
 }
 
+console.log('\nNomi minuscoli: corretti automaticamente in maiuscolo');
+{
+  const reg = registraPazienteDiretto({
+    nome: 'mario', cognome: 'de rossi', telefono: '3339990090',
+    email: 'minuscolo.prova@example.it', password: 'PasswordMinuscola26!'
+  });
+  verifica('il nome dell\'accesso viene messo in maiuscolo alla registrazione',
+    reg.utente.nome === 'Mario De Rossi', reg.utente.nome);
+
+  const idPaz = db.prepare('SELECT paziente_id FROM utenti WHERE id = ?').get(reg.utente.id).paziente_id;
+  const scheda = db.prepare('SELECT nome, cognome FROM pazienti WHERE id = ?').get(idPaz);
+  verifica('anche la scheda paziente ha nome e cognome in maiuscolo',
+    scheda.nome === 'Mario' && scheda.cognome === 'De Rossi', JSON.stringify(scheda));
+
+  // Lo stesso vale per un paziente nato da una prenotazione o da una
+  // richiesta (trovaOCreaPaziente), non solo da una registrazione vera.
+  const { trovaOCreaPaziente } = await import('../src/prenotazioni.js');
+  const daPrenotazione = trovaOCreaPaziente({
+    nome: 'GIUSEPPE', cognome: "d'angelo", telefono: '3339990091', email: 'nuovo.dallaprenotazione@example.it'
+  }, { contesto: 'prova' });
+  verifica('un paziente creato da una prenotazione ha nome e cognome corretti',
+    daPrenotazione.nome === 'Giuseppe' && daPrenotazione.cognome === 'D\'Angelo', JSON.stringify(daPrenotazione));
+}
+
 console.log('\nPaziente cancellato: l\'email torna libera per registrarsi di nuovo');
 {
   const reg = registraPazienteDiretto({

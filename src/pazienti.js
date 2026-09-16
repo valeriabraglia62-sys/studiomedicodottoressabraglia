@@ -135,6 +135,6 @@ export function elenco({ cerca, dimessi = false } = {}) {
            (SELECT COUNT(*) FROM medicine_abituali WHERE paziente_id = p.id) AS quante_medicine
       FROM pazienti p
       ${dove.length ? `WHERE ${dove.join(' AND ')}` : ''}
-     ORDER BY p.cognome, p.nome LIMIT 200
+     ORDER BY p.cognome COLLATE NOCASE, p.nome COLLATE NOCASE LIMIT 200
   `).all(...par);
 }

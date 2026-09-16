@@ -3,7 +3,7 @@ import { accoda, avvisoAncoraInCoda } from './outbox.js';
 import * as push from './push.js';
 import { trovaAmbulatorio } from './orari.js';
 import {
-  ErroreDominio, generaCodice, trovaOCreaPaziente, telefonoValido, emailValida
+  ErroreDominio, generaCodice, trovaOCreaPaziente, telefonoValido, emailValida, capitalizzaNome
 } from './prenotazioni.js';
 import {
   emailNuovaMedicinaAdmin, emailRicevutaMedicinaPaziente,
@@ -247,7 +247,8 @@ function collegaAlFascicolo(richiesta) {
 
   return db.prepare(
     'INSERT INTO pazienti (nome, cognome, email, telefono, creato_il) VALUES (?, ?, ?, ?, ?)'
-  ).run(richiesta.nome, richiesta.cognome, mail, '', new Date().toISOString()).lastInsertRowid;
+  ).run(capitalizzaNome(richiesta.nome), capitalizzaNome(richiesta.cognome), mail, '', new Date().toISOString())
+    .lastInsertRowid;
 }
 
 /** Scrive il nuovo stato e rimanda indietro la riga aggiornata. */

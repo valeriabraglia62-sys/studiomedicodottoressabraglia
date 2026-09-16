@@ -38,6 +38,16 @@ export function generaCodice(prefisso) {
 const testoPulito = (v, max) => String(v ?? '').trim().replace(/\s+/g, ' ').slice(0, max);
 const normalizzaTelefono = (t) => String(t ?? '').replace(/[\s.\-()]/g, '');
 
+/**
+ * "mario DE luca" -> "Mario De Luca": maiuscola a inizio di ogni parola
+ * (anche dopo spazio, trattino o apostrofo), il resto minuscolo. Senza
+ * questo, chi si registra tutto minuscolo finisce fuori posto nell'ordine
+ * alfabetico dell'archivio pazienti rispetto a chi scrive "normalmente".
+ */
+export const capitalizzaNome = (v) => String(v ?? '').trim().replace(/\s+/g, ' ')
+  .toLowerCase()
+  .replace(/(^|[\s'-])\p{L}/gu, (c) => c.toUpperCase());
+
 export function telefonoValido(t) {
   return /^(\+39)?\d{8,11}$/.test(normalizzaTelefono(t));
 }
@@ -69,6 +79,9 @@ export function trovaOCreaPaziente(
   { nome, cognome, email, telefono, pazienteId },
   { contesto = 'il sito' } = {}
 ) {
+  nome = capitalizzaNome(nome);
+  cognome = capitalizzaNome(cognome);
+
   // Chi ha gia' un account collegato a una scheda la porta con se': si usa
   // quella e basta. Ricostruirla per nome+telefono, se un dato non combacia
   // alla lettera, creerebbe un doppione e il paziente non ritroverebbe piu'

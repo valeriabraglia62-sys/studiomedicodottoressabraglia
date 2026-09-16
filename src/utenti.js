@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { db } from './db.js';
 import { config } from './config.js';
 import { hashPassword, verificaPassword, RUOLI_STAFF } from './auth.js';
-import { ErroreDominio, telefonoValido, emailValida } from './prenotazioni.js';
+import { ErroreDominio, telefonoValido, emailValida, capitalizzaNome } from './prenotazioni.js';
 
 /**
  * Accessi personali di chi lavora nello studio.
@@ -78,8 +78,8 @@ function schedaUnivoca(indirizzo, numero) {
 export function registraPaziente({ nome, cognome, telefono, email, password }) {
   const indirizzo = pulisciEmail(email);
   const numero = pulisciTelefono(telefono);
-  const nomePulito = String(nome ?? '').trim();
-  const cognomePulito = String(cognome ?? '').trim();
+  const nomePulito = capitalizzaNome(nome);
+  const cognomePulito = capitalizzaNome(cognome);
   const scelta = String(password ?? '');
 
   if (!nomePulito || !cognomePulito) throw new ErroreDominio('Nome e cognome sono obbligatori.', 400);
@@ -200,8 +200,8 @@ export function aggiornaProfiloPaziente({ pazienteId, utenteId, nome, cognome, t
     throw new ErroreDominio('Non puoi modificare questa scheda.', 403);
   }
 
-  const nomeP = String(nome ?? '').trim();
-  const cognomeP = String(cognome ?? '').trim();
+  const nomeP = capitalizzaNome(nome);
+  const cognomeP = capitalizzaNome(cognome);
   const telP = pulisciTelefono(telefono);
   const emailP = pulisciEmail(email);
 
@@ -336,8 +336,8 @@ export function aggiornaProfiloPazienteDaStaff(pazienteId, { nome, cognome, tele
   const p = db.prepare('SELECT * FROM pazienti WHERE id = ?').get(Number(pazienteId));
   if (!p) throw new ErroreDominio('Paziente non trovato.', 404);
 
-  const nomeP = String(nome ?? '').trim();
-  const cognomeP = String(cognome ?? '').trim();
+  const nomeP = capitalizzaNome(nome);
+  const cognomeP = capitalizzaNome(cognome);
   const telP = pulisciTelefono(telefono);
   const emailP = pulisciEmail(email);
 
