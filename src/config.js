@@ -108,6 +108,16 @@ export const config = {
     }
   },
 
+  // Chiave API di Brevo (diversa dalle credenziali SMTP usate per spedire):
+  // serve solo per riattivare via pannello un indirizzo che si e' tolto da
+  // solo dalle nostre email cliccando "annulla iscrizione" per sbaglio.
+  brevo: {
+    apiKey: (process.env.BREVO_API_KEY || '').trim(),
+    get enabled() {
+      return Boolean(this.apiKey);
+    }
+  },
+
   dbFile: FILE_ARCHIVIO,
 
   // Dove finiscono le copie di sicurezza. Il valore predefinito le tiene accanto

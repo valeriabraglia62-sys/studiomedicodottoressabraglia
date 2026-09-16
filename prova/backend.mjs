@@ -1908,6 +1908,23 @@ console.log('\nLo staff corregge i dati di un paziente e gli reimposta la passwo
     resetSenzaAccesso.stato === 404, JSON.stringify(resetSenzaAccesso.dati));
 }
 
+console.log('\nRiattivare un\'email su Brevo (BREVO_API_KEY non configurata in prova)');
+{
+  const reg = registraPazienteDiretto({
+    nome: 'Brevo', cognome: 'Prova', telefono: '3339990095',
+    email: 'brevo.prova@example.it', password: 'PasswordBrevoProva26!'
+  });
+  verificaEmailDiretto(reg.token);
+  const idPaz = db.prepare('SELECT paziente_id FROM utenti WHERE id = ?').get(reg.utente.id).paziente_id;
+
+  const senzaCredenziali = await chiama('POST', `/api/admin/pazienti/${idPaz}/riattiva-email`);
+  verifica('riattivare un\'email e\' chiuso senza credenziali', senzaCredenziali.stato === 401);
+
+  const nonConfigurato = await chiama('POST', `/api/admin/pazienti/${idPaz}/riattiva-email`, null, token);
+  verifica('senza la chiave API di Brevo da\' un errore chiaro (non un 500)',
+    nonConfigurato.stato === 501, JSON.stringify(nonConfigurato.dati));
+}
+
 console.log('\nPromemoria: il giorno prima della visita, una volta sola');
 {
   const { inviaPromemoriaDovuti } = await import('../src/promemoria.js');

@@ -28,6 +28,7 @@ import {
   emailDatiPazienteAggiornatiDalloStudio, emailPromemoriaIndirizzo
 } from './mailer.js';
 import { linkGoogleCalendar } from './evento.js';
+import * as brevo from './brevo.js';
 
 /** Cattura anche gli errori asincroni: senza questo un await fallito sfugge a Express. */
 const via = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -810,6 +811,19 @@ admin.post('/pazienti/:id/password', (req, res) => {
   }));
   ok(res, esito);
 });
+
+/**
+ * Capita che un paziente clicchi "annulla iscrizione" per sbaglio su
+ * un'email automatica: da quel momento Brevo non gli manda piu' niente,
+ * nemmeno le conferme delle sue prenotazioni. Qui lo si riattiva senza dover
+ * aprire il pannello di Brevo.
+ */
+admin.post('/pazienti/:id/riattiva-email', via(async (req, res) => {
+  const profilo = utenti.profiloPaziente(req.params.id);
+  if (!profilo.email) throw new ErroreDominio('Il paziente non ha un indirizzo email in archivio.', 400);
+  const esito = await brevo.riattivaContatto(profilo.email);
+  ok(res, esito);
+}));
 
 /**
  * Dimettere e cancellare li puo' fare solo il medico.

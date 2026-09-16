@@ -1728,8 +1728,25 @@ async function apriSchedaIdentita(p) {
     avvisa('Il paziente ha ricevuto anche un\'email con la password nuova.', 'ok');
   }));
 
+  // Per chi ha cliccato "annulla iscrizione" per sbaglio su un'email
+  // automatica: da quel momento Brevo non gli manda piu' niente, nemmeno le
+  // conferme delle prenotazioni, finche' qualcuno non lo riattiva.
+  const riattivaEmail = nodo('button', 'bottone secondario', 'Riattiva email su Brevo');
+  riattivaEmail.type = 'button';
+  riattivaEmail.addEventListener('click', () => protetto(async () => {
+    riattivaEmail.disabled = true;
+    try {
+      const { riattivato } = await api(`/admin/pazienti/${p.id}/riattiva-email`, { method: 'POST' });
+      esito.replaceChildren(nodo('div', `avviso ${riattivato ? 'ok' : 'info'}`, riattivato
+        ? 'Indirizzo riattivato: tornerà a ricevere le email dello studio.'
+        : 'Brevo non conosceva questo indirizzo: non c\'era niente da riattivare.'));
+    } finally {
+      riattivaEmail.disabled = false;
+    }
+  }));
+
   const azioni = nodo('div', 'azioni');
-  azioni.append(salva, resetta);
+  azioni.append(salva, resetta, riattivaEmail);
   carta.append(azioni, esito);
 
   contenitore.replaceChildren(indietro, carta);
