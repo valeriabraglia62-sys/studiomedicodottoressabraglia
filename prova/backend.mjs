@@ -1382,6 +1382,38 @@ console.log('\nGli annullamenti vecchi non ingombrano l\'elenco');
   verifica('e il paziente col suo codice la vede sempre', dalPaziente.stato === 200);
 }
 
+console.log('\nUn annullamento con data lontana compare comunque in cima all\'elenco');
+{
+  const lontano = await giornoConSlot(45, 58);
+  verifica('trovato uno slot per la visita futura che resta confermata', Boolean(lontano.slot));
+  const vicino = await giornoConSlot(1, 20);
+  verifica('trovato uno slot per la visita da annullare subito', Boolean(vicino.slot));
+
+  const futura = await chiama('POST', '/api/prenotazioni', {
+    ambulatorio_id: 1, data: lontano.giorno, ora_inizio: lontano.slot.ora_inizio,
+    nome: 'Futura', cognome: 'Confermata', telefono: '3339990098',
+    email: 'futura.confermata@example.com', problema: 'resta confermata, data lontana'
+  });
+  const codiceFutura = futura.dati.prenotazione?.codice;
+  await chiama('POST', `/api/admin/prenotazioni/${codiceFutura}/conferma`, {}, token);
+
+  const vicina = await chiama('POST', '/api/prenotazioni', {
+    ambulatorio_id: 1, data: vicino.giorno, ora_inizio: vicino.slot.ora_inizio,
+    nome: 'Vicina', cognome: 'Annullata', telefono: '3339990099',
+    email: 'vicina.annullata@example.com', problema: 'annullata subito, data vicina'
+  });
+  const codiceVicina = vicina.dati.prenotazione?.codice;
+  await chiama('POST', `/api/admin/prenotazioni/${codiceVicina}/conferma`, {}, token);
+  await chiama('POST', `/api/prenotazioni/${codiceVicina}/annulla`, { conferma: true });
+
+  const elenco = await chiama('GET', '/api/admin/prenotazioni', null, token);
+  const posizioneAnnullata = elenco.dati.prenotazioni.findIndex((p) => p.codice === codiceVicina);
+  const posizioneFutura = elenco.dati.prenotazioni.findIndex((p) => p.codice === codiceFutura);
+  verifica('l\'annullata appena fatta viene prima della confermata con data piu\' lontana',
+    posizioneAnnullata !== -1 && posizioneFutura !== -1 && posizioneAnnullata < posizioneFutura,
+    `annullata: ${posizioneAnnullata}, futura: ${posizioneFutura}`);
+}
+
 console.log('\nStessa cosa per farmaci/specialistiche/esami: rifiutata resta un giorno, poi sgombera');
 {
   const creata = await chiama('POST', '/api/medicine', {
@@ -1411,6 +1443,37 @@ console.log('\nStessa cosa per farmaci/specialistiche/esami: rifiutata resta un 
 
   const dalPaziente = await chiama('GET', `/api/medicine/${codice}`);
   verifica('e il paziente col suo codice la vede sempre', dalPaziente.stato === 200);
+}
+
+console.log('\nFra due rifiutate, quella gestita da poco viene prima della piu\' vecchia');
+{
+  // A: creata tanto tempo fa, ma rifiutata proprio ora.
+  const creataA = await chiama('POST', '/api/medicine', {
+    nome: 'Gestita', cognome: 'DaPoco', telefono: '3339990100',
+    email: 'gestita.dapoco@example.com', farmaci: 'creata vecchia, rifiutata ora', tipo: 'medicina'
+  });
+  const codiceA = creataA.dati.richiesta?.codice;
+  await chiama('POST', `/api/admin/medicine/${codiceA}/rifiuta`, { motivo: 'prova ordine' }, token);
+  db.prepare("UPDATE richieste_medicine SET creata_il = ? WHERE codice = ?")
+    .run(new Date(Date.now() - 10 * 86400000).toISOString(), codiceA);
+
+  // B: creata ora, ma rifiutata quasi ventiquattr'ore fa (resta comunque
+  // dentro la finestra di grazia, altrimenti sparirebbe del tutto).
+  const creataB = await chiama('POST', '/api/medicine', {
+    nome: 'Gestita', cognome: 'DaTempo', telefono: '3339990101',
+    email: 'gestita.datempo@example.com', farmaci: 'creata ora, rifiutata ore fa', tipo: 'medicina'
+  });
+  const codiceB = creataB.dati.richiesta?.codice;
+  await chiama('POST', `/api/admin/medicine/${codiceB}/rifiuta`, { motivo: 'prova ordine' }, token);
+  db.prepare("UPDATE richieste_medicine SET gestita_il = ? WHERE codice = ?")
+    .run(new Date(Date.now() - 20 * 3600000).toISOString(), codiceB);
+
+  const elenco = await chiama('GET', '/api/admin/medicine?tipo=medicina', null, token);
+  const posizioneA = elenco.dati.richieste.findIndex((r) => r.codice === codiceA);
+  const posizioneB = elenco.dati.richieste.findIndex((r) => r.codice === codiceB);
+  verifica('la rifiutata da poco (A) viene prima di quella rifiutata ore fa (B), nonostante A sia molto piu\' vecchia',
+    posizioneA !== -1 && posizioneB !== -1 && posizioneA < posizioneB,
+    `A: ${posizioneA}, B: ${posizioneB}`);
 }
 
 console.log('\nUna visita gia\' fatta sgombera l\'elenco');

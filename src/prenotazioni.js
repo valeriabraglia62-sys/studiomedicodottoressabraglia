@@ -664,8 +664,18 @@ export function elencoAdmin({ dal, al, stato, ambulatorio_id, cerca, pagina = 1,
   const limite = Math.min(Math.max(Number(perPagina) || 50, 1), 200);
   const offset = (Math.max(Number(pagina) || 1, 1) - 1) * limite;
 
+  // Chi ha appena annullato o rifiutato qualcosa la vuole ritrovare subito,
+  // non sepolta in fondo all'elenco dietro a decine di visite future con una
+  // data piu' avanti della sua: nelle 24 ore di "grazia" (vedi sopra) va in
+  // cima, prima di tutto il resto.
   const righe = db.prepare(
-    `${SELECT_COMPLETO} ${filtro} ORDER BY p.data DESC, p.ora_inizio DESC LIMIT ? OFFSET ?`
+    `${SELECT_COMPLETO} ${filtro}
+     ORDER BY
+       CASE WHEN p.stato IN ('annullata', 'rifiutata')
+              AND date(p.annullata_il) >= date('now', '-1 day')
+            THEN 0 ELSE 1 END,
+       p.data DESC, p.ora_inizio DESC
+     LIMIT ? OFFSET ?`
   ).all(...par, limite, offset);
 
   return { prenotazioni: righe, totale, pagina: Number(pagina) || 1, pagine: Math.ceil(totale / limite) || 1 };

@@ -589,9 +589,16 @@ export function elencoAdmin({ stato, tipo, cerca, pagina = 1, perPagina = 50 } =
   const limite = Math.min(Math.max(Number(perPagina) || 50, 1), 200);
   const offset = (Math.max(Number(pagina) || 1, 1) - 1) * limite;
 
+  // Dentro l'ultimo gruppo (rifiutate e consegnate), chi e' stata gestita da
+  // poco va davanti alle altre: altrimenti una richiesta vecchia di settimane
+  // rifiutata un minuto fa resterebbe sepolta dietro il suo creata_il
+  // antico, invece di comparire subito dove chi l'ha appena chiusa se
+  // l'aspetta.
   const righe = db.prepare(
     `${SELECT_COMPLETO} ${filtro} ORDER BY
        CASE r.stato WHEN 'nuova' THEN 0 WHEN 'confermata' THEN 1 ELSE 2 END,
+       CASE WHEN r.stato NOT IN ('nuova', 'confermata')
+            THEN datetime(COALESCE(r.gestita_il, r.aggiornata_il, r.creata_il)) END DESC,
        r.creata_il DESC
      LIMIT ? OFFSET ?`
   ).all(...par, limite, offset);
