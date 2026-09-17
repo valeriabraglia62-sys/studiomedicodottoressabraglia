@@ -580,6 +580,33 @@ router.patch('/paziente/profilo', limiteScrittura, richiedePaziente, (req, res) 
   ok(res, { profilo: esito.profilo, email_cambiata: esito.emailCambiata });
 });
 
+router.get('/paziente/familiari', richiedePaziente, (req, res) =>
+  ok(res, { familiari: utenti.familiariCollegati(req.utente.id) }));
+
+/**
+ * Passa la sessione a un familiare che condivide la stessa email (vedi
+ * utenti.creaAccessoPaziente): niente password da riscrivere, basta aver gia'
+ * dimostrato di conoscerne una delle due per entrare la prima volta. La
+ * sessione di partenza non si tocca: si puo' tornare indietro allo stesso
+ * modo, senza dover rifare il login nemmeno per quella.
+ */
+router.post('/paziente/passa-a-familiare', limiteScrittura, richiedePaziente, (req, res) => {
+  const target = utenti.trovaFamiliareCollegato(req.utente.id, req.body?.utenteId);
+  utenti.segnaAccesso(target.id);
+  const { token, scadenza } = creaSessione(target.id);
+  ok(res, {
+    token,
+    scadenza,
+    utente: {
+      email: target.email,
+      ruolo: target.ruolo,
+      nome: target.nome || '',
+      paziente_id: target.paziente_id,
+      deve_cambiare_password: Boolean(target.cambio_password)
+    }
+  });
+});
+
 // ---- Area amministratore --------------------------------------------------
 
 const admin = express.Router();

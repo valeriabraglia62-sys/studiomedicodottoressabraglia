@@ -1184,6 +1184,49 @@ async function caricaProfiloPaziente() {
   } catch { /* niente di grave: i moduli restano da compilare a mano */ }
 }
 
+/**
+ * Gli altri accessi che condividono la stessa email di questo (un familiare
+ * senza contatti propri: vedi il pannello, "Crea accesso al sito"). Passare
+ * da uno all'altro non chiede una password: chi e' gia' dentro con uno dei
+ * due l'ha gia' dimostrata.
+ */
+async function caricaFamiliariCollegati() {
+  const contenitore = $('#familiari-collegati');
+  if (!contenitore) return;
+  try {
+    const { familiari } = await api('/paziente/familiari');
+    if (!familiari.length) { contenitore.hidden = true; contenitore.replaceChildren(); return; }
+    contenitore.replaceChildren(
+      nodo('div', 'piccolo tenue', 'Gestisci come:'),
+      ...familiari.map((f) => {
+        const bottone = nodo('button', null, `${f.cognome} ${f.nome}`.trim());
+        bottone.type = 'button';
+        bottone.addEventListener('click', () => passaAFamiliare(f.id));
+        return bottone;
+      })
+    );
+    contenitore.hidden = false;
+  } catch { contenitore.hidden = true; }
+}
+
+/**
+ * Passa la sessione a un familiare collegato senza richiedere una password:
+ * il server la accetta solo se condivide davvero la stessa email (vedi
+ * utenti.trovaFamiliareCollegato). Si ricarica la pagina invece di aggiornare
+ * lo stato a pezzi: moduli, calendario ed elenchi appartengono tutti alla
+ * persona sbagliata finche' non ripartono da zero con l'account nuovo.
+ */
+async function passaAFamiliare(utenteId) {
+  try {
+    const dati = await api('/paziente/passa-a-familiare', { method: 'POST', body: { utenteId } });
+    tokenPaziente = dati.token;
+    try { sessionStorage.setItem(CHIAVE_TOKEN_PAZIENTE, tokenPaziente); } catch { /* ignora */ }
+    location.reload();
+  } catch (err) {
+    avvisa(err.message, 'errore');
+  }
+}
+
 /** Entra nel sito vero: la prima volta ne monta anche tutte le parti. */
 async function entraNelSito(utente) {
   $('#nome-utente-paziente').textContent = utente?.nome || utente?.email || 'Account';
@@ -1203,6 +1246,7 @@ async function entraNelSito(utente) {
   collegaChat();
   collegaNotifiche($('#btn-notifiche'), api, avvisa);
   caricaProfiloPaziente();
+  caricaFamiliariCollegati();
 
   $('#mese-precedente').addEventListener('click', () => cambiaMese(-1));
   $('#mese-successivo').addEventListener('click', () => cambiaMese(1));

@@ -2396,6 +2396,49 @@ console.log('\nUn familiare puo\' avere un accesso con la stessa email di un alt
   const trovatoConPasswordSbagliata = candidati.find((u) => verificaPassword('NonEQuestaLaPassword26!', u.password_hash));
   verifica('una password che non corrisponde a nessuno dei due non trova niente',
     trovatoConPasswordSbagliata === undefined);
+
+  // Passare dall'uno all'altro senza reinserire una password: la sessione del
+  // figlio si crea diretta (stesso motivo del blocco sopra — niente login vero).
+  const tokFiglio = creaSessioneDiretta(primo.utente.id).token;
+
+  const elencoPerFiglio = await chiama('GET', '/api/paziente/familiari', null, tokFiglio);
+  verifica('il figlio vede il padre nell\'elenco dei collegati',
+    elencoPerFiglio.stato === 200 && elencoPerFiglio.dati.familiari?.length === 1
+      && elencoPerFiglio.dati.familiari[0].id === accessoAnziano.dati.utente.id,
+    JSON.stringify(elencoPerFiglio.dati));
+
+  const passaggio = await chiama('POST', '/api/paziente/passa-a-familiare',
+    { utenteId: accessoAnziano.dati.utente.id }, tokFiglio);
+  verifica('il passaggio riesce senza chiedere una password, ed entra nell\'account del padre',
+    passaggio.stato === 200 && passaggio.dati.utente?.paziente_id === anziano.dati.paziente.id,
+    JSON.stringify(passaggio.dati));
+
+  const tokPadre = passaggio.dati.token;
+  const profiloComePadre = await chiama('GET', '/api/paziente/profilo', null, tokPadre);
+  verifica('con la sessione nuova si vede davvero il fascicolo del padre',
+    profiloComePadre.stato === 200 && profiloComePadre.dati.profilo?.nome === 'Padre',
+    JSON.stringify(profiloComePadre.dati));
+
+  const ritornoAlFiglio = await chiama('GET', '/api/paziente/profilo', null, tokFiglio);
+  verifica('la sessione di partenza (il figlio) resta valida: si puo\' tornare indietro allo stesso modo',
+    ritornoAlFiglio.stato === 200 && ritornoAlFiglio.dati.profilo?.nome === 'Figlio',
+    JSON.stringify(ritornoAlFiglio.dati));
+
+  const reg2 = registraPazienteDiretto({
+    nome: 'Estraneo', cognome: 'NonCollegato', telefono: '3339990301',
+    email: 'estraneo.noncollegato@example.it', password: 'PasswordEstraneo26!'
+  });
+  verificaEmailDiretto(reg2.token);
+  const tokEstraneo = creaSessioneDiretta(reg2.utente.id).token;
+
+  const elencoPerEstraneo = await chiama('GET', '/api/paziente/familiari', null, tokEstraneo);
+  verifica('un account senza email condivise non vede nessun collegato',
+    elencoPerEstraneo.stato === 200 && elencoPerEstraneo.dati.familiari?.length === 0);
+
+  const passaggioNegato = await chiama('POST', '/api/paziente/passa-a-familiare',
+    { utenteId: accessoAnziano.dati.utente.id }, tokEstraneo);
+  verifica('non si puo\' passare a un account con un\'email diversa dalla propria',
+    passaggioNegato.stato === 403, JSON.stringify(passaggioNegato.dati));
 }
 
 console.log('\nLa migrazione toglie il vincolo email-unica da un database gia\' esistente');

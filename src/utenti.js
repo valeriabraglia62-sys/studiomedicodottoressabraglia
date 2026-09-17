@@ -186,6 +186,44 @@ export function profiloPaziente(pazienteId) {
 }
 
 /**
+ * Gli altri accessi che condividono questa email (vedi creaAccessoPaziente
+ * piu' sopra: e' il caso di un familiare senza contatti propri). Chi e' gia'
+ * dentro con uno dei due puo' passare all'altro senza reinserire una
+ * password: e' quella gia' scritta ad aprire l'ingresso, non serve chiederne
+ * un'altra ogni volta.
+ */
+export function familiariCollegati(utenteId) {
+  const u = db.prepare('SELECT * FROM utenti WHERE id = ?').get(Number(utenteId));
+  if (!u) throw new ErroreDominio('Sessione non valida.', 401);
+  return db.prepare(`
+    SELECT u.id, p.nome, p.cognome
+      FROM utenti u JOIN pazienti p ON p.id = u.paziente_id
+     WHERE u.email = ? AND u.id <> ? AND u.ruolo = 'paziente' AND u.attivo = 1
+     ORDER BY p.cognome COLLATE NOCASE, p.nome COLLATE NOCASE
+  `).all(u.email, u.id);
+}
+
+/**
+ * Verifica che si possa passare da un accesso all'altro senza password: solo
+ * se condividono la stessa email (vedi familiariCollegati). Ritorna la riga
+ * intera dell'account di arrivo; e' chi chiama (la rotta) ad aprirgli una
+ * sessione nuova.
+ */
+export function trovaFamiliareCollegato(utenteId, targetId) {
+  const u = db.prepare('SELECT * FROM utenti WHERE id = ?').get(Number(utenteId));
+  if (!u) throw new ErroreDominio('Sessione non valida.', 401);
+  const target = db.prepare('SELECT * FROM utenti WHERE id = ?').get(Number(targetId));
+  if (!target || target.email !== u.email || target.id === u.id) {
+    throw new ErroreDominio('Non puoi passare a questo accesso.', 403);
+  }
+  if (target.ruolo !== 'paziente' || !target.paziente_id) {
+    throw new ErroreDominio('Accesso non valido.', 400);
+  }
+  if (!target.attivo) throw new ErroreDominio('Questo accesso è stato sospeso.', 403);
+  return target;
+}
+
+/**
  * Il paziente aggiorna i propri dati. Nome, cognome e telefono si cambiano
  * liberamente; l'email e' anche la credenziale d'accesso, quindi per cambiarla
  * serve la password attuale e non deve gia' essere di un altro account.
