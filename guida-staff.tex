@@ -67,7 +67,7 @@ Le voci segnate \solomedico sono visibili solo all'accesso del medico.}
 
 Il pannello è raggiungibile all'indirizzo \url{https://studiomedicobragliavaleria.it/admin.html}. È separato dal sito che vedono i pazienti: ha un proprio indirizzo e un proprio accesso.
 
-Un nuovo collaboratore riceve dal medico una \textbf{password provvisoria}. Al primo ingresso il sistema chiede subito di sceglierne una personale, che nessun altro conoscerà: finché non viene scelta, il resto del pannello resta bloccato.
+Un nuovo collaboratore riceve una \textbf{password provvisoria}: compare a schermo quando il medico crea l'accesso, e arriva anche via email insieme al link del pannello e a questa stessa guida in allegato. Al primo ingresso il sistema chiede subito di sceglierne una personale, che nessun altro conoscerà: finché non viene scelta, il resto del pannello resta bloccato.
 
 \section{Le schede del pannello}
 
@@ -80,8 +80,9 @@ In alto si trovano le schede principali. Alcune sono visibili solo al medico.
 \midrule
 Oggi & Riepilogo della giornata: quante visite, cosa aspetta una risposta. \\
 Prenotazioni & Agenda, richieste da confermare, prenotazioni a mano. \\
+Calendario & Vista mensile: un colpo d'occhio su quali giorni sono più pieni. \\
 Chiusure & Bloccare un giorno o una fascia oraria alle prenotazioni. \\
-Medicinali & Richieste di rinnovo ricette. \\
+Farmaci & Richieste di rinnovo ricette. \\
 Visite specialistiche & Richieste di impegnativa per uno specialista. \\
 Esami del sangue & Richieste di impegnativa per le analisi. \\
 Pazienti & Anagrafica, ricerca, fascicolo, dati e password di accesso. \\
@@ -94,7 +95,11 @@ Stato del sistema & Email, backup, coda degli invii. \\
 
 \section{Oggi}
 
-La prima schermata dopo l'accesso. Mostra a colpo d'occhio quante visite ci sono oggi (e domani), quante richieste di medicinali, visite specialistiche ed esami aspettano una risposta, e quante richieste di visita dal sito sono ancora da confermare. Ogni numero è cliccabile e porta dritto alla scheda corrispondente, già filtrata.
+La prima schermata dopo l'accesso. Mostra a colpo d'occhio, in una serie di riquadri cliccabili: quante visite ci sono oggi, quante richieste di visita dal sito sono ancora da confermare, quante visite future sono già confermate, quante richieste di farmaci/visite specialistiche/esami aspettano una risposta, e quanti pazienti sono in archivio. Ogni riquadro porta dritto alla scheda corrispondente, già filtrata, e sotto compare anche l'agenda della giornata.
+
+\section{Calendario}
+
+Una vista d'insieme del mese, utile per farsi un'idea di quali giorni sono più pieni prima ancora di aprire l'agenda giorno per giorno: ogni giorno con almeno una prenotazione porta un pallino (tenendoci sopra il puntatore si vede quante sono). Cliccando su un giorno si apre il dettaglio con orario, paziente, telefono, ambulatorio, motivo, stato e codice di ogni visita.
 
 \section{Prenotazioni}
 
@@ -117,11 +122,17 @@ La casella \bottone{orario mio / forza} permette di scavalcare i limiti pensati 
 
 Una prenotazione confermata si può riprogrammare (cambiare giorno, ora o ambulatorio) o annullare. In entrambi i casi parte un'email al paziente, e chi era in lista d'attesa per quel giorno viene avvisato se si libera un posto.
 
+Quando si sposta un appuntamento si può aggiungere un \bottone{Motivo dello spostamento} (facoltativo): se lo si scrive, il paziente lo legge nella sua email di conferma --- utile quando il cambio è dovuto a un'esigenza dello studio (``il medico non è disponibile quel giorno'') e non a un semplice orario più comodo, che il paziente non si aspetta di dover chiedere per telefono.
+
+\subsection*{Dove restano visibili gli annullamenti e i rifiuti}
+
+Una prenotazione appena annullata o rifiutata non sparisce subito dall'elenco: resta in cima, ben visibile, per le \textbf{24 ore} successive --- utile se un paziente richiama subito dopo chiedendo conferma dell'annullamento. Le richieste ancora \bottone{Da confermare} restano comunque le prime in assoluto, sopra agli annullamenti recenti: sono quelle che aspettano un'azione. Lo stesso vale per le code di farmaci, visite specialistiche ed esami.
+
 \section{Chiusure}
 
 Per bloccare le prenotazioni --- ferie, un imprevisto, mezza giornata --- si aggiunge una chiusura: un giorno intero, un intervallo di giorni, oppure solo una fascia oraria all'interno di una o più giornate. Le prenotazioni già confermate in quel periodo \textbf{non} vengono annullate da sole: il pannello elenca quelle da avvisare a mano.
 
-\section{Medicinali, visite specialistiche, esami del sangue}
+\section{Farmaci, visite specialistiche, esami del sangue}
 
 Le tre code funzionano allo stesso modo. Per ogni richiesta nuova si può:
 
@@ -141,6 +152,16 @@ Anche qui, dal pulsante \bottone{+ Aggiungi}, si registra una richiesta presa al
 
 Mostra tutti i pazienti in carico allo studio. Chi non è più assistito non compare, a meno di spuntare l'opzione apposita: dimettere qualcuno serve proprio a toglierlo dagli elenchi di tutti i giorni, senza perdere la sua storia.
 
+La ricerca funziona scrivendo più parole insieme, in qualunque ordine e con qualunque maiuscola/minuscola: ``mario rossi'', ``Rossi Mario'' o ``ROSSI mario'' trovano tutti la stessa persona, anche se nome e cognome sono scritti in campi separati.
+
+\subsection{Aggiungere un paziente a mano}
+
+Il pulsante \bottone{+ Aggiungi paziente}, in cima all'elenco, serve per inserire una persona che non è mai passata dal sito. Bastano nome e cognome; telefono ed email sono facoltativi.
+
+Dalla scheda \bottone{Dati e password} di un paziente già in archivio c'è anche \bottone{+ Aggiungi un familiare}: pensato per chi --- una persona anziana, per esempio --- non ha un proprio telefono o una propria email. Il modulo propone di \textbf{riusare gli stessi contatti} del paziente già aperto (si può togliere la spunta e scriverne di diversi).
+
+Se alla fine c'è un'email in archivio (propria o condivisa), \textbf{l'accesso al sito si apre nello stesso passaggio}: compare a schermo la password provvisoria, da copiare o annotare subito --- non sarà più recuperabile in seguito. Se l'email è condivisa con un altro accesso già esistente, il pannello lo segnala: restano due account distinti, separati solo dalla password con cui si accede (il paziente, dal suo \bottone{Modifica account}, trova poi il familiare in \bottone{Gestisci come} e può passare dall'uno all'altro senza reinserire nessuna password).
+
 \subsection{Il fascicolo} \solomedico
 
 Cliccando sul nome si apre il fascicolo completo: le visite passate e future, i medicinali che il paziente prende abitualmente, e la storia di ogni richiesta con come è stata gestita. Contiene il motivo delle visite, un dato clinico: per questo lo apre solo il medico.
@@ -151,10 +172,12 @@ Sotto ogni nome, il pulsante \bottone{Dati e password} --- questo lo usa chiunqu
 
 \begin{itemize}
   \item correggere nome, cognome, telefono o email del paziente;
-  \item reimpostare la sua password di accesso al sito, se il paziente non riesce più a entrare.
+  \item \bottone{Reimposta password} --- se il paziente ha già un accesso e non riesce più a entrare; oppure \bottone{Crea accesso al sito} al suo posto, se non ne ha ancora uno e c'è un'email in archivio;
+  \item \bottone{Riattiva email su Brevo} --- per chi ha cliccato per errore ``annulla iscrizione'' su un'email automatica: da quel momento non riceve più nemmeno le conferme delle prenotazioni, finché non lo si riattiva da qui;
+  \item \bottone{+ Aggiungi un familiare} --- descritto sopra.
 \end{itemize}
 
-In entrambi i casi il paziente riceve un'email che lo avvisa del cambiamento. Se il paziente non ha mai creato un account sul sito, la voce ``reimposta password'' non si può usare: il pannello lo segnala chiaramente.
+Dopo ogni correzione o nuovo accesso, il paziente riceve un'email che lo avvisa. Se il paziente non ha ancora un'email in archivio, non si può ancora aprirgli un accesso: il pannello lo segnala chiaramente, e basta scriverla prima nei dati.
 
 \subsection{Dimettere o cancellare}
 
@@ -187,7 +210,7 @@ Ogni collaboratore --- medico o segreteria --- può cambiare la propria password
 In alto, accanto al pulsante ``Esci'', sono disponibili:
 
 \begin{itemize}
-  \item \bottone{Attiva notifiche} --- per ricevere un avviso sul dispositivo quando arriva una nuova richiesta da confermare (visita, medicinali, specialistica, esami).
+  \item \bottone{Attiva notifiche} --- per ricevere un avviso sul dispositivo quando arriva una nuova richiesta da confermare (visita, farmaci, specialistica, esami). Il testo del pulsante cambia da solo: \bottone{Disattiva notifiche} quando sono accese, \bottone{Notifiche disattivate} se sono state bloccate dalle impostazioni del telefono (si riattivano da lì, non dal pannello). Quando sono accese compare anche la casella \bottone{Suono}, per ricevere gli avvisi in silenzio su quel dispositivo senza spegnerli del tutto.
   \item \bottone{Installa} --- per aggiungere un'icona del pannello sul telefono o computer, che si apre a schermo intero come un'app vera.
 \end{itemize}
 
@@ -211,7 +234,7 @@ In basso a destra è disponibile un assistente che risponde a domande scritte in
 ``annulla PRE-1234-ABCD'' & Annulla l'appuntamento (chiede conferma). \\
 ``blocca il 15/10 dalle 10 alle 12'' & Crea una chiusura (chiede conferma). \\
 ``che chiusure ci sono'' & L'elenco delle chiusure future. \\
-``apri i medicinali'' & Porta dritto sulla scheda giusta. \\
+``apri i farmaci'' & Porta dritto sulla scheda giusta. \\
 ``password'', ``notifiche'', ``installa'' & Spiega dove trovarle. \\
 \bottomrule
 \end{tabularx}

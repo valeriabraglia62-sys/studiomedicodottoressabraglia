@@ -54,7 +54,7 @@
 {\normalsize\color{studiogrigio} \url{https://studiomedicobragliavaleria.it}}
 \vfill
 {\small\color{studiogrigio} Questa guida spiega come creare un account, prenotare una visita, \\
-richiedere medicinali o esami, e gestire il proprio account dal sito.}
+richiedere farmaci o esami, e gestire il proprio account dal sito.}
 \end{titlepage}
 
 \tableofcontents
@@ -124,12 +124,12 @@ Arriva subito un'email di conferma con il \textbf{codice della prenotazione}: co
 
 \textbf{Nota:} le visite richieste dal sito nascono come \emph{richieste}: lo studio le conferma (o le rifiuta, indicandone il motivo) entro breve, e a quel punto arriva una seconda email con la conferma definitiva.
 
-\section{Richiedere medicinali, una visita specialistica o esami del sangue}
+\section{Richiedere farmaci, una visita specialistica o esami del sangue}
 
 Dal menu in alto sono disponibili tre moduli distinti:
 
 \begin{itemize}
-  \item \schermata{Medicinali} --- per chiedere il rinnovo di una ricetta.
+  \item \schermata{Farmaci} --- per chiedere il rinnovo di una ricetta.
   \item \schermata{Visite specialistiche} --- per chiedere l'impegnativa di una visita da uno specialista.
   \item \schermata{Esami del sangue} --- per chiedere l'impegnativa degli esami.
 \end{itemize}
@@ -137,6 +137,23 @@ Dal menu in alto sono disponibili tre moduli distinti:
 In ciascun modulo si indicano nome, cognome, telefono, email e cosa serve. Per le visite specialistiche e gli esami è possibile \textbf{allegare la foto} di una richiesta già scritta da uno specialista: da telefono si può scattarla direttamente.
 
 Dopo l'invio arriva un'email di conferma con un codice. Quando lo studio risponde (approvando, magari con qualche modifica concordata, oppure spiegando perché non può essere accolta) arriva una seconda email.
+
+\section{Prenotare o chiedere qualcosa per un'altra persona}
+
+Una volta effettuato l'accesso, nome, cognome, telefono ed email si compilano \textbf{da soli} in tutti e quattro i moduli (Prenota, Farmaci, Visite specialistiche, Esami del sangue): non serve riscriverli ogni volta.
+
+Se invece si modificano --- perché si sta prenotando o chiedendo qualcosa per un \textbf{familiare} che non ha un proprio account --- il sito se ne accorge e, prima di inviare, chiede conferma:
+
+\begin{quote}
+\itshape ``Stai usando un nome, cognome, telefono o email diverso da quello del tuo account: la pratica verrà registrata per un'altra persona (per esempio un familiare), non per te. Vuoi continuare?''
+\end{quote}
+
+\begin{itemize}
+  \item Rispondendo \textbf{sì}, la pratica viene registrata per la persona indicata nel modulo: se non è ancora in archivio, ne nasce una scheda nuova, e a quella persona arrivano due email --- una per la prenotazione o la richiesta appena fatta, e una che la invita a creare un proprio account sul sito (con questa stessa guida allegata), se in futuro vorrà gestirsi da sola.
+  \item Rispondendo \textbf{no}, si torna alla schermata iniziale senza inviare nulla.
+\end{itemize}
+
+Se invece la stessa persona (stesso nome, cognome e telefono) viene indicata di nuovo in futuro, il sito la riconosce e non le manda un secondo invito.
 
 \section{Controllare o annullare}
 
@@ -148,7 +165,7 @@ Nella sezione \schermata{La mia richiesta} si inserisce il codice ricevuto via e
 \textbf{Prefisso del codice} & \textbf{Cosa indica} \\
 \midrule
 \texttt{PRE-\dots} & Prenotazione di una visita \\
-\texttt{MED-\dots} & Richiesta di medicinali \\
+\texttt{MED-\dots} & Richiesta di farmaci \\
 \texttt{SPE-\dots} & Richiesta di visita specialistica \\
 \texttt{ESA-\dots} & Richiesta di esami del sangue \\
 \bottomrule
@@ -167,11 +184,37 @@ Una volta effettuato l'accesso, in alto a destra si trova il menu \schermata{Acc
   \item la password --- serve la password attuale e una nuova di almeno 10 caratteri.
 \end{itemize}
 
+\subsection{Aggiungere un familiare}
+
+Nella stessa finestra \bottone{Modifica account}, in fondo, c'è la sezione \bottone{Aggiungi un familiare}: serve per chi --- un genitore anziano, per esempio --- non ha un proprio telefono o una propria email.
+
+\begin{enumerate}
+  \item Scrivere nome e cognome del familiare.
+  \item Lasciare spuntata \bottone{Usa il mio stesso telefono ed email} (è già così di default), oppure toglierla e scrivere contatti diversi, se il familiare ne ha di suoi.
+  \item Cliccare su \bottone{Aggiungi familiare}.
+\end{enumerate}
+
+Se si sono usati gli stessi contatti, l'accesso al sito si apre \textbf{nello stesso momento}, senza bisogno di un'altra password: il familiare compare subito nel menu \schermata{Account}, sotto la voce \bottone{Gestisci come}.
+
+\subsection{Gestire l'account di un familiare}
+
+Se ci sono familiari collegati (aggiunti come sopra, o dallo studio), il menu \schermata{Account} mostra un elenco \bottone{Gestisci come} con i loro nomi. Cliccando su uno di essi si entra subito nel suo account --- \textbf{senza dover scrivere nessuna password} --- e si possono prenotare visite o fare richieste direttamente a suo nome, con i suoi dati già compilati nei moduli.
+
+Per tornare indietro basta riaprire il menu: l'elenco \bottone{Gestisci come} ora mostra l'account di partenza, pronto per essere ripreso allo stesso modo, senza password. Nessuno dei due accessi si chiude quando si passa all'altro: si può andare avanti e indietro liberamente.
+
 \section{Notifiche sul telefono}
 
 Il sito può mandare un avviso direttamente sul telefono o sul computer (oltre alle email) quando una prenotazione viene confermata, una richiesta viene evasa, e così via.
 
-Per attivarle: menu in alto, pulsante \bottone{Attiva notifiche}. Il browser chiederà un permesso: basta accettarlo.
+Per attivarle: menu in alto, pulsante \bottone{Attiva notifiche}. Il browser chiederà un permesso: basta accettarlo. Il pulsante cambia testo a seconda dello stato:
+
+\begin{itemize}
+  \item \bottone{Attiva notifiche} --- non sono ancora state attivate su questo dispositivo.
+  \item \bottone{Disattiva notifiche} --- sono accese: un clic le spegne di nuovo.
+  \item \bottone{Notifiche disattivate} --- sono state bloccate dalle impostazioni del telefono, non dal sito: per riattivarle bisogna aprire le Impostazioni del dispositivo, cercare il sito (o l'app, se installata) e permettere di nuovo le notifiche da lì.
+\end{itemize}
+
+Quando le notifiche sono accese, accanto al pulsante compare la casella \bottone{Suono}: si può togliere la spunta per ricevere gli avvisi in silenzio su quel dispositivo, senza spegnerli del tutto.
 
 \subsection*{Nota per iPhone e iPad}
 
@@ -194,7 +237,7 @@ Il sito si può installare sul telefono o sul computer come una vera app, gratui
 
 \section{L'assistente virtuale}
 
-In basso a destra sul sito è disponibile un piccolo assistente (chatbot) che guida passo dopo passo nella prenotazione di una visita, in una richiesta di medicinali/specialistica/esami, oppure nel controllo di una pratica già aperta con il suo codice.
+In basso a destra sul sito è disponibile un piccolo assistente (chatbot) che guida passo dopo passo nella prenotazione di una visita, in una richiesta di farmaci/specialistica/esami, oppure nel controllo di una pratica già aperta con il suo codice.
 
 Alcuni comandi utili durante la conversazione:
 \begin{itemize}
