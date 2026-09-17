@@ -2153,7 +2153,7 @@ console.log('\nLo staff corregge i dati di un paziente e gli reimposta la passwo
     resetSenzaAccesso.stato === 404, JSON.stringify(resetSenzaAccesso.dati));
 }
 
-console.log('\nLo studio aggiunge un paziente a mano, e gli apre un accesso al sito');
+console.log('\nLo studio aggiunge un paziente a mano, e l\'accesso si apre nello stesso passaggio');
 {
   const senzaCredenziali = await chiama('POST', '/api/admin/pazienti', { nome: 'Anziana', cognome: 'SenzaSito' });
   verifica('aggiungere un paziente senza credenziali e\' negato', senzaCredenziali.stato === 401);
@@ -2163,6 +2163,8 @@ console.log('\nLo studio aggiunge un paziente a mano, e gli apre un accesso al s
   verifica('nome e cognome bastano, telefono ed email sono facoltativi',
     soloNomeCognome.stato === 201 && soloNomeCognome.dati.paziente?.nome === 'Anziana',
     JSON.stringify(soloNomeCognome.dati));
+  verifica('senza email non si apre nessun accesso, ma la scheda nasce comunque',
+    soloNomeCognome.dati.accesso_creato === false, JSON.stringify(soloNomeCognome.dati));
   const idAnziana = soloNomeCognome.dati.paziente.id;
 
   const senzaCognome = await chiama('POST', '/api/admin/pazienti', { nome: 'Solonome' }, token);
@@ -2170,26 +2172,26 @@ console.log('\nLo studio aggiunge un paziente a mano, e gli apre un accesso al s
 
   // "Aggiungi un familiare": si riusano gli stessi contatti di un paziente
   // gia' in archivio (la persona anziana non ha email propria, il figlio si').
+  // Avendo un'email, l'accesso si apre subito, nello stesso passaggio.
+  const primaCoda = db.prepare("SELECT COUNT(*) n FROM outbox WHERE tipo = 'email'").get().n;
   const familiare = await chiama('POST', '/api/admin/pazienti', {
     nome: 'Figlia', cognome: 'DiAnziana', telefono: '3339990201', email: 'figlia.dianziana@example.it'
   }, token);
   verifica('un familiare con contatti propri viene creato', familiare.stato === 201);
+  verifica('con un\'email in archivio, l\'accesso nasce nello stesso passaggio',
+    familiare.dati.accesso_creato === true && Boolean(familiare.dati.password_provvisoria),
+    JSON.stringify(familiare.dati));
   const idFiglia = familiare.dati.paziente.id;
-
-  const senzaEmailInArchivio = await chiama('POST', `/api/admin/pazienti/${idAnziana}/accesso`, {}, token);
-  verifica('creare l\'accesso senza email in archivio da\' un errore chiaro',
-    senzaEmailInArchivio.stato === 400, JSON.stringify(senzaEmailInArchivio.dati));
-
-  const primaCoda = db.prepare("SELECT COUNT(*) n FROM outbox WHERE tipo = 'email'").get().n;
-  const accessoFiglia = await chiama('POST', `/api/admin/pazienti/${idFiglia}/accesso`, {}, token);
-  verifica('l\'accesso si crea per chi ha un\'email in archivio',
-    accessoFiglia.stato === 200 && Boolean(accessoFiglia.dati.password_provvisoria), JSON.stringify(accessoFiglia.dati));
   const dopoCoda = db.prepare("SELECT COUNT(*) n FROM outbox WHERE tipo = 'email'").get().n;
   verifica('e parte l\'email con le credenziali', dopoCoda === primaCoda + 1);
 
   const ultima = JSON.parse(
     db.prepare("SELECT payload FROM outbox WHERE tipo = 'email' ORDER BY id DESC LIMIT 1").get().payload);
   verifica('l\'email ha la guida per i pazienti allegata', ultima.allegaGuida === 'pazienti', JSON.stringify(ultima));
+
+  const senzaEmailInArchivio = await chiama('POST', `/api/admin/pazienti/${idAnziana}/accesso`, {}, token);
+  verifica('creare l\'accesso a parte, senza email in archivio, da\' un errore chiaro',
+    senzaEmailInArchivio.stato === 400, JSON.stringify(senzaEmailInArchivio.dati));
 
   // Il login vero non si chiama qui: ha un freno anti-abuso per IP che un
   // file di prove esaurirebbe da solo (vedi il commento piu' sopra, stesso
@@ -2198,7 +2200,7 @@ console.log('\nLo studio aggiunge un paziente a mano, e gli apre un accesso al s
   const { verificaPassword } = await import('../src/auth.js');
   const rigaFiglia = db.prepare("SELECT * FROM utenti WHERE email = 'figlia.dianziana@example.it'").get();
   verifica('la password provvisoria e\' quella giusta',
-    verificaPassword(accessoFiglia.dati.password_provvisoria, rigaFiglia.password_hash));
+    verificaPassword(familiare.dati.password_provvisoria, rigaFiglia.password_hash));
   verifica('l\'account e\' gia\' verificato: non serve confermare l\'email prima di entrare',
     Boolean(rigaFiglia.email_verificata));
 
@@ -2210,11 +2212,9 @@ console.log('\nLo studio aggiunge un paziente a mano, e gli apre un accesso al s
   // che condivide i contatti — vedi il test dedicato piu' sotto).
   const condiviso = await chiama('POST', '/api/admin/pazienti',
     { nome: 'Altra', cognome: 'ConEmailUguale', email: 'figlia.dianziana@example.it' }, token);
-  const accessoCondiviso = await chiama('POST',
-    `/api/admin/pazienti/${condiviso.dati.paziente.id}/accesso`, {}, token);
   verifica('un\'email gia\' usata da un altro accesso viene comunque accettata',
-    accessoCondiviso.stato === 200 && accessoCondiviso.dati.condivisa === true,
-    JSON.stringify(accessoCondiviso.dati));
+    condiviso.dati.accesso_creato === true && condiviso.dati.condivisa === true,
+    JSON.stringify(condiviso.dati));
 }
 
 console.log('\nRiattivare un\'email su Brevo (BREVO_API_KEY non configurata in prova)');
@@ -2359,10 +2359,11 @@ console.log('\nUn familiare puo\' avere un accesso con la stessa email di un alt
     { nome: 'Padre', cognome: 'Condiviso', telefono: '3339990300', email: 'famiglia.condivisa@example.it' }, token);
   verifica('creato il paziente anziano coi contatti condivisi', anziano.stato === 201);
 
-  const accessoAnziano = await chiama('POST',
-    `/api/admin/pazienti/${anziano.dati.paziente.id}/accesso`, {}, token);
+  // L'accesso si apre gia' nello stesso passaggio (vedi il test dedicato piu'
+  // sopra): qui si usa direttamente quella risposta, non una seconda chiamata.
+  const accessoAnziano = anziano;
   verifica('si crea un secondo accesso, stessa email del figlio',
-    accessoAnziano.stato === 200 && Boolean(accessoAnziano.dati.password_provvisoria),
+    accessoAnziano.dati.accesso_creato === true && Boolean(accessoAnziano.dati.password_provvisoria),
     JSON.stringify(accessoAnziano.dati));
   verifica('il server segnala che l\'email e\' condivisa', accessoAnziano.dati.condivisa === true);
 

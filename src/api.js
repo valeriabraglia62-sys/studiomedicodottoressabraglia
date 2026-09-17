@@ -889,12 +889,39 @@ admin.get('/pazienti', (req, res) => ok(res, {
 
 /**
  * Lo studio inserisce a mano una persona che non e' mai passata dal sito: un
- * familiare anziano, per esempio. Nasce solo la scheda, senza accesso al
- * sito — quello, se serve, si crea a parte (vedi sotto), perche' richiede
- * un'email che non sia gia' di un altro account.
+ * familiare anziano, per esempio. Se c'e' un'email (magari quella di chi lo
+ * accompagna, riusata apposta) l'accesso al sito si apre nello stesso
+ * passaggio, come per il paziente che aggiunge da solo un familiare da
+ * "Modifica account" — non serve piu' tornare sulla scheda per il secondo
+ * passo. Senza email resta solo la scheda: l'accesso si potra' sempre
+ * aggiungere dopo dalla scheda stessa (vedi sotto).
  */
-admin.post('/pazienti', (req, res) =>
-  res.status(201).json({ success: true, paziente: pazienti.crea(req.body || {}) }));
+admin.post('/pazienti', (req, res) => {
+  const paziente = pazienti.crea(req.body || {});
+
+  let accesso = null;
+  try {
+    accesso = utenti.creaAccessoPaziente(paziente.id);
+  } catch { /* niente email valida sulla scheda nuova: resta solo la scheda */ }
+  if (accesso) {
+    accoda('email', {
+      ...emailNuovoAccessoPaziente({
+        to: accesso.utente.email, nome: accesso.utente.nome,
+        passwordProvvisoria: accesso.password_provvisoria, url: basePubblica(), condivisa: accesso.condivisa
+      }),
+      allegaGuida: 'pazienti'
+    });
+  }
+
+  res.status(201).json({
+    success: true,
+    paziente,
+    accesso_creato: Boolean(accesso),
+    utente: accesso?.utente || null,
+    password_provvisoria: accesso?.password_provvisoria || null,
+    condivisa: accesso?.condivisa || false
+  });
+});
 
 /**
  * Apre l'accesso al sito per un paziente che aveva solo la scheda. Usa

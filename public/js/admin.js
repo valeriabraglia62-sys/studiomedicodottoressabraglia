@@ -1618,16 +1618,28 @@ function moduloNuovoPaziente(chiudi, { contesto } = {}) {
     salva.disabled = true;
     protetto(async () => {
       try {
-        const { paziente } = await api('/admin/pazienti', {
-          method: 'POST',
-          body: {
-            nome: campi.nome.value, cognome: campi.cognome.value,
-            telefono: campi.telefono.value, email: campi.email.value
-          }
-        });
-        avvisa(`${paziente.cognome} ${paziente.nome} è stato aggiunto all'archivio.`, 'ok');
-        chiudi();
+        const { paziente, accesso_creato: accessoCreato, password_provvisoria: password, condivisa } =
+          await api('/admin/pazienti', {
+            method: 'POST',
+            body: {
+              nome: campi.nome.value, cognome: campi.cognome.value,
+              telefono: campi.telefono.value, email: campi.email.value
+            }
+          });
         await caricaPazienti();
+        if (accessoCreato) {
+          // L'accesso si e' aperto nello stesso passaggio: si mostra la
+          // password subito, come per ogni altra password provvisoria — non
+          // si torna piu' recuperabile dopo. Il modulo resta aperto apposta,
+          // cosi' non sparisce prima che sia stata copiata.
+          mostraPasswordProvvisoria(esito, { email: paziente.email, nome: `${paziente.nome} ${paziente.cognome}` },
+            password);
+          avvisa(`${paziente.cognome} ${paziente.nome} è stato aggiunto, con l'accesso al sito già pronto.`
+            + (condivisa ? ' L\'email è condivisa con un altro accesso: restano due account separati.' : ''), 'ok');
+        } else {
+          avvisa(`${paziente.cognome} ${paziente.nome} è stato aggiunto all'archivio.`, 'ok');
+          chiudi();
+        }
       } finally {
         salva.disabled = false;
       }
