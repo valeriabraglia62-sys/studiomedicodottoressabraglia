@@ -614,6 +614,33 @@
     <div class="azioni" style="margin-top:.75rem">
       <button type="button" id="acc-salva-pwd" class="bottone secondario">Cambia password</button>
     </div>
+
+    <hr style="border:0;border-top:1px solid var(--bordo);margin:1.25rem 0">
+    <h4 style="margin:.2rem 0 .6rem">Aggiungi un familiare</h4>
+    <p class="piccolo tenue" style="margin:0 0 .6rem">
+      Per chi non ha un proprio telefono o una propria email (un genitore anziano, per
+      esempio): nasce una scheda a parte, e da qui potrai gestirla senza bisogno di
+      un'altra password — la trovi in "Gestisci come" nel menu account.
+    </p>
+    <div class="coppia">
+      <div class="campo"><label for="fam-nome">Nome</label>
+        <input id="fam-nome"></div>
+      <div class="campo"><label for="fam-cognome">Cognome</label>
+        <input id="fam-cognome"></div>
+    </div>
+    <label class="piccolo" style="display:flex;gap:.4rem;align-items:center;margin:.3rem 0">
+      <input type="checkbox" id="fam-stessi-contatti" checked> Usa il mio stesso telefono ed email
+    </label>
+    <div class="coppia" id="fam-contatti-personalizzati" hidden>
+      <div class="campo"><label for="fam-telefono">Telefono</label>
+        <input id="fam-telefono" type="tel"></div>
+      <div class="campo"><label for="fam-email">Email</label>
+        <input id="fam-email" type="email"></div>
+    </div>
+    <div id="fam-esito"></div>
+    <div class="azioni" style="margin-top:.75rem">
+      <button type="button" id="fam-aggiungi" class="bottone secondario">Aggiungi familiare</button>
+    </div>
   </form>
 </dialog>
 

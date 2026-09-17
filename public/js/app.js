@@ -260,6 +260,40 @@ function collegaAccessoPaziente() {
       esito.replaceChildren(nodo('div', 'avviso errore', err.message));
     }
   });
+
+  // --- Aggiungi un familiare (un genitore anziano, per esempio) ---
+  $('#fam-stessi-contatti').addEventListener('change', (evento) => {
+    $('#fam-contatti-personalizzati').hidden = evento.currentTarget.checked;
+  });
+
+  $('#fam-aggiungi').addEventListener('click', async () => {
+    const esito = $('#fam-esito');
+    const usaStessiContatti = $('#fam-stessi-contatti').checked;
+    const body = {
+      nome: $('#fam-nome').value.trim(),
+      cognome: $('#fam-cognome').value.trim(),
+      usaStessiContatti,
+      telefono: usaStessiContatti ? undefined : $('#fam-telefono').value.trim(),
+      email: usaStessiContatti ? undefined : $('#fam-email').value.trim()
+    };
+    try {
+      const risp = await api('/paziente/familiari', { method: 'POST', body });
+      esito.replaceChildren(nodo('div', 'avviso ok', risp.accesso_creato
+        ? `${risp.paziente.nome} ${risp.paziente.cognome} è stato aggiunto: lo trovi già in `
+          + '"Gestisci come" nel menu account.'
+        : `${risp.paziente.nome} ${risp.paziente.cognome} è stato aggiunto, ma senza un'email valida `
+          + 'non si è potuto aprirgli un accesso: chiedi allo studio di completarlo.'));
+      $('#fam-nome').value = '';
+      $('#fam-cognome').value = '';
+      $('#fam-telefono').value = '';
+      $('#fam-email').value = '';
+      $('#fam-stessi-contatti').checked = true;
+      $('#fam-contatti-personalizzati').hidden = true;
+      caricaFamiliariCollegati();
+    } catch (err) {
+      esito.replaceChildren(nodo('div', 'avviso errore', err.message));
+    }
+  });
 }
 
 const testo = (s) => String(s ?? '');

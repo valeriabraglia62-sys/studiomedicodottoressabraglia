@@ -580,6 +580,52 @@ router.patch('/paziente/profilo', limiteScrittura, richiedePaziente, (req, res) 
   ok(res, { profilo: esito.profilo, email_cambiata: esito.emailCambiata });
 });
 
+/**
+ * Il paziente aggiunge da solo un familiare senza contatti propri (un
+ * genitore anziano, per esempio): stessa cosa che puo' fare lo studio dal
+ * pannello (pazienti.crea + utenti.creaAccessoPaziente), qui iniziata da chi
+ * la persona la conosce davvero. Di norma riusa telefono ed email di chi
+ * chiama; puo' scriverne di diversi se il familiare ne ha di suoi.
+ *
+ * L'accesso al sito si apre subito, nello stesso passaggio: e' il punto di
+ * "Gestisci come" nel menu account, che altrimenti resterebbe vuoto finche'
+ * qualcuno dello studio non lo crea a parte.
+ */
+router.post('/paziente/familiari', limiteScrittura, richiedePaziente, (req, res) => {
+  const mio = schedaPaziente(req);
+  const usaStessiContatti = req.body?.usaStessiContatti !== false;
+
+  const nuovo = pazienti.crea({
+    nome: req.body?.nome,
+    cognome: req.body?.cognome,
+    telefono: usaStessiContatti ? mio.telefono : req.body?.telefono,
+    email: usaStessiContatti ? mio.email : req.body?.email
+  });
+
+  let accesso = null;
+  try {
+    accesso = utenti.creaAccessoPaziente(nuovo.id);
+  } catch {
+    // Senza un'email valida sulla scheda nuova non si apre un accesso: resta
+    // comunque la scheda, e lo studio potra' aggiungerne una in seguito.
+  }
+  if (accesso) {
+    accoda('email', {
+      ...emailNuovoAccessoPaziente({
+        to: accesso.utente.email, nome: accesso.utente.nome,
+        passwordProvvisoria: accesso.password_provvisoria, url: basePubblica(), condivisa: accesso.condivisa
+      }),
+      allegaGuida: 'pazienti'
+    });
+  }
+
+  res.status(201).json({
+    success: true,
+    paziente: nuovo,
+    accesso_creato: Boolean(accesso)
+  });
+});
+
 router.get('/paziente/familiari', richiedePaziente, (req, res) =>
   ok(res, { familiari: utenti.familiariCollegati(req.utente.id) }));
 

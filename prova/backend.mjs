@@ -2441,6 +2441,54 @@ console.log('\nUn familiare puo\' avere un accesso con la stessa email di un alt
     passaggioNegato.stato === 403, JSON.stringify(passaggioNegato.dati));
 }
 
+console.log('\nDal proprio account, il paziente aggiunge da solo un familiare');
+{
+  const reg = registraPazienteDiretto({
+    nome: 'Genitrice', cognome: 'DaSola', telefono: '3339990310',
+    email: 'genitrice.dasola@example.it', password: 'PasswordGenitrice26!'
+  });
+  verificaEmailDiretto(reg.token);
+  const tok = creaSessioneDiretta(reg.utente.id).token;
+
+  const senzaCredenziali = await chiama('POST', '/api/paziente/familiari', { nome: 'Nonna', cognome: 'Prova' });
+  verifica('aggiungere un familiare senza credenziali e\' negato', senzaCredenziali.stato === 403);
+
+  const senzaCognome = await chiama('POST', '/api/paziente/familiari', { nome: 'Nonna' }, tok);
+  verifica('senza cognome viene rifiutato', senzaCognome.stato === 400);
+
+  const primaCoda = db.prepare("SELECT COUNT(*) n FROM outbox WHERE tipo = 'email'").get().n;
+  const conStessiContatti = await chiama('POST', '/api/paziente/familiari',
+    { nome: 'Nonna', cognome: 'Prova' }, tok);
+  verifica('nasce la scheda riusando gli stessi contatti (nome/cognome bastano)',
+    conStessiContatti.stato === 201
+      && conStessiContatti.dati.paziente?.telefono === '3339990310'
+      && conStessiContatti.dati.paziente?.email === 'genitrice.dasola@example.it',
+    JSON.stringify(conStessiContatti.dati));
+  verifica('l\'accesso si apre nello stesso passaggio', conStessiContatti.dati.accesso_creato === true);
+  const dopoCoda = db.prepare("SELECT COUNT(*) n FROM outbox WHERE tipo = 'email'").get().n;
+  verifica('parte l\'email con le credenziali del nuovo accesso', dopoCoda === primaCoda + 1);
+
+  const elenco = await chiama('GET', '/api/paziente/familiari', null, tok);
+  verifica('la nonna compare subito fra i familiari collegati (stessa email)',
+    elenco.stato === 200 && elenco.dati.familiari?.some((f) => f.cognome === 'Prova' && f.nome === 'Nonna'),
+    JSON.stringify(elenco.dati));
+
+  // Con contatti propri e diversi, non collegati: due account indipendenti,
+  // non uno raggiungibile dall'altro senza password.
+  const conContattiPropri = await chiama('POST', '/api/paziente/familiari', {
+    nome: 'Zio', cognome: 'ConEmailSua', usaStessiContatti: false,
+    telefono: '3339990311', email: 'zio.conemailsua@example.it'
+  }, tok);
+  verifica('con contatti propri e diversi la scheda nasce comunque, con un accesso separato',
+    conContattiPropri.stato === 201 && conContattiPropri.dati.accesso_creato === true
+      && conContattiPropri.dati.paziente?.email === 'zio.conemailsua@example.it',
+    JSON.stringify(conContattiPropri.dati));
+
+  const elencoDopo = await chiama('GET', '/api/paziente/familiari', null, tok);
+  verifica('lo zio, con un\'email diversa, non e\' raggiungibile senza password: non compare nell\'elenco',
+    !elencoDopo.dati.familiari?.some((f) => f.cognome === 'ConEmailSua'), JSON.stringify(elencoDopo.dati));
+}
+
 console.log('\nLa migrazione toglie il vincolo email-unica da un database gia\' esistente');
 {
   const { spawnSync } = await import('child_process');
