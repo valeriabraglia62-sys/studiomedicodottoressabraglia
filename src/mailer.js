@@ -1,9 +1,24 @@
 ﻿import nodemailer from 'nodemailer';
 import crypto from 'crypto';
-import { config, NOTIFY_EMAIL } from './config.js';
+import fs from 'fs';
+import path from 'path';
+import { config, NOTIFY_EMAIL, ROOT } from './config.js';
 import { registraGestore, impostaAvvisoDifficolta } from './outbox.js';
 import { formattaDataEstesa } from './orari.js';
 import { linkGoogleCalendar } from './evento.js';
+
+/**
+ * Le guide in PDF, allegate a chi ne ha bisogno: un nuovo paziente che si
+ * registra, chi viene invitato a farlo per conto suo, un nuovo collaboratore.
+ * Il file va compilato a parte (il sorgente LaTeX e' guida-pazienti.tex /
+ * guida-staff.tex nella radice del progetto) e messo qui accanto: se manca,
+ * l'email parte comunque, solo senza allegato — un allegato mancante non deve
+ * mai bloccare la notizia vera.
+ */
+const GUIDE_PDF = {
+  pazienti: { file: 'guida-pazienti.pdf', nome: 'Guida per i pazienti.pdf' },
+  staff: { file: 'guida-staff.pdf', nome: 'Guida per lo staff.pdf' }
+};
 
 let transporter = null;
 if (config.email.enabled) {
@@ -93,12 +108,32 @@ export function impostaLettoreAllegati(fn) {
  * di database.
  */
 export function allegatiPerEmail(payload) {
-  if (!payload?.allegatiDi || !leggiAllegati) return [];
-  return leggiAllegati(payload.allegatiDi).map((a) => ({
-    filename: a.nome,
-    content: a.contenuto,
-    contentType: a.tipo_mime || 'application/octet-stream'
-  }));
+  const allegati = [];
+
+  if (payload?.allegatiDi && leggiAllegati) {
+    allegati.push(...leggiAllegati(payload.allegatiDi).map((a) => ({
+      filename: a.nome,
+      content: a.contenuto,
+      contentType: a.tipo_mime || 'application/octet-stream'
+    })));
+  }
+
+  const guida = payload?.allegaGuida && GUIDE_PDF[payload.allegaGuida];
+  if (guida) {
+    try {
+      allegati.push({
+        filename: guida.nome,
+        content: fs.readFileSync(path.join(ROOT, guida.file)),
+        contentType: 'application/pdf'
+      });
+    } catch (err) {
+      // Il PDF va compilato e messo a parte (vedi sopra): finche' non c'e',
+      // l'email parte comunque senza allegato invece di restare bloccata.
+      console.error(`[email] guida "${payload.allegaGuida}" non trovata: ${err.message}`);
+    }
+  }
+
+  return allegati;
 }
 
 registraGestore('email', async (payload) => {
@@ -442,6 +477,24 @@ export const emailVerificaPaziente = ({ to, nome, url }) => componiEmail({
     'senza la conferma l\'account resta inattivo e non è collegato ad alcun dato.'
 });
 
+/**
+ * Un paziente gia' registrato prenota o chiede qualcosa per conto di
+ * un'altra persona (un familiare), che risulta nuova in archivio e ha
+ * lasciato un'email. Questa persona non ha ancora un account: qui la si
+ * invita a crearsene uno, se vuole gestire da sola le prossime volte.
+ */
+export const emailInvitoRegistrazionePaziente = ({ to, nome, cosa, url }) => componiEmail({
+  to,
+  subject: `${config.nomeStudio}: qualcosa a suo nome sul nostro sito`,
+  titolo: 'Una pratica a suo nome',
+  intro: `Gentile ${esc(nome || '')}, è stata registrata ${esc(cosa)} a suo nome sul sito di ` +
+    `${config.nomeStudio}, su richiesta di un altro nostro paziente.`,
+  azione: { testo: 'Crea il tuo account', url },
+  chiusura: 'Creare un account è facoltativo: senza, resta comunque tutto in regola, e le comunicazioni ' +
+    'su questa pratica arrivano comunque a questo indirizzo. Con un account, in futuro potrà gestire da ' +
+    'sola le sue prenotazioni e richieste. In allegato trova la guida con le istruzioni.'
+});
+
 export const emailRegistrazioneEsistente = ({ to, nome }) => componiEmail({
   to,
   subject: 'Tentativo di registrazione con la tua email',
@@ -507,6 +560,26 @@ export const emailPasswordPazienteRipristinata = ({ to, nome, passwordProvvisori
   righe: [['Password provvisoria', passwordProvvisoria]],
   chiusura: 'Accedi con questa password, poi cambiala subito da "Modifica account" con una che ricordi solo tu. ' +
     'Se non hai chiesto tu questo cambio, contatta subito lo studio.'
+});
+
+/**
+ * Il collaboratore nuovo (segreteria o medico) riceve subito le credenziali
+ * per accedere: prima nessuna email partiva, e la password provvisoria si
+ * consegnava solo mostrandola a schermo a chi la creava.
+ */
+export const emailNuovoAccessoStaff = ({ to, nome, ruolo, passwordProvvisoria, url }) => componiEmail({
+  to,
+  subject: `Accesso al pannello di ${config.nomeStudio}`,
+  titolo: 'Il tuo accesso è pronto',
+  intro: `Gentile ${esc(nome || '')}, ti è stato creato un accesso al pannello di gestione dello studio ` +
+    `come ${ruolo === 'admin' ? 'medico' : 'segreteria'}.`,
+  righe: [
+    ['Email', to],
+    ['Password provvisoria', passwordProvvisoria]
+  ],
+  azione: { testo: 'Apri il pannello', url },
+  chiusura: 'Al primo accesso ti verrà chiesto di scegliere una password personale, che non conoscerà nessun altro. ' +
+    'In allegato trovi la guida con le istruzioni per orientarti.'
 });
 
 /**

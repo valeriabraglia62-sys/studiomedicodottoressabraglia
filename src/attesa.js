@@ -1,8 +1,10 @@
 import { db } from './db.js';
 import { accoda } from './outbox.js';
-import { generaCodice, ErroreDominio, trovaOCreaPaziente, telefonoValido, emailValida } from './prenotazioni.js';
+import {
+  generaCodice, ErroreDominio, trovaOCreaPaziente, telefonoValido, emailValida, basePubblica
+} from './prenotazioni.js';
 import { dataValida, oggiISO, aggiungiGiorni, trovaAmbulatorio, slotDisponibili, GIORNI_PRENOTABILI } from './orari.js';
-import { emailAttesaRegistrata, emailPostoLibero } from './mailer.js';
+import { emailAttesaRegistrata, emailPostoLibero, emailInvitoRegistrazionePaziente } from './mailer.js';
 
 /**
  * Lista d'attesa: chi non trova posto lascia il contatto e viene avvisato
@@ -74,6 +76,17 @@ export function iscrivi(dati) {
 
     const voce = dettaglio(info.lastInsertRowid);
     accoda('email', emailAttesaRegistrata(voce));
+
+    if (paziente.nuovo && voce.paziente_email) {
+      accoda('email', {
+        ...emailInvitoRegistrazionePaziente({
+          to: voce.paziente_email, nome: voce.paziente_nome,
+          cosa: 'un\'iscrizione alla lista d\'attesa', url: basePubblica()
+        }),
+        allegaGuida: 'pazienti'
+      });
+    }
+
     return voce;
   });
 

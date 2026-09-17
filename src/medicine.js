@@ -3,12 +3,13 @@ import { accoda, avvisoAncoraInCoda } from './outbox.js';
 import * as push from './push.js';
 import { trovaAmbulatorio } from './orari.js';
 import {
-  ErroreDominio, generaCodice, trovaOCreaPaziente, telefonoValido, emailValida, capitalizzaNome
+  ErroreDominio, generaCodice, trovaOCreaPaziente, telefonoValido, emailValida, capitalizzaNome,
+  basePubblica
 } from './prenotazioni.js';
 import {
   emailNuovaMedicinaAdmin, emailRicevutaMedicinaPaziente,
   emailMedicinaConfermata, emailMedicinaRifiutata, emailMedicinaModificata,
-  emailAllegatoTardivo, impostaLettoreAllegati
+  emailAllegatoTardivo, impostaLettoreAllegati, emailInvitoRegistrazionePaziente
 } from './mailer.js';
 
 /**
@@ -179,6 +180,20 @@ export function creaRichiesta(dati) {
     // Chi scrive via email ha gia' il proprio messaggio: evitiamo il rimbalzo.
     if (richiesta.email && origine !== 'email') {
       accoda('email', emailRicevutaMedicinaPaziente(richiesta));
+    }
+
+    // Stesso discorso delle prenotazioni: se questa richiesta e' per una
+    // persona nuova in archivio (un familiare, di chi ha gia' un account),
+    // la si invita a farsi il proprio — solo per origine 'sito', non per le
+    // richieste arrivate per email o prese per telefono dallo studio.
+    if (paziente?.nuovo && origine === 'sito' && richiesta.email) {
+      accoda('email', {
+        ...emailInvitoRegistrazionePaziente({
+          to: richiesta.email, nome: richiesta.nome,
+          cosa: `una richiesta di ${TIPI[tipo].cosaChiede}`, url: basePubblica()
+        }),
+        allegaGuida: 'pazienti'
+      });
     }
 
     return richiesta;

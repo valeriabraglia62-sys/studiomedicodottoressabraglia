@@ -25,7 +25,8 @@ import { statoCoda, riprovaTutto, accoda } from './outbox.js';
 import {
   verificaConnessioneEmail, emailVerificaPaziente, emailIndirizzoCambiato,
   emailRegistrazioneEsistente, emailResetPasswordPaziente, emailPasswordPazienteRipristinata,
-  emailDatiPazienteAggiornatiDalloStudio, emailPromemoriaIndirizzo
+  emailDatiPazienteAggiornatiDalloStudio, emailPromemoriaIndirizzo, emailNuovoAccessoStaff,
+  emailInvitoRegistrazionePaziente
 } from './mailer.js';
 import { linkGoogleCalendar } from './evento.js';
 import * as brevo from './brevo.js';
@@ -154,6 +155,33 @@ function schedaPaziente(req) {
   return p;
 }
 
+/**
+ * Di chi sono nome, cognome, telefono ed email di una prenotazione o di una
+ * richiesta: di norma della propria scheda, presi dal database e non dal
+ * modulo — cosi' nessuno puo' spacciarsi per un altro semplicemente
+ * scrivendo un altro nome nel campo.
+ *
+ * Il sito pero' permette di dichiarare esplicitamente "sto prenotando per
+ * un'altra persona" (dopo aver visto e confermato l'avviso): in quel caso si
+ * usano i dati scritti nel modulo, senza forzare il proprio pazienteId —
+ * trovaOCreaPaziente() si occupa di riconoscere se quella persona esiste gia'
+ * in archivio o va creata, esattamente come per una prenotazione anonima.
+ */
+function datiRichiedente(req) {
+  if (req.body?.perAltraPersona) {
+    return {
+      nome: req.body?.nome, cognome: req.body?.cognome,
+      telefono: req.body?.telefono, email: req.body?.email
+    };
+  }
+  const proprietario = schedaPaziente(req);
+  return {
+    pazienteId: req.utente.paziente_id,
+    nome: proprietario.nome, cognome: proprietario.cognome,
+    email: proprietario.email, telefono: proprietario.telefono
+  };
+}
+
 function praticaVisibile(req, completa, delPaziente) {
   return eStaff(req) ? completa() : delPaziente(req.utente.paziente_id);
 }
@@ -186,15 +214,12 @@ router.get('/calendario', (req, res) => {
 // ---- Prenotazioni ---------------------------------------------------------
 
 router.post('/prenotazioni', limiteScrittura, richiedePaziente, (req, res) => {
-  const proprietario = schedaPaziente(req);
   const p = prenotazioni.creaPrenotazione({
     ambulatorio_id: req.body?.ambulatorio_id,
     data: req.body?.data,
     ora_inizio: req.body?.ora_inizio,
     problema: req.body?.problema,
-    pazienteId: req.utente.paziente_id,
-    nome: proprietario.nome, cognome: proprietario.cognome,
-    email: proprietario.email, telefono: proprietario.telefono,
+    ...datiRichiedente(req),
     origine: 'sito'
   });
   res.status(201).json({ success: true, prenotazione: pubblica(p) });
@@ -230,12 +255,9 @@ router.post('/prenotazioni/:codice/annulla', limiteScrittura, richiedeAccount, (
 // ---- Lista d'attesa -------------------------------------------------------
 
 router.post('/attesa', limiteScrittura, richiedePaziente, (req, res) => {
-  const proprietario = schedaPaziente(req);
   const v = attesa.iscrivi({
     ambulatorio_id: req.body?.ambulatorio_id, data: req.body?.data, problema: req.body?.problema,
-    pazienteId: req.utente.paziente_id,
-    nome: proprietario.nome, cognome: proprietario.cognome,
-    email: proprietario.email, telefono: proprietario.telefono
+    ...datiRichiedente(req)
   });
   res.status(201).json({ success: true, attesa: { codice: v.codice, data: v.data } });
 });
@@ -269,13 +291,10 @@ function pubblica(p) {
 // ---- Richieste medicinali -------------------------------------------------
 
 router.post('/medicine', limiteScrittura, richiedePaziente, (req, res) => {
-  const proprietario = schedaPaziente(req);
   const r = medicine.creaRichiesta({
     tipo: req.body?.tipo, farmaci: req.body?.farmaci, note: req.body?.note,
     ambulatorio_id: req.body?.ambulatorio_id, conAllegato: req.body?.conAllegato,
-    pazienteId: req.utente.paziente_id,
-    nome: proprietario.nome, cognome: proprietario.cognome,
-    email: proprietario.email, telefono: proprietario.telefono, origine: 'sito' });
+    ...datiRichiedente(req), origine: 'sito' });
   res.status(201).json({
     success: true,
     richiesta: {
@@ -365,9 +384,12 @@ router.post('/auth/register', limiteRegistrazione, (req, res) => {
   if (esito.giaRegistrato) {
     accoda('email', emailRegistrazioneEsistente({ to: esito.email, nome: esito.nome }));
   } else {
-    accoda('email', emailVerificaPaziente({
-      to: esito.utente.email, nome: esito.utente.nome, url: linkVerificaEmail(esito.token)
-    }));
+    accoda('email', {
+      ...emailVerificaPaziente({
+        to: esito.utente.email, nome: esito.utente.nome, url: linkVerificaEmail(esito.token)
+      }),
+      allegaGuida: 'pazienti'
+    });
   }
   res.status(201).json({
     success: true,
@@ -930,8 +952,17 @@ admin.post('/sistema/riprova-consegne', (_req, res) => ok(res, { rimesse_in_coda
 
 admin.get('/utenti', richiedeAdmin, (_req, res) => ok(res, utenti.elenco()));
 
-admin.post('/utenti', richiedeAdmin, (req, res) =>
-  res.status(201).json({ success: true, ...utenti.crea(req.body || {}, req.utente.id) }));
+admin.post('/utenti', richiedeAdmin, (req, res) => {
+  const esito = utenti.crea(req.body || {}, req.utente.id);
+  accoda('email', {
+    ...emailNuovoAccessoStaff({
+      to: esito.utente.email, nome: esito.utente.nome, ruolo: esito.utente.ruolo,
+      passwordProvvisoria: esito.password_provvisoria, url: `${basePubblica()}/admin.html`
+    }),
+    allegaGuida: 'staff'
+  });
+  res.status(201).json({ success: true, ...esito });
+});
 
 admin.patch('/utenti/:id', richiedeAdmin, (req, res) => {
   const { ruolo, attivo } = req.body || {};

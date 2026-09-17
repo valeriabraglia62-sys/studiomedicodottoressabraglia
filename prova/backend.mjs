@@ -848,6 +848,79 @@ console.log('\nSpostare un appuntamento, con un motivo facoltativo');
     JSON.stringify(spostataSenzaMotivo.dati.prenotazione));
 }
 
+console.log('\nPrenotare per un\'altra persona (un familiare)');
+{
+  const reg = registraPazienteDiretto({
+    nome: 'Genitore', cognome: 'Prova', telefono: '3339990110',
+    email: 'genitore.prova@example.it', password: 'PasswordGenitore26!'
+  });
+  verificaEmailDiretto(reg.token);
+  const tok = creaSessioneDiretta(reg.utente.id).token;
+
+  // Senza dichiararlo esplicitamente, dati diversi da quelli dell'account
+  // vengono ignorati: la prenotazione resta comunque sua. E' cosi' che ha
+  // sempre funzionato, e deve continuare a funzionare cosi'.
+  const primo = await giornoConSlot(3, 20);
+  verifica('trovato uno slot per la prima prova', Boolean(primo.slot));
+  const perSbaglio = await chiama('POST', '/api/prenotazioni', {
+    ambulatorio_id: 1, data: primo.giorno, ora_inizio: primo.slot.ora_inizio,
+    nome: 'Qualcun', cognome: 'Altro', telefono: '3339990111', email: 'qualcun.altro@example.it',
+    problema: 'senza perAltraPersona'
+  }, tok);
+  verifica('senza "perAltraPersona" i dati diversi vengono ignorati, resta sua',
+    perSbaglio.dati.prenotazione?.paziente?.nome === 'Genitore', JSON.stringify(perSbaglio.dati.prenotazione?.paziente));
+
+  // Con la dichiarazione esplicita, invece, i dati del modulo vengono presi
+  // sul serio: nasce una prenotazione per una persona diversa, nuova in
+  // archivio, che riceve l'invito a registrarsi con la guida allegata.
+  const secondo = await giornoConSlot(21, 40);
+  verifica('trovato uno slot per la seconda prova', Boolean(secondo.slot));
+  const primaCoda = db.prepare("SELECT COUNT(*) n FROM outbox WHERE tipo = 'email'").get().n;
+  const perAltro = await chiama('POST', '/api/prenotazioni', {
+    ambulatorio_id: 1, data: secondo.giorno, ora_inizio: secondo.slot.ora_inizio,
+    nome: 'Figlio', cognome: 'Prova', telefono: '3339990112', email: 'figlio.prova@example.it',
+    problema: 'per un familiare', perAltraPersona: true
+  }, tok);
+  verifica('con "perAltraPersona" la prenotazione e\' per la persona scritta nel modulo',
+    perAltro.dati.prenotazione?.paziente?.nome === 'Figlio'
+    && perAltro.dati.prenotazione?.paziente?.cognome === 'Prova',
+    JSON.stringify(perAltro.dati.prenotazione?.paziente));
+
+  const dopoCoda = db.prepare("SELECT payload FROM outbox WHERE tipo = 'email' ORDER BY id DESC LIMIT 5").all()
+    .map((r) => JSON.parse(r.payload));
+  // Come ogni richiesta di visita: un avviso allo studio, una ricevuta al
+  // richiedente (il genitore) — piu' la terza, nuova, l'invito a registrarsi
+  // per il figlio.
+  verifica('sono partite tre email (avviso, ricevuta, invito a registrarsi)',
+    db.prepare("SELECT COUNT(*) n FROM outbox WHERE tipo = 'email'").get().n === primaCoda + 3,
+    `prima ${primaCoda}, dopo ${db.prepare("SELECT COUNT(*) n FROM outbox WHERE tipo = 'email'").get().n}`);
+  const invito = dopoCoda.find((p) => p.to === 'figlio.prova@example.it' && p.allegaGuida === 'pazienti');
+  verifica('l\'invito a registrarsi ha la guida per i pazienti allegata',
+    Boolean(invito), JSON.stringify(dopoCoda.map((p) => ({ to: p.to, allegaGuida: p.allegaGuida }))));
+
+  // La stessa persona, ritrovata una seconda volta (stesso nome, cognome e
+  // telefono): non deve diventare un secondo paziente ne' ricevere un secondo
+  // invito.
+  const terzo = await giornoConSlot(41, 55);
+  verifica('trovato uno slot per la terza prova', Boolean(terzo.slot));
+  const primaCoda2 = db.prepare("SELECT COUNT(*) n FROM outbox WHERE tipo = 'email'").get().n;
+  const ancoraPerAltro = await chiama('POST', '/api/prenotazioni', {
+    ambulatorio_id: 1, data: terzo.giorno, ora_inizio: terzo.slot.ora_inizio,
+    nome: 'Figlio', cognome: 'Prova', telefono: '3339990112', email: 'un.altro.indirizzo@example.it',
+    problema: 'stessa persona di prima', perAltraPersona: true
+  }, tok);
+  verifica('anche questa seconda prenotazione per lui va a buon fine', ancoraPerAltro.stato === 201);
+  const idPazFiglio = db.prepare(
+    "SELECT id FROM pazienti WHERE telefono = '3339990112'"
+  ).all();
+  verifica('la stessa persona (nome, cognome, telefono uguali) non diventa un secondo paziente',
+    idPazFiglio.length === 1, JSON.stringify(idPazFiglio));
+  const codaDopoSeconda = db.prepare("SELECT COUNT(*) n FROM outbox WHERE tipo = 'email'").get().n;
+  verifica('e non riceve un secondo invito a registrarsi (solo avviso e ricevuta, come sempre)',
+    codaDopoSeconda === primaCoda2 + 2,
+    `prima ${primaCoda2}, dopo ${codaDopoSeconda}`);
+}
+
 console.log('\nChiusure (giorni e fasce orarie bloccate)');
 {
   const { oggiISO, aggiungiGiorni } = await import('../src/orari.js');

@@ -12,10 +12,17 @@ import {
   emailConfermaPaziente, emailNuovaPrenotazioneAdmin,
   emailAnnullamentoPaziente, emailAnnullamentoAdmin,
   emailPrenotazioneRiprogrammata, emailPrenotazioneRiprogrammataAdmin,
-  emailAnagraficaDiscordante,
+  emailAnagraficaDiscordante, emailInvitoRegistrazionePaziente,
   emailRichiestaVisitaRicevutaPaziente, emailRichiestaVisitaDaConfermareAdmin,
   emailRichiestaVisitaRifiutataPaziente, emailRichiestaVisitaConfermataConModifiche
 } from './mailer.js';
+
+/**
+ * L'indirizzo pubblico del sito, per i link nelle email — lo stesso criterio
+ * usato in api.js per i link di verifica: il dominio vero se configurato,
+ * altrimenti l'indirizzo locale (utile in sviluppo/prova).
+ */
+export const basePubblica = () => config.pubblico.url || `http://localhost:${config.port}`;
 
 /** Errore con messaggio pensato per essere mostrato al paziente. */
 export class ErroreDominio extends Error {
@@ -130,7 +137,10 @@ export function trovaOCreaPaziente(
     'INSERT INTO pazienti (nome, cognome, email, telefono, creato_il) VALUES (?, ?, ?, ?, ?)'
   ).run(nome, cognome, mail, tel, new Date().toISOString());
 
-  return db.prepare('SELECT * FROM pazienti WHERE id = ?').get(info.lastInsertRowid);
+  // Marcata "nuova": serve a chi ha chiamato per sapere se questa persona non
+  // era ancora in archivio (es. per proporle di crearsi un account, quando
+  // il contesto lo prevede — non tutti i chiamanti lo fanno).
+  return { ...db.prepare('SELECT * FROM pazienti WHERE id = ?').get(info.lastInsertRowid), nuovo: true };
 }
 
 /**
@@ -306,6 +316,22 @@ export function creaPrenotazione(datiGrezzi, { forza = false, confermata = false
       if (prenotazione.paziente_email) {
         accoda('email', emailRichiestaVisitaRicevutaPaziente(prenotazione));
       }
+    }
+
+    // La persona per cui e' stata fatta questa prenotazione non era ancora
+    // in archivio: e' il caso di chi prenota per un familiare dal sito, gia'
+    // con un account proprio. Chi e' nuovo non ce l'ha: lo si invita a farsene
+    // uno, se vuole — non e' obbligatorio, la pratica resta valida comunque.
+    // Solo per origine 'sito': dalle email in arrivo o dalle richieste prese
+    // per telefono non ha senso proporre una registrazione automatica.
+    if (paziente.nuovo && d.origine === 'sito' && prenotazione.paziente_email) {
+      accoda('email', {
+        ...emailInvitoRegistrazionePaziente({
+          to: prenotazione.paziente_email, nome: prenotazione.paziente_nome,
+          cosa: 'una prenotazione', url: basePubblica()
+        }),
+        allegaGuida: 'pazienti'
+      });
     }
 
     return prenotazione;

@@ -382,6 +382,34 @@ async function inviaProtetto(form, azione) {
   }
 }
 
+/**
+ * Nome, cognome, telefono ed email scritti nel modulo sono diversi da quelli
+ * dell'account che ha fatto l'accesso? Capita a chi prenota o chiede
+ * qualcosa per un'altra persona (un familiare) usando il proprio account.
+ */
+function diversoDalProprioAccount(dati) {
+  if (!profiloPazienteCorrente) return false;
+  const norm = (v) => String(v || '').trim().toLowerCase();
+  return ['nome', 'cognome', 'telefono', 'email'].some(
+    (campo) => norm(dati[campo]) !== norm(profiloPazienteCorrente[campo]));
+}
+
+/**
+ * Se i dati sono quelli del proprio account, procede senza chiedere nulla.
+ * Se sono diversi, avvisa che la pratica verra' registrata per un'altra
+ * persona e chiede conferma: annullando si torna alla home, senza inviare
+ * niente.
+ */
+function confermaPerAltraPersona(dati) {
+  if (!diversoDalProprioAccount(dati)) return { procedi: true, perAltraPersona: false };
+  const continua = confirm(
+    'Stai usando un nome, cognome, telefono o email diverso da quello del tuo account: la pratica verrà ' +
+    'registrata per un\'altra persona (per esempio un familiare), non per te. Vuoi continuare?'
+  );
+  if (!continua) mostraSchermata(null);
+  return { procedi: continua, perAltraPersona: continua };
+}
+
 // ---- Stato condiviso -------------------------------------------------------
 
 const stato = {
@@ -578,10 +606,14 @@ function collegaFormPrenotazione() {
     if (!validaModulo(form)) return;
 
     inviaProtetto(form, async () => {
+      const dati = datiModulo(form);
+      const { procedi, perAltraPersona } = confermaPerAltraPersona(dati);
+      if (!procedi) return;
+
       const { prenotazione } = await api('/prenotazioni', {
         method: 'POST',
         body: {
-          ...datiModulo(form),
+          ...dati, perAltraPersona,
           ambulatorio_id: stato.slotScelto.ambulatorio_id,
           data: stato.slotScelto.data,
           ora_inizio: stato.slotScelto.ora_inizio
@@ -759,9 +791,13 @@ function collegaFormRichiesta({ tipo, form: selettore, file: selettoreFile, fatt
     }
 
     inviaProtetto(form, async () => {
+      const dati = datiModulo(form);
+      const { procedi, perAltraPersona } = confermaPerAltraPersona(dati);
+      if (!procedi) return;
+
       const { richiesta } = await api('/medicine', {
         method: 'POST',
-        body: { ...datiModulo(form), tipo, conAllegato: Boolean(campoFile?.files?.length) }
+        body: { ...dati, tipo, perAltraPersona, conAllegato: Boolean(campoFile?.files?.length) }
       });
 
       await inviaAllegati(richiesta.codice, campoFile);
@@ -1127,6 +1163,27 @@ let sitoAvviato = false;
 
 let profiloPazienteCorrente = null;
 
+/**
+ * Precompila nome, cognome, telefono ed email nei quattro moduli con i dati
+ * dell'account: chi prenota o chiede qualcosa per se' stesso non deve
+ * riscriverli ogni volta. Chi li cambia (per un'altra persona) lo fa apposta,
+ * ed e' proprio quello che fa scattare l'avviso all'invio.
+ */
+async function caricaProfiloPaziente() {
+  try {
+    const { profilo } = await api('/paziente/profilo');
+    profiloPazienteCorrente = profilo;
+    for (const selettore of ['#form-prenotazione', '#form-medicine', '#form-specialistica', '#form-esami']) {
+      const form = $(selettore);
+      if (!form) continue;
+      for (const campo of ['nome', 'cognome', 'telefono', 'email']) {
+        const el = form.elements.namedItem(campo);
+        if (el && !el.value) el.value = profilo[campo] || '';
+      }
+    }
+  } catch { /* niente di grave: i moduli restano da compilare a mano */ }
+}
+
 /** Entra nel sito vero: la prima volta ne monta anche tutte le parti. */
 async function entraNelSito(utente) {
   $('#nome-utente-paziente').textContent = utente?.nome || utente?.email || 'Account';
@@ -1145,6 +1202,7 @@ async function entraNelSito(utente) {
   collegaFormRicerca();
   collegaChat();
   collegaNotifiche($('#btn-notifiche'), api, avvisa);
+  caricaProfiloPaziente();
 
   $('#mese-precedente').addEventListener('click', () => cambiaMese(-1));
   $('#mese-successivo').addEventListener('click', () => cambiaMese(1));
