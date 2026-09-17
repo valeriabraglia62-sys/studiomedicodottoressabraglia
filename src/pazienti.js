@@ -1,5 +1,5 @@
 import { db } from './db.js';
-import { ErroreDominio } from './prenotazioni.js';
+import { ErroreDominio, capitalizzaNome, telefonoValido, emailValida } from './prenotazioni.js';
 
 /**
  * Chi non e' piu' in carico allo studio.
@@ -104,6 +104,34 @@ export function cancella(id) {
 }
 
 /**
+ * Lo studio inserisce a mano una persona che non e' mai passata dal sito:
+ * per esempio un familiare anziano che non si registra da solo. Bastano nome
+ * e cognome; telefono ed email sono facoltativi (si possono aggiungere dopo
+ * dalla scheda), ma se ci sono devono avere un formato valido.
+ *
+ * Qui nasce solo la scheda, senza accesso al sito: l'accesso, se serve, lo
+ * crea un'azione separata (vedi utenti.creaAccessoPaziente), perche' richiede
+ * un'email che non sia gia' usata da un altro account.
+ */
+export function crea({ nome, cognome, telefono, email } = {}) {
+  const nomeP = capitalizzaNome(nome);
+  const cognomeP = capitalizzaNome(cognome);
+  if (nomeP.length < 2 || cognomeP.length < 2) throw new ErroreDominio('Nome e cognome sono obbligatori.', 400);
+
+  const telP = String(telefono ?? '').trim();
+  if (telP && !telefonoValido(telP)) throw new ErroreDominio('Numero di telefono non valido.', 400);
+
+  const emailP = String(email ?? '').trim().toLowerCase();
+  if (emailP && !emailValida(emailP)) throw new ErroreDominio('Indirizzo email non valido.', 400);
+
+  const info = db.prepare(`
+    INSERT INTO pazienti (nome, cognome, telefono, email, creato_il) VALUES (?, ?, ?, ?, ?)
+  `).run(nomeP, cognomeP, telP, emailP, new Date().toISOString());
+
+  return trova(info.lastInsertRowid);
+}
+
+/**
  * L'elenco per il pannello.
  *
  * I dimessi non ci sono, a meno che non si chiedano: e' il motivo per cui si
@@ -135,7 +163,8 @@ export function elenco({ cerca, dimessi = false } = {}) {
               SELECT farmaco FROM medicine_abituali
                WHERE paziente_id = p.id ORDER BY ultima_volta DESC LIMIT 3
             )) AS medicine,
-           (SELECT COUNT(*) FROM medicine_abituali WHERE paziente_id = p.id) AS quante_medicine
+           (SELECT COUNT(*) FROM medicine_abituali WHERE paziente_id = p.id) AS quante_medicine,
+           (SELECT COUNT(*) FROM utenti WHERE paziente_id = p.id AND ruolo = 'paziente') AS ha_accesso
       FROM pazienti p
       ${dove.length ? `WHERE ${dove.join(' AND ')}` : ''}
      ORDER BY p.cognome COLLATE NOCASE, p.nome COLLATE NOCASE LIMIT 200

@@ -1558,6 +1558,92 @@ function cellaMedicine(p) {
   return cella;
 }
 
+/**
+ * Il modulo per inserire a mano un paziente che non e' mai passato dal sito.
+ * Nome e cognome bastano: telefono ed email sono facoltativi, si possono
+ * aggiungere anche dopo dalla scheda.
+ *
+ * Se lo si apre dalla scheda di un altro paziente ("+ Aggiungi un
+ * familiare"), propone di riusare lo stesso telefono ed email: e' il caso
+ * tipico di una persona anziana senza contatti propri, che condivide quelli
+ * di chi l'accompagna. La spunta si toglie per scrivere contatti diversi.
+ */
+function moduloNuovoPaziente(chiudi, { contesto } = {}) {
+  const carta = nodo('div', 'carta');
+  carta.append(nodo('strong', null, contesto
+    ? `👤 Aggiungi un familiare di ${contesto.nome} ${contesto.cognome}`
+    : '👤 Aggiungi un paziente'));
+
+  const campi = {
+    nome: inputTesto('', 'Nome'),
+    cognome: inputTesto('', 'Cognome'),
+    telefono: inputTesto(contesto?.telefono || '', '333 1234567'),
+    email: inputTesto(contesto?.email || '', 'nome@esempio.it')
+  };
+  campi.telefono.type = 'tel';
+  campi.email.type = 'email';
+
+  const riga = nodo('div', 'filtri');
+  riga.append(
+    campoModulo('Nome', campi.nome), campoModulo('Cognome', campi.cognome),
+    campoModulo('Telefono', campi.telefono), campoModulo('Email', campi.email)
+  );
+  carta.append(riga);
+
+  if (contesto) {
+    const spunta = nodo('input');
+    spunta.type = 'checkbox';
+    spunta.checked = true;
+    const etichettaSpunta = nodo('label', 'piccolo');
+    etichettaSpunta.style.cssText = 'display:flex;gap:.4rem;align-items:center;margin-top:.5rem';
+    etichettaSpunta.append(spunta,
+      document.createTextNode(`Usa lo stesso telefono ed email di ${contesto.nome} ${contesto.cognome}`));
+    carta.append(etichettaSpunta);
+
+    const applicaSpunta = () => {
+      campi.telefono.disabled = campi.email.disabled = spunta.checked;
+      campi.telefono.value = spunta.checked ? (contesto.telefono || '') : '';
+      campi.email.value = spunta.checked ? (contesto.email || '') : '';
+    };
+    spunta.addEventListener('change', applicaSpunta);
+    applicaSpunta();
+  }
+
+  const esito = nodo('div');
+  esito.style.marginTop = '.5rem';
+
+  const salva = nodo('button', 'bottone', 'Crea paziente');
+  salva.type = 'button';
+  salva.addEventListener('click', () => {
+    salva.disabled = true;
+    protetto(async () => {
+      try {
+        const { paziente } = await api('/admin/pazienti', {
+          method: 'POST',
+          body: {
+            nome: campi.nome.value, cognome: campi.cognome.value,
+            telefono: campi.telefono.value, email: campi.email.value
+          }
+        });
+        avvisa(`${paziente.cognome} ${paziente.nome} è stato aggiunto all'archivio.`, 'ok');
+        chiudi();
+        await caricaPazienti();
+      } finally {
+        salva.disabled = false;
+      }
+    });
+  });
+
+  const esci = nodo('button', 'bottone secondario', 'Chiudi');
+  esci.type = 'button';
+  esci.addEventListener('click', chiudi);
+
+  const azioni = nodo('div', 'azioni');
+  azioni.append(salva, esci);
+  carta.append(azioni, esito);
+  return carta;
+}
+
 async function caricaPazienti() {
   const parametri = new URLSearchParams();
   const cerca = $('#paz-cerca').value.trim();
@@ -1726,17 +1812,30 @@ async function apriSchedaIdentita(p) {
     esito.replaceChildren(nodo('div', 'avviso ok', emailCambiata
       ? 'Dati salvati. Il paziente è stato avvisato via email del cambio indirizzo.'
       : 'Dati salvati.'));
+    aggiornaStatoAccesso();
   }));
 
-  // Ha senso solo se il paziente ha davvero un accesso al sito: molti hanno
-  // solo la scheda, senza account, e per loro il server risponderebbe 404 —
-  // il messaggio d'errore lo spiega comunque, ma non serve arrivarci.
-  const resetta = nodo('button', 'bottone secondario', 'Reimposta password');
+  // Chi ha gia' un accesso puo' farsi rigenerare la password; chi ha solo la
+  // scheda (per esempio una persona anziana inserita dal pannello) puo'
+  // riceverne uno nuovo, ma serve un'email in archivio per poterlo avvisare.
+  const resetta = p.ha_accesso
+    ? nodo('button', 'bottone secondario', 'Reimposta password')
+    : nodo('button', 'bottone secondario', 'Crea accesso al sito');
   resetta.type = 'button';
+  const aggiornaStatoAccesso = () => {
+    if (!p.ha_accesso) resetta.disabled = !campi.email.value.trim();
+  };
+  aggiornaStatoAccesso();
+  campi.email.addEventListener('input', aggiornaStatoAccesso);
   resetta.addEventListener('click', () => protetto(async () => {
-    const { utente, password_provvisoria } = await api(`/admin/pazienti/${p.id}/password`, { method: 'POST' });
+    const rotta = p.ha_accesso ? `/admin/pazienti/${p.id}/password` : `/admin/pazienti/${p.id}/accesso`;
+    const { utente, password_provvisoria } = await api(rotta, { method: 'POST' });
     mostraPasswordProvvisoria(esito, utente, password_provvisoria);
-    avvisa('Il paziente ha ricevuto anche un\'email con la password nuova.', 'ok');
+    avvisa(p.ha_accesso
+      ? 'Il paziente ha ricevuto anche un\'email con la password nuova.'
+      : 'Il paziente ha ricevuto un\'email con le credenziali per accedere.', 'ok');
+    p.ha_accesso = 1;
+    resetta.textContent = 'Reimposta password';
   }));
 
   // Per chi ha cliccato "annulla iscrizione" per sbaglio su un'email
@@ -1756,9 +1855,22 @@ async function apriSchedaIdentita(p) {
     }
   }));
 
+  // Per una persona anziana che condivide telefono ed email con chi
+  // l'accompagna: nasce una scheda a parte, cosi' le sue visite non si
+  // confondono con quelle di chi la porta, ma senza dover inventare un
+  // contatto che non ha.
+  const aggiungiFamiliare = nodo('button', 'bottone secondario', '+ Aggiungi un familiare');
+  aggiungiFamiliare.type = 'button';
+  aggiungiFamiliare.addEventListener('click', () =>
+    apriChiudi(moduloFamiliare, (chiudi) => moduloNuovoPaziente(chiudi, {
+      contesto: { nome: p.nome, cognome: p.cognome, telefono: p.telefono, email: p.email }
+    })));
+
   const azioni = nodo('div', 'azioni');
-  azioni.append(salva, resetta, riattivaEmail);
-  carta.append(azioni, esito);
+  azioni.append(salva, resetta, riattivaEmail, aggiungiFamiliare);
+  const moduloFamiliare = nodo('div');
+  moduloFamiliare.style.marginTop = '.8rem';
+  carta.append(azioni, esito, moduloFamiliare);
 
   contenitore.replaceChildren(indietro, carta);
 }
@@ -2346,6 +2458,9 @@ function collegaFiltri() {
     $(bottone).addEventListener('click', () =>
       apriChiudi($(contenitore), (chiudi) => moduloNuovaMedicina(chiudi, tipo)));
   }
+
+  $('#btn-nuovo-paziente').addEventListener('click', () =>
+    apriChiudi($('#modulo-nuovo-paziente'), (chiudi) => moduloNuovoPaziente(chiudi)));
 
   $('#paz-cerca').addEventListener('input', attendi(() => protetto(caricaPazienti)));
   $('#paz-dimessi').addEventListener('change', () => protetto(caricaPazienti));

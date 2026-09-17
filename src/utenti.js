@@ -388,6 +388,44 @@ export function resettaPasswordPazienteDaStaff(pazienteId) {
   return { utente: pubblico(u), password_provvisoria: password };
 }
 
+/**
+ * Lo studio apre l'accesso al sito per un paziente che finora aveva solo la
+ * scheda: e' il caso di chi viene inserito direttamente dal pannello (un
+ * familiare anziano, per esempio) e che poi deve poter accedere da solo.
+ * Serve un'email in archivio, e deve essere unica: e' la credenziale.
+ *
+ * A differenza dell'auto-registrazione, l'email non va verificata: e' lo
+ * studio stesso, gia' passato dal proprio accesso, a garantire che sia quella
+ * giusta.
+ */
+export function creaAccessoPaziente(pazienteId) {
+  const p = db.prepare('SELECT * FROM pazienti WHERE id = ?').get(Number(pazienteId));
+  if (!p) throw new ErroreDominio('Paziente non trovato.', 404);
+
+  const indirizzo = pulisciEmail(p.email);
+  if (!indirizzo) throw new ErroreDominio('Serve prima un indirizzo email sulla scheda del paziente.', 400);
+
+  if (db.prepare("SELECT id FROM utenti WHERE paziente_id = ? AND ruolo = 'paziente'").get(p.id)) {
+    throw new ErroreDominio('Questo paziente ha già un accesso al sito.', 400);
+  }
+  if (db.prepare('SELECT id FROM utenti WHERE email = ?').get(indirizzo)) {
+    throw new ErroreDominio(
+      'Questa email è già usata da un altro accesso: cambiala nella scheda prima di crearne uno nuovo.', 409);
+  }
+
+  const password = passwordProvvisoria();
+  const info = db.prepare(`
+    INSERT INTO utenti (nome, email, password_hash, ruolo, paziente_id, attivo, cambio_password,
+                        email_verificata, creato_il)
+    VALUES (?, ?, ?, 'paziente', ?, 1, 1, 1, ?)
+  `).run(`${p.nome} ${p.cognome}`.trim(), indirizzo, hashPassword(password), p.id, new Date().toISOString());
+
+  return {
+    utente: pubblico(db.prepare('SELECT * FROM utenti WHERE id = ?').get(info.lastInsertRowid)),
+    password_provvisoria: password
+  };
+}
+
 function trova(id) {
   const u = db.prepare('SELECT * FROM utenti WHERE id = ?').get(Number(id));
   if (!u || !RUOLI_STAFF.includes(u.ruolo)) {

@@ -2153,6 +2153,67 @@ console.log('\nLo staff corregge i dati di un paziente e gli reimposta la passwo
     resetSenzaAccesso.stato === 404, JSON.stringify(resetSenzaAccesso.dati));
 }
 
+console.log('\nLo studio aggiunge un paziente a mano, e gli apre un accesso al sito');
+{
+  const senzaCredenziali = await chiama('POST', '/api/admin/pazienti', { nome: 'Anziana', cognome: 'SenzaSito' });
+  verifica('aggiungere un paziente senza credenziali e\' negato', senzaCredenziali.stato === 401);
+
+  const soloNomeCognome = await chiama('POST', '/api/admin/pazienti',
+    { nome: 'Anziana', cognome: 'SenzaSito' }, token);
+  verifica('nome e cognome bastano, telefono ed email sono facoltativi',
+    soloNomeCognome.stato === 201 && soloNomeCognome.dati.paziente?.nome === 'Anziana',
+    JSON.stringify(soloNomeCognome.dati));
+  const idAnziana = soloNomeCognome.dati.paziente.id;
+
+  const senzaCognome = await chiama('POST', '/api/admin/pazienti', { nome: 'Solonome' }, token);
+  verifica('senza cognome viene rifiutato', senzaCognome.stato === 400);
+
+  // "Aggiungi un familiare": si riusano gli stessi contatti di un paziente
+  // gia' in archivio (la persona anziana non ha email propria, il figlio si').
+  const familiare = await chiama('POST', '/api/admin/pazienti', {
+    nome: 'Figlia', cognome: 'DiAnziana', telefono: '3339990201', email: 'figlia.dianziana@example.it'
+  }, token);
+  verifica('un familiare con contatti propri viene creato', familiare.stato === 201);
+  const idFiglia = familiare.dati.paziente.id;
+
+  const senzaEmailInArchivio = await chiama('POST', `/api/admin/pazienti/${idAnziana}/accesso`, {}, token);
+  verifica('creare l\'accesso senza email in archivio da\' un errore chiaro',
+    senzaEmailInArchivio.stato === 400, JSON.stringify(senzaEmailInArchivio.dati));
+
+  const primaCoda = db.prepare("SELECT COUNT(*) n FROM outbox WHERE tipo = 'email'").get().n;
+  const accessoFiglia = await chiama('POST', `/api/admin/pazienti/${idFiglia}/accesso`, {}, token);
+  verifica('l\'accesso si crea per chi ha un\'email in archivio',
+    accessoFiglia.stato === 200 && Boolean(accessoFiglia.dati.password_provvisoria), JSON.stringify(accessoFiglia.dati));
+  const dopoCoda = db.prepare("SELECT COUNT(*) n FROM outbox WHERE tipo = 'email'").get().n;
+  verifica('e parte l\'email con le credenziali', dopoCoda === primaCoda + 1);
+
+  const ultima = JSON.parse(
+    db.prepare("SELECT payload FROM outbox WHERE tipo = 'email' ORDER BY id DESC LIMIT 1").get().payload);
+  verifica('l\'email ha la guida per i pazienti allegata', ultima.allegaGuida === 'pazienti', JSON.stringify(ultima));
+
+  // Il login vero non si chiama qui: ha un freno anti-abuso per IP che un
+  // file di prove esaurirebbe da solo (vedi il commento piu' sopra, stesso
+  // motivo per cui altrove si usa creaSessioneDiretta). Si controlla invece
+  // che l'account sia pronto per entrare: password giusta e gia' verificato.
+  const { verificaPassword } = await import('../src/auth.js');
+  const rigaFiglia = db.prepare("SELECT * FROM utenti WHERE email = 'figlia.dianziana@example.it'").get();
+  verifica('la password provvisoria e\' quella giusta',
+    verificaPassword(accessoFiglia.dati.password_provvisoria, rigaFiglia.password_hash));
+  verifica('l\'account e\' gia\' verificato: non serve confermare l\'email prima di entrare',
+    Boolean(rigaFiglia.email_verificata));
+
+  const secondaVolta = await chiama('POST', `/api/admin/pazienti/${idFiglia}/accesso`, {}, token);
+  verifica('non si puo\' creare un secondo accesso per lo stesso paziente', secondaVolta.stato === 400);
+
+  // L'email e' la credenziale di accesso: due account non possono condividerla.
+  const conflitto = await chiama('POST', '/api/admin/pazienti',
+    { nome: 'Altra', cognome: 'ConEmailUguale', email: 'figlia.dianziana@example.it' }, token);
+  const accessoConflitto = await chiama('POST',
+    `/api/admin/pazienti/${conflitto.dati.paziente.id}/accesso`, {}, token);
+  verifica('un\'email gia\' usata da un altro accesso viene rifiutata',
+    accessoConflitto.stato === 409, JSON.stringify(accessoConflitto.dati));
+}
+
 console.log('\nRiattivare un\'email su Brevo (BREVO_API_KEY non configurata in prova)');
 {
   const reg = registraPazienteDiretto({

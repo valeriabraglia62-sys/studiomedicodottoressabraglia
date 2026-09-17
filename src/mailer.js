@@ -563,6 +563,27 @@ export const emailPasswordPazienteRipristinata = ({ to, nome, passwordProvvisori
 });
 
 /**
+ * Lo studio ha creato l'accesso al sito per un paziente che finora aveva solo
+ * la scheda (per esempio una persona anziana, inserita dal pannello): riceve
+ * subito le credenziali, con la stessa guida allegata di chi si registra da
+ * solo.
+ */
+export const emailNuovoAccessoPaziente = ({ to, nome, passwordProvvisoria, url }) => componiEmail({
+  to,
+  subject: `Il tuo accesso al sito di ${config.nomeStudio}`,
+  titolo: 'Il tuo accesso è pronto',
+  intro: `Gentile ${esc(nome || '')}, lo studio ti ha creato un accesso al sito, con cui puoi ` +
+    'prenotare visite e richiedere farmaci da solo.',
+  righe: [
+    ['Email', to],
+    ['Password provvisoria', passwordProvvisoria]
+  ],
+  azione: { testo: 'Accedi al sito', url },
+  chiusura: 'Al primo accesso ti verrà chiesto di scegliere una password personale, che non conoscerà ' +
+    'nessun altro. In allegato trovi la guida con le istruzioni per orientarti.'
+});
+
+/**
  * Il collaboratore nuovo (segreteria o medico) riceve subito le credenziali
  * per accedere: prima nessuna email partiva, e la password provvisoria si
  * consegnava solo mostrandola a schermo a chi la creava.

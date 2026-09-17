@@ -26,7 +26,7 @@ import {
   verificaConnessioneEmail, emailVerificaPaziente, emailIndirizzoCambiato,
   emailRegistrazioneEsistente, emailResetPasswordPaziente, emailPasswordPazienteRipristinata,
   emailDatiPazienteAggiornatiDalloStudio, emailPromemoriaIndirizzo, emailNuovoAccessoStaff,
-  emailInvitoRegistrazionePaziente
+  emailInvitoRegistrazionePaziente, emailNuovoAccessoPaziente
 } from './mailer.js';
 import { linkGoogleCalendar } from './evento.js';
 import * as brevo from './brevo.js';
@@ -808,6 +808,32 @@ admin.get('/pazienti', (req, res) => ok(res, {
     dimessi: req.query.dimessi === '1'
   })
 }));
+
+/**
+ * Lo studio inserisce a mano una persona che non e' mai passata dal sito: un
+ * familiare anziano, per esempio. Nasce solo la scheda, senza accesso al
+ * sito — quello, se serve, si crea a parte (vedi sotto), perche' richiede
+ * un'email che non sia gia' di un altro account.
+ */
+admin.post('/pazienti', (req, res) =>
+  res.status(201).json({ success: true, paziente: pazienti.crea(req.body || {}) }));
+
+/**
+ * Apre l'accesso al sito per un paziente che aveva solo la scheda. Usa
+ * l'email gia' in archivio: se manca o e' gia' di un altro account, il
+ * server lo dice chiaramente invece di crearlo a meta'.
+ */
+admin.post('/pazienti/:id/accesso', (req, res) => {
+  const esito = utenti.creaAccessoPaziente(req.params.id);
+  accoda('email', {
+    ...emailNuovoAccessoPaziente({
+      to: esito.utente.email, nome: esito.utente.nome,
+      passwordProvvisoria: esito.password_provvisoria, url: basePubblica()
+    }),
+    allegaGuida: 'pazienti'
+  });
+  ok(res, esito);
+});
 
 /**
  * Nome, cognome, telefono, email, password: identita' e credenziali, non
