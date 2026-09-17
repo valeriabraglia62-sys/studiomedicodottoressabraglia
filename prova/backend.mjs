@@ -2637,6 +2637,64 @@ console.log('\nLo script una tantum manda le guide a chi ha gia\' un accesso al 
     JSON.stringify(email.map((p) => p.subject)));
 }
 
+console.log('\nLo script una tantum manda la guida a chi ha gia\' un account sul sito');
+{
+  const { spawnSync } = await import('child_process');
+
+  const dbGuida = path.join(CARTELLA_PROVA, 'guida-pazienti.sqlite');
+  for (const f of [dbGuida, `${dbGuida}-wal`, `${dbGuida}-shm`]) fs.rmSync(f, { force: true });
+
+  const urlDbJs = pathToFileURL(path.join(RADICE, 'src', 'db.js')).href;
+  const urlScript = pathToFileURL(
+    path.join(RADICE, 'strumenti', 'server', 'manda-guida-pazienti.mjs')).href;
+
+  const script = path.join(CARTELLA_PROVA, 'popola-e-lancia-manda-guida-pazienti.mjs');
+  fs.writeFileSync(script, `
+    const { db } = await import(${JSON.stringify(urlDbJs)});
+    const ora = new Date().toISOString();
+    const idPaz = db.prepare(
+      "INSERT INTO pazienti (nome, cognome, telefono, email, creato_il) VALUES (?, ?, ?, ?, ?)"
+    ).run('Verificata', 'Prova', '3339990400', 'verificata.provaguida@example.it', ora).lastInsertRowid;
+    db.prepare(
+      "INSERT INTO utenti (nome, email, password_hash, ruolo, paziente_id, attivo, email_verificata, creato_il) " +
+      "VALUES (?, ?, 'x', 'paziente', ?, 1, 1, ?)"
+    ).run('Verificata Prova', 'verificata.provaguida@example.it', idPaz, ora);
+    // Non ancora verificata: non deve ricevere niente.
+    const idPaz2 = db.prepare(
+      "INSERT INTO pazienti (nome, cognome, telefono, email, creato_il) VALUES (?, ?, ?, ?, ?)"
+    ).run('NonVerificata', 'Prova', '3339990401', 'nonverificata.provaguida@example.it', ora).lastInsertRowid;
+    db.prepare(
+      "INSERT INTO utenti (nome, email, password_hash, ruolo, paziente_id, attivo, email_verificata, creato_il) " +
+      "VALUES (?, ?, 'x', 'paziente', ?, 1, 0, ?)"
+    ).run('NonVerificata Prova', 'nonverificata.provaguida@example.it', idPaz2, ora);
+    await import(${JSON.stringify(urlScript)});
+  `);
+
+  const esito = spawnSync(process.execPath, [script], {
+    cwd: RADICE,
+    env: { ...process.env, DB_FILE: dbGuida },
+    encoding: 'utf8'
+  });
+  verifica('lo script gira senza errori', esito.status === 0,
+    `exit ${esito.status} — ${esito.stderr?.slice(0, 400) || ''}`);
+  verifica('dice quanti pazienti ha avvisato', /Pazienti avvisati: 1/.test(esito.stdout || ''), esito.stdout);
+
+  const DatabaseVerifica = (await import('better-sqlite3')).default;
+  const dbVerifica = new DatabaseVerifica(dbGuida, { readonly: true });
+  const email = dbVerifica.prepare(
+    "SELECT payload FROM outbox WHERE tipo = 'email' ORDER BY id"
+  ).all().map((r) => JSON.parse(r.payload));
+  dbVerifica.close();
+
+  verifica('parte una sola email, per chi ha l\'account verificato (non per chi non l\'ha ancora confermato)',
+    email.length === 1 && email[0].to === 'verificata.provaguida@example.it',
+    JSON.stringify(email.map((p) => p.to)));
+  verifica('ha la guida per i pazienti allegata', email[0]?.allegaGuida === 'pazienti',
+    JSON.stringify(email[0]?.allegaGuida));
+  verifica('nessuna credenziale viene toccata',
+    !/password provvisoria/i.test(email[0]?.html || email[0]?.text || ''), email[0]?.subject);
+}
+
 console.log('\nIn produzione la cifratura dei backup e\' obbligatoria');
 {
   const { spawnSync } = await import('child_process');

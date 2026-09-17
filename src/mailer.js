@@ -597,6 +597,21 @@ export const emailNuovoAccessoPaziente = ({ to, nome, passwordProvvisoria, url, 
 });
 
 /**
+ * La guida in allegato, per chi ha già un account sul sito: non cambia
+ * nessuna credenziale, e' solo un invio a parte per chi si era registrato
+ * prima che la guida fosse pronta.
+ */
+export const emailGuidaPaziente = ({ to, nome, url }) => componiEmail({
+  to,
+  subject: `La guida per usare il sito di ${config.nomeStudio}`,
+  titolo: 'La guida per usare il sito',
+  intro: `Gentile ${esc(nome || '')}, in allegato trovi la guida con le istruzioni per prenotare ` +
+    'visite e richiedere farmaci dal sito.',
+  azione: { testo: 'Vai al sito', url },
+  chiusura: 'Nessuna credenziale è cambiata: continua ad accedere come sempre.'
+});
+
+/**
  * Il collaboratore nuovo (segreteria o medico) riceve subito le credenziali
  * per accedere: prima nessuna email partiva, e la password provvisoria si
  * consegnava solo mostrandola a schermo a chi la creava.
