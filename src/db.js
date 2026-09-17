@@ -42,14 +42,21 @@ CREATE TABLE IF NOT EXISTS pazienti (
 CREATE INDEX IF NOT EXISTS idx_pazienti_telefono ON pazienti(telefono);
 CREATE INDEX IF NOT EXISTS idx_pazienti_email    ON pazienti(email);
 
+-- L'email non e' piu' un vincolo unico del database: un familiare puo' avere
+-- un proprio accesso con la stessa email di un altro account (per esempio un
+-- genitore anziano senza indirizzo proprio, che condivide quello del figlio),
+-- distinto soltanto dalla password. L'unicita' resta una regola applicativa
+-- per tutti gli altri casi (registrazione, collaboratori, correzione dati):
+-- la controlla il programma, non piu' il database.
 CREATE TABLE IF NOT EXISTS utenti (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  email         TEXT NOT NULL UNIQUE,
+  email         TEXT NOT NULL,
   password_hash TEXT,
   ruolo         TEXT NOT NULL DEFAULT 'paziente',
   paziente_id   INTEGER REFERENCES pazienti(id),
   creato_il     TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_utenti_email ON utenti(email);
 
 CREATE TABLE IF NOT EXISTS sessioni (
   token_hash TEXT PRIMARY KEY,
@@ -357,6 +364,56 @@ for (const [tabella, colonna, tipo] of [
 ]) {
   const presente = db.prepare(`PRAGMA table_info(${tabella})`).all().some((c) => c.name === colonna);
   if (!presente) db.exec(`ALTER TABLE ${tabella} ADD COLUMN ${colonna} ${tipo}`);
+}
+
+// Su un database gia' esistente il vincolo UNIQUE su utenti.email e' ancora
+// scritto nella tabella (CREATE TABLE IF NOT EXISTS non lo tocca): va tolto
+// ricreando la tabella, perche' SQLite non permette di eliminare un vincolo di
+// colonna con un ALTER TABLE. Lo schema della nuova tabella e' scritto per
+// esteso (non generato dalle colonne esistenti) apposta per conservare i tipi
+// e i DEFAULT esatti delle colonne aggiunte nel tempo: rigenerarle come TEXT
+// generico avrebbe silenziosamente convertito attivo/cambio_password/
+// email_verificata da interi a stringhe, rompendo ogni controllo booleano che
+// li legge. Si esegue una volta sola: dopo la ricostruzione la definizione in
+// sqlite_master non contiene piu' "UNIQUE" e il controllo sotto non trova piu'
+// niente da fare.
+{
+  const def = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'utenti'").get();
+  if (def && /email\s+TEXT NOT NULL UNIQUE/i.test(def.sql)) {
+    const colonne = [
+      'id', 'email', 'password_hash', 'ruolo', 'paziente_id', 'creato_il', 'nome', 'attivo',
+      'cambio_password', 'ultimo_accesso', 'email_verificata', 'token_verifica', 'token_verifica_scade',
+      'scheda_da_collegare', 'token_reset_password', 'token_reset_password_scade'
+    ];
+    db.pragma('foreign_keys = OFF');
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE utenti_nuova (
+          id                         INTEGER PRIMARY KEY AUTOINCREMENT,
+          email                      TEXT NOT NULL,
+          password_hash              TEXT,
+          ruolo                      TEXT NOT NULL DEFAULT 'paziente',
+          paziente_id                INTEGER REFERENCES pazienti(id),
+          creato_il                  TEXT NOT NULL,
+          nome                       TEXT,
+          attivo                     INTEGER NOT NULL DEFAULT 1,
+          cambio_password            INTEGER NOT NULL DEFAULT 0,
+          ultimo_accesso             TEXT,
+          email_verificata           INTEGER NOT NULL DEFAULT 0,
+          token_verifica             TEXT,
+          token_verifica_scade       TEXT,
+          scheda_da_collegare        INTEGER,
+          token_reset_password       TEXT,
+          token_reset_password_scade TEXT
+        )
+      `);
+      db.exec(`INSERT INTO utenti_nuova (${colonne.join(', ')}) SELECT ${colonne.join(', ')} FROM utenti`);
+      db.exec('DROP TABLE utenti');
+      db.exec('ALTER TABLE utenti_nuova RENAME TO utenti');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_utenti_email ON utenti(email)');
+    })();
+    db.pragma('foreign_keys = ON');
+  }
 }
 
 // idx_slot_unico prima copriva solo 'confermata'. Da quando le visite dal sito

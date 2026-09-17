@@ -455,9 +455,14 @@ router.post('/auth/login', limiteLogin, via(async (req, res) => {
     );
   }
 
-  const utente = db.prepare('SELECT * FROM utenti WHERE email = ?').get(email);
+  // Di norma una riga sola. Puo' essercene piu' d'una quando un familiare
+  // condivide l'email di un altro account (vedi utenti.creaAccessoPaziente):
+  // in quel caso non si sceglie a caso, si prova la password su ognuna e si
+  // entra in quella giusta — sono account distinti solo dalla password.
+  const candidati = db.prepare('SELECT * FROM utenti WHERE email = ?').all(email);
+  const utente = candidati.find((u) => verificaPassword(String(req.body?.password || ''), u.password_hash));
 
-  if (!utente || !verificaPassword(String(req.body?.password || ''), utente.password_hash)) {
+  if (!utente) {
     const n = prima + 1;
     falliti.set(email, { n, ultimo: Date.now() });
 
@@ -820,15 +825,17 @@ admin.post('/pazienti', (req, res) =>
 
 /**
  * Apre l'accesso al sito per un paziente che aveva solo la scheda. Usa
- * l'email gia' in archivio: se manca o e' gia' di un altro account, il
- * server lo dice chiaramente invece di crearlo a meta'.
+ * l'email gia' in archivio: se manca, il server lo dice chiaramente invece di
+ * crearlo a meta'. Se l'email e' gia' di un altro accesso (un familiare che
+ * condivide i contatti) lo crea comunque: i due account restano distinti,
+ * separati solo dalla password.
  */
 admin.post('/pazienti/:id/accesso', (req, res) => {
   const esito = utenti.creaAccessoPaziente(req.params.id);
   accoda('email', {
     ...emailNuovoAccessoPaziente({
       to: esito.utente.email, nome: esito.utente.nome,
-      passwordProvvisoria: esito.password_provvisoria, url: basePubblica()
+      passwordProvvisoria: esito.password_provvisoria, url: basePubblica(), condivisa: esito.condivisa
     }),
     allegaGuida: 'pazienti'
   });

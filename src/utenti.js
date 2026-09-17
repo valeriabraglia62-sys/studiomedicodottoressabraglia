@@ -392,7 +392,14 @@ export function resettaPasswordPazienteDaStaff(pazienteId) {
  * Lo studio apre l'accesso al sito per un paziente che finora aveva solo la
  * scheda: e' il caso di chi viene inserito direttamente dal pannello (un
  * familiare anziano, per esempio) e che poi deve poter accedere da solo.
- * Serve un'email in archivio, e deve essere unica: e' la credenziale.
+ * Serve un'email in archivio.
+ *
+ * L'email puo' gia' essere quella di un altro accesso: e' il caso tipico di
+ * chi condivide i contatti con chi lo accompagna (vedi pazienti.crea). Non e'
+ * un problema: i due account restano distinti e a login si entra nell'uno o
+ * nell'altro solo in base a quale password si scrive (vedi /auth/login). Chi
+ * chiama viene avvisato che l'email e' condivisa, cosi' consegna la password
+ * nuova sapendo che quella vecchia continua a valere per l'altro account.
  *
  * A differenza dell'auto-registrazione, l'email non va verificata: e' lo
  * studio stesso, gia' passato dal proprio accesso, a garantire che sia quella
@@ -408,10 +415,7 @@ export function creaAccessoPaziente(pazienteId) {
   if (db.prepare("SELECT id FROM utenti WHERE paziente_id = ? AND ruolo = 'paziente'").get(p.id)) {
     throw new ErroreDominio('Questo paziente ha già un accesso al sito.', 400);
   }
-  if (db.prepare('SELECT id FROM utenti WHERE email = ?').get(indirizzo)) {
-    throw new ErroreDominio(
-      'Questa email è già usata da un altro accesso: cambiala nella scheda prima di crearne uno nuovo.', 409);
-  }
+  const condivisa = Boolean(db.prepare('SELECT id FROM utenti WHERE email = ?').get(indirizzo));
 
   const password = passwordProvvisoria();
   const info = db.prepare(`
@@ -422,7 +426,8 @@ export function creaAccessoPaziente(pazienteId) {
 
   return {
     utente: pubblico(db.prepare('SELECT * FROM utenti WHERE id = ?').get(info.lastInsertRowid)),
-    password_provvisoria: password
+    password_provvisoria: password,
+    condivisa
   };
 }
 

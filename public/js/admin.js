@@ -1828,10 +1828,16 @@ async function apriSchedaIdentita(p) {
   aggiornaStatoAccesso();
   campi.email.addEventListener('input', aggiornaStatoAccesso);
   resetta.addEventListener('click', () => protetto(async () => {
-    const rotta = p.ha_accesso ? `/admin/pazienti/${p.id}/password` : `/admin/pazienti/${p.id}/accesso`;
-    const { utente, password_provvisoria } = await api(rotta, { method: 'POST' });
+    const eraGiaAccesso = p.ha_accesso;
+    const rotta = eraGiaAccesso ? `/admin/pazienti/${p.id}/password` : `/admin/pazienti/${p.id}/accesso`;
+    const { utente, password_provvisoria, condivisa } = await api(rotta, { method: 'POST' });
     mostraPasswordProvvisoria(esito, utente, password_provvisoria);
-    avvisa(p.ha_accesso
+    if (!eraGiaAccesso && condivisa) {
+      esito.append(nodo('p', 'piccolo tenue',
+        'Questa email è già collegata a un altro accesso: restano due account distinti, ' +
+        'separati solo dalla password che si scrive per entrare.'));
+    }
+    avvisa(eraGiaAccesso
       ? 'Il paziente ha ricevuto anche un\'email con la password nuova.'
       : 'Il paziente ha ricevuto un\'email con le credenziali per accedere.', 'ok');
     p.ha_accesso = 1;

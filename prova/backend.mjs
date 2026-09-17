@@ -9,7 +9,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const RADICE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 // Fuori da data/: quella cartella e' ristretta con ACL (solo il servizio vi
@@ -2205,13 +2205,16 @@ console.log('\nLo studio aggiunge un paziente a mano, e gli apre un accesso al s
   const secondaVolta = await chiama('POST', `/api/admin/pazienti/${idFiglia}/accesso`, {}, token);
   verifica('non si puo\' creare un secondo accesso per lo stesso paziente', secondaVolta.stato === 400);
 
-  // L'email e' la credenziale di accesso: due account non possono condividerla.
-  const conflitto = await chiama('POST', '/api/admin/pazienti',
+  // Un'email gia' usata da un altro accesso non viene rifiutata: nasce un
+  // secondo account, distinto solo dalla password (il caso di un familiare
+  // che condivide i contatti — vedi il test dedicato piu' sotto).
+  const condiviso = await chiama('POST', '/api/admin/pazienti',
     { nome: 'Altra', cognome: 'ConEmailUguale', email: 'figlia.dianziana@example.it' }, token);
-  const accessoConflitto = await chiama('POST',
-    `/api/admin/pazienti/${conflitto.dati.paziente.id}/accesso`, {}, token);
-  verifica('un\'email gia\' usata da un altro accesso viene rifiutata',
-    accessoConflitto.stato === 409, JSON.stringify(accessoConflitto.dati));
+  const accessoCondiviso = await chiama('POST',
+    `/api/admin/pazienti/${condiviso.dati.paziente.id}/accesso`, {}, token);
+  verifica('un\'email gia\' usata da un altro accesso viene comunque accettata',
+    accessoCondiviso.stato === 200 && accessoCondiviso.dati.condivisa === true,
+    JSON.stringify(accessoCondiviso.dati));
 }
 
 console.log('\nRiattivare un\'email su Brevo (BREVO_API_KEY non configurata in prova)');
@@ -2342,6 +2345,139 @@ console.log('\nNotifiche push: iscrizione e disiscrizione');
   verifica('disiscrizione riuscita', disiscritto.stato === 200);
   verifica('il dispositivo sparisce dalla tabella',
     !db.prepare('SELECT 1 FROM iscrizioni_notifiche WHERE endpoint = ?').get(endpoint));
+}
+
+console.log('\nUn familiare puo\' avere un accesso con la stessa email di un altro (password diversa)');
+{
+  const primo = registraPazienteDiretto({
+    nome: 'Figlio', cognome: 'Condiviso', telefono: '3339990300',
+    email: 'famiglia.condivisa@example.it', password: 'PasswordFiglio26!'
+  });
+  verificaEmailDiretto(primo.token);
+
+  const anziano = await chiama('POST', '/api/admin/pazienti',
+    { nome: 'Padre', cognome: 'Condiviso', telefono: '3339990300', email: 'famiglia.condivisa@example.it' }, token);
+  verifica('creato il paziente anziano coi contatti condivisi', anziano.stato === 201);
+
+  const accessoAnziano = await chiama('POST',
+    `/api/admin/pazienti/${anziano.dati.paziente.id}/accesso`, {}, token);
+  verifica('si crea un secondo accesso, stessa email del figlio',
+    accessoAnziano.stato === 200 && Boolean(accessoAnziano.dati.password_provvisoria),
+    JSON.stringify(accessoAnziano.dati));
+  verifica('il server segnala che l\'email e\' condivisa', accessoAnziano.dati.condivisa === true);
+
+  const ultima = JSON.parse(
+    db.prepare("SELECT payload FROM outbox WHERE tipo = 'email' ORDER BY id DESC LIMIT 1").get().payload);
+  verifica('l\'email lo spiega al destinatario', /due account separati/.test(ultima.html || ultima.text || ''),
+    JSON.stringify(ultima).slice(0, 200));
+
+  // Il punto centrale: stessa email, password diverse, si entra nell'account
+  // giusto in base a quale password si scrive — non un terzo modo, non un
+  // account "condiviso" confuso fra i due.
+  //
+  // Si verifica la stessa identica logica di POST /auth/login (SELECT * FROM
+  // utenti WHERE email = ?, poi si prova la password su ogni riga) invece di
+  // chiamare davvero quella rotta: ha un freno anti-abuso per IP condiviso da
+  // tutto questo file di prove, e a questo punto e' gia' quasi esaurito dalle
+  // decine di login veri fatti piu' sopra (vedi i commenti sullo stesso
+  // freno accanto agli altri test che lo evitano allo stesso modo).
+  const { verificaPassword } = await import('../src/auth.js');
+  const candidati = db.prepare('SELECT * FROM utenti WHERE email = ?').all('famiglia.condivisa@example.it');
+  verifica('ci sono davvero due righe per la stessa email', candidati.length === 2, `trovate: ${candidati.length}`);
+
+  const trovatoFiglio = candidati.find((u) => verificaPassword('PasswordFiglio26!', u.password_hash));
+  verifica('con la password del figlio si riconosce il suo account',
+    trovatoFiglio?.id === primo.utente.id, JSON.stringify(trovatoFiglio));
+
+  const trovatoPadre = candidati.find((u) => verificaPassword(accessoAnziano.dati.password_provvisoria, u.password_hash));
+  verifica('con la password del padre si riconosce il suo account, non quello del figlio',
+    trovatoPadre?.paziente_id === anziano.dati.paziente.id, JSON.stringify(trovatoPadre));
+
+  const trovatoConPasswordSbagliata = candidati.find((u) => verificaPassword('NonEQuestaLaPassword26!', u.password_hash));
+  verifica('una password che non corrisponde a nessuno dei due non trova niente',
+    trovatoConPasswordSbagliata === undefined);
+}
+
+console.log('\nLa migrazione toglie il vincolo email-unica da un database gia\' esistente');
+{
+  const { spawnSync } = await import('child_process');
+  const Database = (await import('better-sqlite3')).default;
+
+  const dbMigrazione = path.join(CARTELLA_PROVA, 'migrazione-email.sqlite');
+  for (const f of [dbMigrazione, `${dbMigrazione}-wal`, `${dbMigrazione}-shm`]) fs.rmSync(f, { force: true });
+
+  // Lo schema "vecchio", con lo stesso vincolo UNIQUE che c'era prima di
+  // questa sessione, e dentro una riga con dei valori in ogni colonna
+  // aggiunta nel tempo (per accorgersi se la ricostruzione ne stravolge
+  // il tipo, non solo se sopravvivono).
+  const vecchio = new Database(dbMigrazione);
+  vecchio.exec(`
+    CREATE TABLE utenti (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT,
+      ruolo TEXT NOT NULL DEFAULT 'paziente',
+      paziente_id INTEGER,
+      creato_il TEXT NOT NULL,
+      nome TEXT,
+      attivo INTEGER NOT NULL DEFAULT 1,
+      cambio_password INTEGER NOT NULL DEFAULT 0,
+      ultimo_accesso TEXT,
+      email_verificata INTEGER NOT NULL DEFAULT 0,
+      token_verifica TEXT,
+      token_verifica_scade TEXT,
+      scheda_da_collegare INTEGER,
+      token_reset_password TEXT,
+      token_reset_password_scade TEXT
+    );
+  `);
+  vecchio.prepare(`
+    INSERT INTO utenti (email, password_hash, ruolo, paziente_id, creato_il, nome, attivo,
+                        cambio_password, ultimo_accesso, email_verificata)
+    VALUES ('vecchio.account@example.it', 'scrypt$aa$bb', 'paziente', NULL, '2024-01-01T00:00:00.000Z',
+            'Account Vecchio', 1, 0, '2024-06-01T00:00:00.000Z', 1)
+  `).run();
+  vecchio.close();
+
+  const script = path.join(CARTELLA_PROVA, 'verifica-migrazione-email.mjs');
+  const urlDbJs = pathToFileURL(path.join(RADICE, 'src', 'db.js')).href;
+  fs.writeFileSync(script, `
+    const { db } = await import(${JSON.stringify(urlDbJs)});
+    const def = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='utenti'").get();
+    const vecchio = db.prepare("SELECT * FROM utenti WHERE email = 'vecchio.account@example.it'").get();
+    let secondaRigaOk = false, erroreSeconda = null;
+    try {
+      db.prepare(
+        "INSERT INTO utenti (email, password_hash, ruolo, creato_il) " +
+        "VALUES ('vecchio.account@example.it', 'x', 'paziente', datetime('now'))"
+      ).run();
+      secondaRigaOk = true;
+    } catch (e) { erroreSeconda = e.message; }
+    console.log(JSON.stringify({ sql: def?.sql, vecchio, secondaRigaOk, erroreSeconda }));
+  `);
+
+  const esito = spawnSync(process.execPath, [script], {
+    cwd: RADICE,
+    env: { ...process.env, DB_FILE: dbMigrazione },
+    encoding: 'utf8'
+  });
+  verifica('lo script di verifica gira senza errori', esito.status === 0,
+    `exit ${esito.status} — ${esito.stderr?.slice(0, 400) || ''}`);
+
+  const righe = (esito.stdout || '').trim().split('\n');
+  const risultato = JSON.parse(righe[righe.length - 1] || '{}');
+
+  verifica('dopo la migrazione la tabella non ha piu\' il vincolo UNIQUE sull\'email',
+    risultato.sql && !/UNIQUE/i.test(risultato.sql), risultato.sql);
+  verifica('la riga vecchia e\' sopravvissuta con lo stesso contenuto',
+    risultato.vecchio?.nome === 'Account Vecchio' && risultato.vecchio?.password_hash === 'scrypt$aa$bb',
+    JSON.stringify(risultato.vecchio));
+  verifica('i numeri restano numeri, non diventano testo (attivo, cambio_password, email_verificata)',
+    risultato.vecchio?.attivo === 1 && risultato.vecchio?.cambio_password === 0
+      && risultato.vecchio?.email_verificata === 1,
+    JSON.stringify(risultato.vecchio));
+  verifica('ora si puo\' inserire una seconda riga con la stessa email',
+    risultato.secondaRigaOk === true, risultato.erroreSeconda);
 }
 
 console.log('\nIn produzione la cifratura dei backup e\' obbligatoria');

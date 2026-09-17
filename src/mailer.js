@@ -567,8 +567,13 @@ export const emailPasswordPazienteRipristinata = ({ to, nome, passwordProvvisori
  * la scheda (per esempio una persona anziana, inserita dal pannello): riceve
  * subito le credenziali, con la stessa guida allegata di chi si registra da
  * solo.
+ *
+ * Se questa email e' gia' quella di un altro accesso (un familiare che
+ * condivide i contatti), lo si dice chiaramente: sono due account distinti, e
+ * a questo indirizzo arriveranno le comunicazioni di entrambi. Per entrare
+ * nell'uno o nell'altro conta solo quale password si scrive.
  */
-export const emailNuovoAccessoPaziente = ({ to, nome, passwordProvvisoria, url }) => componiEmail({
+export const emailNuovoAccessoPaziente = ({ to, nome, passwordProvvisoria, url, condivisa }) => componiEmail({
   to,
   subject: `Il tuo accesso al sito di ${config.nomeStudio}`,
   titolo: 'Il tuo accesso è pronto',
@@ -580,7 +585,10 @@ export const emailNuovoAccessoPaziente = ({ to, nome, passwordProvvisoria, url }
   ],
   azione: { testo: 'Accedi al sito', url },
   chiusura: 'Al primo accesso ti verrà chiesto di scegliere una password personale, che non conoscerà ' +
-    'nessun altro. In allegato trovi la guida con le istruzioni per orientarti.'
+    'nessun altro. In allegato trovi la guida con le istruzioni per orientarti.' + (condivisa
+    ? ' Questo indirizzo email è collegato anche a un altro accesso: sono due account separati, e per entrare ' +
+      'nell\'uno o nell\'altro conta soltanto quale password si scrive.'
+    : '')
 });
 
 /**
