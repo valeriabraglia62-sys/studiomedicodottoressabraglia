@@ -1092,7 +1092,7 @@ admin.post('/utenti', richiedeAdmin, (req, res) => {
       to: esito.utente.email, nome: esito.utente.nome, ruolo: esito.utente.ruolo,
       passwordProvvisoria: esito.password_provvisoria, url: `${basePubblica()}/admin.html`
     }),
-    allegaGuida: 'staff'
+    allegaGuida: ['staff', 'pazienti']
   });
   res.status(201).json({ success: true, ...esito });
 });

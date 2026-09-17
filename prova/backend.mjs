@@ -1776,6 +1776,13 @@ console.log('\nAccessi personali dei collaboratori');
   verifica('la password provvisoria va cambiata al primo ingresso',
     creato.dati.utente?.deve_cambiare_password === true);
 
+  const emailBenvenuto = JSON.parse(
+    db.prepare("SELECT payload FROM outbox WHERE tipo = 'email' ORDER BY id DESC LIMIT 1").get().payload);
+  verifica('il collaboratore nuovo riceve entrambe le guide, non solo quella dello staff',
+    Array.isArray(emailBenvenuto.allegaGuida)
+      && emailBenvenuto.allegaGuida.includes('staff') && emailBenvenuto.allegaGuida.includes('pazienti'),
+    JSON.stringify(emailBenvenuto.allegaGuida));
+
   const doppione = await chiama('POST', '/api/admin/utenti',
     { nome: 'Altra', email: EMAIL_COLLAB, ruolo: 'segretaria' }, token);
   verifica('non si creano due accessi con la stessa email', doppione.stato === 400);
@@ -2570,6 +2577,64 @@ console.log('\nLa migrazione toglie il vincolo email-unica da un database gia\' 
     JSON.stringify(risultato.vecchio));
   verifica('ora si puo\' inserire una seconda riga con la stessa email',
     risultato.secondaRigaOk === true, risultato.erroreSeconda);
+}
+
+console.log('\nLo script una tantum manda le guide a chi ha gia\' un accesso al pannello');
+{
+  const { spawnSync } = await import('child_process');
+
+  const dbGuide = path.join(CARTELLA_PROVA, 'guide-collaboratori.sqlite');
+  for (const f of [dbGuide, `${dbGuide}-wal`, `${dbGuide}-shm`]) fs.rmSync(f, { force: true });
+
+  const urlDbJs = pathToFileURL(path.join(RADICE, 'src', 'db.js')).href;
+  const urlScript = pathToFileURL(
+    path.join(RADICE, 'strumenti', 'server', 'manda-guide-collaboratori.mjs')).href;
+
+  const script = path.join(CARTELLA_PROVA, 'popola-e-lancia-manda-guide.mjs');
+  fs.writeFileSync(script, `
+    const { db } = await import(${JSON.stringify(urlDbJs)});
+    const ora = new Date().toISOString();
+    db.prepare(
+      "INSERT INTO utenti (nome, email, password_hash, ruolo, attivo, creato_il) VALUES (?, ?, 'x', ?, 1, ?)"
+    ).run('Medico Prova', 'medico.provaguide@example.it', 'admin', ora);
+    db.prepare(
+      "INSERT INTO utenti (nome, email, password_hash, ruolo, attivo, creato_il) VALUES (?, ?, 'x', ?, 1, ?)"
+    ).run('Segretaria Prova', 'segretaria.provaguide@example.it', 'segretaria', ora);
+    // Sospesa: non deve ricevere niente.
+    db.prepare(
+      "INSERT INTO utenti (nome, email, password_hash, ruolo, attivo, creato_il) VALUES (?, ?, 'x', ?, 0, ?)"
+    ).run('Sospesa Prova', 'sospesa.provaguide@example.it', 'segretaria', ora);
+    await import(${JSON.stringify(urlScript)});
+  `);
+
+  const esito = spawnSync(process.execPath, [script], {
+    cwd: RADICE,
+    env: { ...process.env, DB_FILE: dbGuide },
+    encoding: 'utf8'
+  });
+  verifica('lo script gira senza errori', esito.status === 0,
+    `exit ${esito.status} — ${esito.stderr?.slice(0, 400) || ''}`);
+  verifica('dice quanti collaboratori ha avvisato', /Collaboratori avvisati: 2/.test(esito.stdout || ''),
+    esito.stdout);
+
+  // Si riapre lo stesso file per controllare cosa e' finito davvero in coda.
+  const DatabaseVerifica = (await import('better-sqlite3')).default;
+  const dbVerifica = new DatabaseVerifica(dbGuide, { readonly: true });
+  const email = dbVerifica.prepare(
+    "SELECT payload FROM outbox WHERE tipo = 'email' ORDER BY id"
+  ).all().map((r) => JSON.parse(r.payload));
+  dbVerifica.close();
+
+  verifica('partono due email, una per il medico e una per la segretaria (non per la sospesa)',
+    email.length === 2 && email.every((p) => p.to !== 'sospesa.provaguide@example.it'),
+    JSON.stringify(email.map((p) => p.to)));
+  verifica('ogni email ha entrambe le guide allegate',
+    email.every((p) => Array.isArray(p.allegaGuida)
+      && p.allegaGuida.includes('staff') && p.allegaGuida.includes('pazienti')),
+    JSON.stringify(email.map((p) => p.allegaGuida)));
+  verifica('nessuna credenziale viene toccata: e\' lo stesso testo per tutti, senza password',
+    email.every((p) => !/password provvisoria/i.test(p.html || p.text || '')),
+    JSON.stringify(email.map((p) => p.subject)));
 }
 
 console.log('\nIn produzione la cifratura dei backup e\' obbligatoria');

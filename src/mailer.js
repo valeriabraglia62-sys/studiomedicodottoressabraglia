@@ -118,8 +118,13 @@ export function allegatiPerEmail(payload) {
     })));
   }
 
-  const guida = payload?.allegaGuida && GUIDE_PDF[payload.allegaGuida];
-  if (guida) {
+  // Una guida sola ('pazienti' o 'staff') o entrambe insieme (un array):
+  // i collaboratori ricevono entrambe, un paziente solo la sua.
+  const chiavi = Array.isArray(payload?.allegaGuida) ? payload.allegaGuida
+    : payload?.allegaGuida ? [payload.allegaGuida] : [];
+  for (const chiave of chiavi) {
+    const guida = GUIDE_PDF[chiave];
+    if (!guida) continue;
     try {
       allegati.push({
         filename: guida.nome,
@@ -129,7 +134,7 @@ export function allegatiPerEmail(payload) {
     } catch (err) {
       // Il PDF va compilato e messo a parte (vedi sopra): finche' non c'e',
       // l'email parte comunque senza allegato invece di restare bloccata.
-      console.error(`[email] guida "${payload.allegaGuida}" non trovata: ${err.message}`);
+      console.error(`[email] guida "${chiave}" non trovata: ${err.message}`);
     }
   }
 
@@ -595,6 +600,10 @@ export const emailNuovoAccessoPaziente = ({ to, nome, passwordProvvisoria, url, 
  * Il collaboratore nuovo (segreteria o medico) riceve subito le credenziali
  * per accedere: prima nessuna email partiva, e la password provvisoria si
  * consegnava solo mostrandola a schermo a chi la creava.
+ *
+ * Riceve entrambe le guide, non solo quella dello staff: aiuta anche sapere
+ * cosa vede e può fare un paziente dal sito, per rispondere alle sue domande
+ * al telefono.
  */
 export const emailNuovoAccessoStaff = ({ to, nome, ruolo, passwordProvvisoria, url }) => componiEmail({
   to,
@@ -608,7 +617,22 @@ export const emailNuovoAccessoStaff = ({ to, nome, ruolo, passwordProvvisoria, u
   ],
   azione: { testo: 'Apri il pannello', url },
   chiusura: 'Al primo accesso ti verrà chiesto di scegliere una password personale, che non conoscerà nessun altro. ' +
-    'In allegato trovi la guida con le istruzioni per orientarti.'
+    'In allegato trovi la guida per lo staff e quella per i pazienti, per orientarti su entrambe le parti del sito.'
+});
+
+/**
+ * Le guide in allegato, per chi ha già un accesso al pannello: non cambia
+ * nessuna credenziale, e' solo un invio a parte per chi lavorava già nello
+ * studio prima che le guide fossero pronte.
+ */
+export const emailGuidePannello = ({ to, nome, url }) => componiEmail({
+  to,
+  subject: `Le guide del pannello di ${config.nomeStudio}`,
+  titolo: 'Le guide del pannello',
+  intro: `Gentile ${esc(nome || '')}, in allegato trovi la guida per lo staff e quella per i pazienti: ` +
+    'la seconda aiuta a rispondere alle domande di chi telefona su come usare il sito.',
+  azione: { testo: 'Apri il pannello', url },
+  chiusura: 'Nessuna credenziale è cambiata: continua ad accedere come sempre.'
 });
 
 /**
