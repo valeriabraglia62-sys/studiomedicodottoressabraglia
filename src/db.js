@@ -360,7 +360,13 @@ for (const [tabella, colonna, tipo] of [
   // Suono della notifica: acceso di default (com'era finora, in silenzio non
   // si distingueva da un'altra app), ma disattivabile per chi lo trova
   // fastidioso — un dispositivo alla volta, non un'impostazione dell'account.
-  ['iscrizioni_notifiche', 'suono', 'INTEGER NOT NULL DEFAULT 1']
+  ['iscrizioni_notifiche', 'suono', 'INTEGER NOT NULL DEFAULT 1'],
+  // Un messaggio libero per il paziente, in piu' rispetto a quello che c'e'
+  // gia' di strutturato (numero ricetta, dove ritirare, motivo di un rifiuto):
+  // serve per un avviso che non ha un campo suo, tipo "porti con se' la
+  // tessera sanitaria". Facoltativo, scritto quando si conferma o si modifica.
+  ['richieste_medicine', 'messaggio_staff', 'TEXT'],
+  ['prenotazioni', 'messaggio_staff', 'TEXT']
 ]) {
   const presente = db.prepare(`PRAGMA table_info(${tabella})`).all().some((c) => c.name === colonna);
   if (!presente) db.exec(`ALTER TABLE ${tabella} ADD COLUMN ${colonna} ${tipo}`);

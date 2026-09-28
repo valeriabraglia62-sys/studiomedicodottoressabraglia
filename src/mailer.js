@@ -174,6 +174,7 @@ export const emailConfermaPaziente = (p) => componiEmail({
     ['Ambulatorio', p.ambulatorio_nome],
     ['Indirizzo', p.ambulatorio_indirizzo],
     ['Motivo', p.problema],
+    ['Messaggio dello studio', p.messaggio_staff || null],
     ['Codice prenotazione', p.codice]
   ],
   azione: { testo: 'Aggiungi al mio Google Calendar', url: linkGoogleCalendar(p) },
@@ -257,6 +258,7 @@ export const emailRichiestaVisitaConfermataConModifiche = (p) => componiEmail({
     ['Ambulatorio', p.ambulatorio_nome],
     ['Indirizzo', p.ambulatorio_indirizzo],
     ['Motivo', p.problema],
+    ['Messaggio dello studio', p.messaggio_staff || null],
     ['Codice prenotazione', p.codice]
   ],
   azione: { testo: 'Aggiungi al mio Google Calendar', url: linkGoogleCalendar(p) },
@@ -822,6 +824,7 @@ export const emailMedicinaConfermata = (r) => componiEmail({
     // il nostro serve a noi, questo serve a lui, ed e' quello che gli chiedono
     // al banco della farmacia o allo sportello.
     [paroleDi(r).etichettaNumero, r.numero_ricetta || null],
+    ['Messaggio dello studio', r.messaggio_staff || null],
     ['Codice richiesta', r.codice]
   ],
   chiusura: r.numero_ricetta
@@ -864,6 +867,7 @@ export const emailMedicinaModificata = (r) => componiEmail({
     ['Note', r.note],
     ['Come procedere', doveRitirare(r)],
     [paroleDi(r).etichettaNumero, r.numero_ricetta || null],
+    ['Messaggio dello studio', r.messaggio_staff || null],
     ['Codice richiesta', r.codice]
   ],
   chiusura: 'Se qualcosa non corrisponde a quanto ci siamo detti al telefono, ci ricontatti.'

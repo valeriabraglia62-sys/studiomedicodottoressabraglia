@@ -666,6 +666,50 @@ console.log('\nRiepilogo: farmaci, specialistiche ed esami contati separatamente
     dopo.esami_da_evadere === prima.esami_da_evadere + 1);
 }
 
+console.log('\nUn messaggio libero dello studio, oltre a quello gia\' strutturato');
+{
+  const nuova = await chiama('POST', '/api/medicine', {
+    nome: 'Messaggio', cognome: 'Prova', telefono: '3339990500',
+    email: 'messaggio.prova@example.it', farmaci: 'Tachipirina 1000'
+  });
+  const codice = nuova.dati.richiesta.codice;
+
+  const confermata = await chiama('POST', `/api/admin/medicine/${codice}/conferma`,
+    { messaggio: 'Porti con sé la tessera sanitaria.' }, token);
+  verifica('la conferma accetta un messaggio libero',
+    confermata.stato === 200 && confermata.dati.richiesta?.messaggio_staff === 'Porti con sé la tessera sanitaria.',
+    JSON.stringify(confermata.dati));
+
+  const emailConferma = JSON.parse(
+    db.prepare("SELECT payload FROM outbox WHERE tipo = 'email' ORDER BY id DESC LIMIT 1").get().payload);
+  verifica('il paziente lo legge nell\'email di conferma',
+    (emailConferma.html || '').includes('Porti con sé la tessera sanitaria'), emailConferma.html?.slice(0, 300));
+
+  const modificata = await chiama('POST', `/api/admin/medicine/${codice}/modifica`, {
+    farmaci: 'Tachipirina 1000, Aspirina', messaggio: 'Ha anche l\'aspirina pronta.'
+  }, token);
+  verifica('anche la modifica puo\' cambiare il messaggio',
+    modificata.stato === 200 && modificata.dati.richiesta?.messaggio_staff === 'Ha anche l\'aspirina pronta.',
+    JSON.stringify(modificata.dati));
+
+  const emailModifica = JSON.parse(
+    db.prepare("SELECT payload FROM outbox WHERE tipo = 'email' ORDER BY id DESC LIMIT 1").get().payload);
+  verifica('e il paziente lo rilegge nell\'email della modifica',
+    (emailModifica.html || '').includes('Ha anche l\'aspirina pronta'), emailModifica.html?.slice(0, 300));
+
+  // Senza messaggio non compare nessuna riga vuota: la stessa regola di ogni
+  // altro campo facoltativo dell'email (motivo, numero ricetta, eccetera).
+  const nuova2 = await chiama('POST', '/api/medicine', {
+    nome: 'SenzaMessaggio', cognome: 'Prova', telefono: '3339990501',
+    email: 'senzamessaggio.prova@example.it', farmaci: 'Cardioaspirina'
+  });
+  await chiama('POST', `/api/admin/medicine/${nuova2.dati.richiesta.codice}/conferma`, {}, token);
+  const emailSenzaMessaggio = JSON.parse(
+    db.prepare("SELECT payload FROM outbox WHERE tipo = 'email' ORDER BY id DESC LIMIT 1").get().payload);
+  verifica('senza messaggio non compare la riga "Messaggio dello studio"',
+    !(emailSenzaMessaggio.html || '').includes('Messaggio dello studio'), emailSenzaMessaggio.html?.slice(0, 300));
+}
+
 console.log('\nRichieste di visita: lo studio conferma o rifiuta');
 {
   const { oggiISO, aggiungiGiorni } = await import('../src/orari.js');
@@ -725,11 +769,20 @@ console.log('\nRichieste di visita: lo studio conferma o rifiuta');
   });
   const codMod = daModificare.dati.prenotazione?.codice;
   const confModif = await chiama('POST', `/api/admin/prenotazioni/${codMod}/conferma`,
-    { ambulatorio_id: 1, data: g, ora_inizio: liberi[3].ora_inizio }, token);
+    { ambulatorio_id: 1, data: g, ora_inizio: liberi[3].ora_inizio, messaggio: 'Porti con sé gli esami precedenti.' },
+    token);
   verifica('lo studio modifica l\'orario e conferma in un passaggio',
     confModif.stato === 200 && confModif.dati.prenotazione?.stato === 'confermata'
     && confModif.dati.prenotazione?.ora_inizio === liberi[3].ora_inizio,
     `${confModif.stato} ${confModif.dati.prenotazione?.ora_inizio} atteso ${liberi[3].ora_inizio}`);
+  verifica('il messaggio libero per il paziente resta salvato sulla prenotazione',
+    confModif.dati.prenotazione?.messaggio_staff === 'Porti con sé gli esami precedenti.',
+    confModif.dati.prenotazione?.messaggio_staff);
+  const emailModPren = JSON.parse(
+    db.prepare("SELECT payload FROM outbox WHERE tipo = 'email' ORDER BY id DESC LIMIT 1").get().payload);
+  verifica('il paziente lo legge nell\'email di conferma con modifiche',
+    (emailModPren.html || '').includes('Porti con sé gli esami precedenti'), emailModPren.html?.slice(0, 300));
+
   const slotDopoModif = await chiama('GET', `/api/disponibilita?data=${g}&ambulatorio_id=1`);
   verifica('l\'orario chiesto in origine torna libero dopo la modifica',
     slotDopoModif.dati.slot.find((s) => s.ora_inizio === liberi[2].ora_inizio)?.disponibile === true);

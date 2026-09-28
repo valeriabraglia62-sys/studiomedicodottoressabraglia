@@ -1029,9 +1029,22 @@ function schedaPrenotazione(p) {
     carta.append(nodo('div', 'piccolo tenue',
       `Richiesta il ${quando(p.creata_il)}${p.origine ? ` · da ${p.origine}` : ''}`));
 
+    // Un messaggio libero per il paziente, in piu' rispetto a data/ora/ambulatorio:
+    // utile per un avviso senza un campo suo, tipo "porti con se' gli esami
+    // precedenti". Vale sia per "Conferma" sia per "Modifica e conferma".
+    const messaggio = nodo('input');
+    messaggio.value = p.messaggio_staff || '';
+    messaggio.placeholder = 'Facoltativo, il paziente lo legge nell\'email';
+    messaggio.maxLength = 500;
+    const rigaMessaggio = nodo('div', 'filtri');
+    rigaMessaggio.style.marginTop = '.6rem';
+    rigaMessaggio.append(campoModulo('Messaggio per il paziente', messaggio));
+    carta.append(rigaMessaggio);
+
     const eseguiConferma = (body, testoOk) => protetto(async () => {
       try {
-        await api(`/admin/prenotazioni/${p.codice}/conferma`, { method: 'POST', body });
+        await api(`/admin/prenotazioni/${p.codice}/conferma`,
+          { method: 'POST', body: { ...body, messaggio: messaggio.value } });
         avvisa(testoOk, 'ok');
         await caricaPrenotazioni();
       } catch (err) {
@@ -1450,13 +1463,20 @@ function schedaMedicina(r) {
   campi.numero_ricetta = inputTesto(r.numero_ricetta || '',
     (PAROLE_TIPO[r.tipo] || PAROLE_TIPO.medicina).numero);
 
+  // Un messaggio libero per il paziente, in piu' rispetto a quello che c'e'
+  // gia' di strutturato (ricetta, dove ritirare): utile per un avviso senza un
+  // campo suo, tipo "porti con se' la tessera sanitaria". Il paziente lo legge
+  // nella stessa email che gli dice se e' stata confermata o modificata.
+  campi.messaggio = inputTesto(r.messaggio_staff || '', 'Facoltativo, il paziente lo legge nell\'email');
+
   const riga = nodo('div', 'filtri');
   riga.style.marginTop = '.85rem';
   riga.append(
     campoModulo((PAROLE_TIPO[r.tipo] || PAROLE_TIPO.medicina).campo, campi.farmaci),
     campoModulo('Note', campi.note),
     campoModulo('Ritiro', campi.ambulatorio_id),
-    campoModulo('N. ricetta', campi.numero_ricetta)
+    campoModulo('N. ricetta', campi.numero_ricetta),
+    campoModulo('Messaggio per il paziente', campi.messaggio)
   );
   carta.append(riga);
 
@@ -1499,7 +1519,7 @@ function schedaMedicina(r) {
   if (r.stato === 'nuova') {
     bottone('Conferma così', '', () => ({
       azione: 'conferma',
-      dati: { numero_ricetta: campi.numero_ricetta.value },
+      dati: { numero_ricetta: campi.numero_ricetta.value, messaggio: campi.messaggio.value },
       fatto: avvisata('confermata')
     }));
   }
@@ -1510,7 +1530,8 @@ function schedaMedicina(r) {
       farmaci: campi.farmaci.value,
       note: campi.note.value,
       ambulatorio_id: Number(campi.ambulatorio_id.value) || undefined,
-      numero_ricetta: campi.numero_ricetta.value
+      numero_ricetta: campi.numero_ricetta.value,
+      messaggio: campi.messaggio.value
     },
     fatto: avvisata('modificata')
   }));

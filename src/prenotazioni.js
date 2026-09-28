@@ -431,6 +431,13 @@ export function confermaPrenotazione(codice, chi = null, correzioni = {}, { forz
     ? testoPulito(correzioni.problema, 500)
     : p.problema;
 
+  // Un messaggio libero per il paziente, in piu' rispetto a quello che c'e'
+  // gia' di strutturato (data, ora, ambulatorio): utile per un avviso senza un
+  // campo suo, tipo "porti con se' gli esami precedenti".
+  const messaggioStaff = correzioni.messaggio !== undefined
+    ? (testoPulito(correzioni.messaggio, 500) || null)
+    : (p.messaggio_staff ?? null);
+
   const cambiata = quando.data !== p.data || quando.ora_inizio !== p.ora_inizio
     || ambulatorio.id !== p.ambulatorio_id;
 
@@ -438,9 +445,9 @@ export function confermaPrenotazione(codice, chi = null, correzioni = {}, { forz
     db.prepare(
       `UPDATE prenotazioni
           SET stato = 'confermata', ambulatorio_id = ?, data = ?, ora_inizio = ?, ora_fine = ?,
-              problema = ?, confermata_il = ?, confermata_da = ?
+              problema = ?, messaggio_staff = ?, confermata_il = ?, confermata_da = ?
         WHERE id = ?`
-    ).run(ambulatorio.id, quando.data, quando.ora_inizio, quando.ora_fine, problema,
+    ).run(ambulatorio.id, quando.data, quando.ora_inizio, quando.ora_fine, problema, messaggioStaff,
       new Date().toISOString(), chi || null, p.id);
 
     const aggiornata = dettaglio(p.id);

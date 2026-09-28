@@ -457,12 +457,16 @@ export const abitualiDelPaziente = (pazienteId) => db.prepare(`
 `).all(pazienteId);
 
 /** Va bene cosi' come l'ha chiesta il paziente. */
-export function conferma(codice, chi = null, { numeroRicetta = null } = {}) {
+export function conferma(codice, chi = null, { numeroRicetta = null, messaggio = null } = {}) {
   const richiesta = daGestire(codice, ['nuova']);
   const aggiornata = db.transaction(() => {
     const aggiornata = applica(richiesta, {
       stato: 'confermata',
       numero_ricetta: testoPulito(numeroRicetta, 40) || null,
+      // Una riga in piu' per il paziente, oltre a quelle gia' strutturate
+      // (ricetta, dove ritirare): utile per un avviso che non ha un campo suo,
+      // tipo "porti con se' la tessera sanitaria".
+      messaggio_staff: testoPulito(messaggio, 500) || null,
       paziente_id: collegaAlFascicolo(richiesta) ?? richiesta.paziente_id
     }, chi);
     aggiornaAbituali(aggiornata);
@@ -524,12 +528,17 @@ export function modifica(codice, correzioni = {}, chi = null) {
     ? (testoPulito(correzioni.numero_ricetta, 40) || null)
     : (richiesta.numero_ricetta ?? null);
 
+  const messaggioStaff = correzioni.messaggio !== undefined
+    ? (testoPulito(correzioni.messaggio, 500) || null)
+    : (richiesta.messaggio_staff ?? null);
+
   // Aggiungere il numero della ricetta e' una modifica come le altre: capita di
   // confermare prima e inserirla nel fascicolo dopo, e senza questo il pannello
   // direbbe "non hai cambiato niente" proprio mentre si sta aggiungendo il
   // pezzo che serve al paziente per ritirare.
   if (farmaci === richiesta.farmaci && note === richiesta.note && !ambulatorio
-      && numeroRicetta === (richiesta.numero_ricetta ?? null)) {
+      && numeroRicetta === (richiesta.numero_ricetta ?? null)
+      && messaggioStaff === (richiesta.messaggio_staff ?? null)) {
     throw new ErroreDominio('Non hai cambiato niente: usa Conferma se la richiesta va bene così.');
   }
 
@@ -542,6 +551,7 @@ export function modifica(codice, correzioni = {}, chi = null) {
       note_originali: richiesta.farmaci_originali ? richiesta.note_originali : richiesta.note,
       stato: 'confermata',
       numero_ricetta: numeroRicetta,
+      messaggio_staff: messaggioStaff,
       paziente_id: collegaAlFascicolo(richiesta) ?? richiesta.paziente_id
     }, chi);
 

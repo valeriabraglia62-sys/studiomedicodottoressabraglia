@@ -838,7 +838,7 @@ admin.get('/medicine', (req, res) => ok(res, medicine.elencoAdmin(req.query)));
 admin.post('/medicine/:codice/conferma', (req, res) => {
   ok(res, {
     richiesta: medicine.conferma(req.params.codice, req.utente.email,
-      { numeroRicetta: req.body?.numero_ricetta })
+      { numeroRicetta: req.body?.numero_ricetta, messaggio: req.body?.messaggio })
   });
 });
 
