@@ -898,12 +898,18 @@ function apriChiudi(contenitore, costruisci) {
  * prenotando dal sito, con il codice per disdire. Se non ce l'ha (al banco, al
  * telefono) si lascia vuoto: la prenotazione si crea lo stesso ed e' lo studio
  * ad avvisare il paziente a voce.
+ *
+ * Anche il telefono e' facoltativo: basta nome e cognome per segnare un
+ * promemoria di qualcuno che non ha ancora un contatto in archivio (chi non
+ * usa ancora il sito, per esempio) — il posto in agenda resta comunque
+ * occupato, come per ogni altra prenotazione.
  */
 function moduloNuovaPrenotazione(chiudi) {
   const carta = nodo('div', 'carta');
   carta.append(nodo('strong', null, '📅 Nuova prenotazione'));
   carta.append(nodo('p', 'piccolo tenue',
-    'Con l\'email, al paziente arriva la conferma col codice per disdire. Senza, avvisalo tu.'));
+    'Bastano nome e cognome: serve anche solo come promemoria. Con l\'email, al paziente arriva la ' +
+    'conferma col codice per disdire; senza, avvisalo tu.'));
 
   const { campi, riga } = campiPaziente();
   const quando = selettoreQuando();

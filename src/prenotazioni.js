@@ -247,16 +247,23 @@ function validaRichiesta(dati, forza = false) {
   const telefono = normalizzaTelefono(dati.telefono);
   const email = dati.email ? String(dati.email).trim().toLowerCase() : null;
 
+  // Dal sito, telefono ed email sono obbligatori: conferma, annullamento e
+  // spostamento vengono comunicati per iscritto o a voce, e senza contatti il
+  // paziente resterebbe l'unico a non sapere cosa e' successo al suo
+  // appuntamento. Dal pannello (origine 'studio', o forzatura) sono
+  // facoltativi entrambi: puo' essere solo un promemoria per lo studio, di
+  // qualcuno che non ha ancora un contatto in archivio — un nome e cognome
+  // bastano a tenere il posto.
+  const scrittaDalloStudio = forza || dati.origine === 'studio';
+
   if (nome.length < 2) throw new ErroreDominio('Inserisci un nome valido.');
   if (cognome.length < 2) throw new ErroreDominio('Inserisci un cognome valido.');
-  if (!telefonoValido(telefono)) throw new ErroreDominio('Inserisci un numero di telefono valido (8-11 cifre).');
-  // Dal sito l'email e' obbligatoria: conferma, annullamento e spostamento
-  // vengono comunicati per iscritto, e senza indirizzo il paziente resterebbe
-  // l'unico a non sapere che cosa e' successo al suo appuntamento. Dal pannello
-  // (origine 'studio', o forzatura) e' facoltativa: al banco o al telefono
-  // spesso non ce l'hanno, e la prenotazione la scrive lo studio, che il
-  // paziente lo avvisa a voce.
-  const scrittaDalloStudio = forza || dati.origine === 'studio';
+  if (!scrittaDalloStudio && !telefonoValido(telefono)) {
+    throw new ErroreDominio('Inserisci un numero di telefono valido (8-11 cifre).');
+  }
+  if (telefono && !telefonoValido(telefono)) {
+    throw new ErroreDominio('Inserisci un numero di telefono valido (8-11 cifre).');
+  }
   if (!scrittaDalloStudio && !email) {
     throw new ErroreDominio('Serve un indirizzo email: le confermiamo lì l\'appuntamento.');
   }

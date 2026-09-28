@@ -2213,6 +2213,59 @@ console.log('\nLo staff corregge i dati di un paziente e gli reimposta la passwo
     resetSenzaAccesso.stato === 404, JSON.stringify(resetSenzaAccesso.dati));
 }
 
+console.log('\nUn promemoria in agenda con solo nome e cognome, dal pannello');
+{
+  let giorno = null;
+  let ora = null;
+  for (let i = 1; i <= 60 && !giorno; i++) {
+    const d = aggiungiGiorni(oggiISO(), i);
+    const r = await chiama('GET', `/api/disponibilita?data=${d}&ambulatorio_id=1`);
+    const libero = (r.dati.slot || []).find((x) => x.disponibile);
+    if (libero) { giorno = d; ora = libero.ora_inizio; }
+  }
+  verifica('trovato un orario libero per la prova del promemoria', Boolean(giorno));
+
+  const senzaContatti = await chiama('POST', '/api/admin/prenotazioni', {
+    ambulatorio_id: 1, data: giorno, ora_inizio: ora, nome: 'Promemoria', cognome: 'SenzaContatti',
+    problema: 'da richiamare quando torna in citta\''
+  }, token);
+  verifica('lo studio segna un promemoria con solo nome e cognome',
+    senzaContatti.stato === 201 && senzaContatti.dati.prenotazione?.stato === 'confermata',
+    JSON.stringify(senzaContatti.dati));
+  verifica('il posto risulta occupato in agenda come ogni altra prenotazione',
+    senzaContatti.dati.prenotazione?.paziente_email == null
+      && senzaContatti.dati.prenotazione?.codice?.startsWith('PRE-'));
+
+  // Dal sito invece telefono ed email restano obbligatori: la relax vale solo
+  // per chi scrive dal pannello. Dal sito si prenota sempre da un account
+  // gia' loggato (per se stessi o, con "perAltraPersona", per un familiare):
+  // qui si prova il caso del familiare, che e' l'unico dove i contatti sono
+  // ancora quelli scritti nel modulo e non quelli gia' noti dell'account.
+  const regPerProva = registraPazienteDiretto({
+    nome: 'Titolare', cognome: 'DelSito', telefono: '3339990600',
+    email: 'titolare.delsito@example.it', password: 'PasswordTitolare26!'
+  });
+  verificaEmailDiretto(regPerProva.token);
+  const tokTitolare = creaSessioneDiretta(regPerProva.utente.id).token;
+
+  const giorno2 = await giornoConSlot(3, 30);
+  const dalSitoSenzaTelefono = await chiama('POST', '/api/prenotazioni', {
+    ambulatorio_id: 1, data: giorno2.giorno, ora_inizio: giorno2.slot.ora_inizio,
+    nome: 'Dal', cognome: 'Sito', email: 'dal.sito.prova@example.it', problema: 'senza telefono',
+    perAltraPersona: true
+  }, tokTitolare);
+  verifica('dal sito il telefono resta obbligatorio', dalSitoSenzaTelefono.stato === 400,
+    `stato ${dalSitoSenzaTelefono.stato}: ${JSON.stringify(dalSitoSenzaTelefono.dati)}`);
+
+  // Anche per il pannello, se un telefono viene scritto deve essere valido:
+  // la relax toglie l'obbligo, non il controllo del formato.
+  const conTelefonoSbagliato = await chiama('POST', '/api/admin/prenotazioni', {
+    ambulatorio_id: 1, data: giorno2.giorno, ora_inizio: giorno2.slot.ora_inizio,
+    nome: 'Telefono', cognome: 'Sbagliato', telefono: 'abc', problema: 'controllo formato'
+  }, token);
+  verifica('ma un telefono scritto male viene comunque rifiutato', conTelefonoSbagliato.stato === 400);
+}
+
 console.log('\nLo studio aggiunge un paziente a mano, e l\'accesso si apre nello stesso passaggio');
 {
   const senzaCredenziali = await chiama('POST', '/api/admin/pazienti', { nome: 'Anziana', cognome: 'SenzaSito' });
