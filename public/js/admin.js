@@ -1268,6 +1268,51 @@ function riquadroAllegati(allegati) {
   return carta;
 }
 
+/**
+ * Lo studio allega un documento: la foto di una ricetta portata di persona,
+ * un referto scansionato dopo. A differenza del paziente puo' farlo in
+ * qualunque stato della richiesta, anche su una gia' chiusa — qui non si
+ * decide una risposta, si completa il fascicolo.
+ */
+function riquadroCaricaAllegato(r) {
+  const riga = nodo('div', 'piccolo');
+  riga.style.cssText = 'margin-top:.6rem;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap';
+
+  const file = nodo('input');
+  file.type = 'file';
+  file.accept = 'image/jpeg,image/png,image/gif,image/webp,image/heic,application/pdf';
+
+  const carica = nodo('button', 'bottone secondario piccolo', '📎 Allega documento');
+  carica.type = 'button';
+  carica.addEventListener('click', () => {
+    const f = file.files?.[0];
+    if (!f) return avvisa('Scegli prima un file.', 'errore');
+    carica.disabled = true;
+    protetto(async () => {
+      try {
+        const risposta = await fetch(
+          `/api/admin/medicine/${r.codice}/allegato?nome=${encodeURIComponent(f.name)}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': f.type || 'application/octet-stream', Authorization: `Bearer ${token}` },
+            body: f
+          }
+        );
+        const dati = await risposta.json().catch(() => ({}));
+        if (!risposta.ok) throw new Error(dati.message || 'Non sono riuscito a caricare il file.');
+        avvisa('Documento allegato.', 'ok');
+        await caricaRichieste(
+          Object.keys(SCHEDE_RICHIESTE).find((s) => SCHEDE_RICHIESTE[s].tipo === r.tipo) || 'medicine');
+      } finally {
+        carica.disabled = false;
+      }
+    });
+  });
+
+  riga.append(file, carica);
+  return riga;
+}
+
 const PAROLE_TIPO = {
   medicina: {
     icona: '💊', titolo: 'Nuova richiesta di farmaci', campo: 'Farmaci',
@@ -1439,6 +1484,7 @@ function schedaMedicina(r) {
   }
 
   if (r.allegati?.length) carta.append(riquadroAllegati(r.allegati));
+  carta.append(riquadroCaricaAllegato(r));
 
   const chiusa = r.stato === 'rifiutata' || r.stato === 'consegnata';
 

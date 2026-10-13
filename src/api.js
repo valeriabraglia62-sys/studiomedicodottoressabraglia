@@ -855,6 +855,22 @@ admin.post('/medicine/:codice/consegnata', (req, res) => {
 });
 
 /**
+ * Lo studio allega un documento a una richiesta: la foto di una ricetta
+ * portata di persona, un referto scansionato dopo averla gia' gestita. A
+ * differenza del paziente (vedi sopra, POST /medicine/:codice/allegato), qui
+ * non c'e' il limite "solo finche' e' da vedere": lo studio puo' completare
+ * il fascicolo in qualunque momento, anche su una richiesta gia' chiusa.
+ */
+admin.post('/medicine/:codice/allegato',
+  express.raw({ type: '*/*', limit: medicine.MASSIMO_BYTE_ALLEGATO }),
+  (req, res) => {
+    const r = medicine.perCodice(req.params.codice);
+    if (!r) throw new ErroreDominio('Richiesta non trovata.', 404);
+    const esito = medicine.allegaFile(r.id, { nome: req.query.nome, contenuto: req.body });
+    res.status(201).json({ success: true, allegato: esito });
+  });
+
+/**
  * Il contenuto di un allegato, per guardarlo dentro il pannello.
  *
  * Esce con il suo tipo vero, quello riconosciuto dai byte al momento del

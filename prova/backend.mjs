@@ -710,6 +710,50 @@ console.log('\nUn messaggio libero dello studio, oltre a quello gia\' strutturat
     !(emailSenzaMessaggio.html || '').includes('Messaggio dello studio'), emailSenzaMessaggio.html?.slice(0, 300));
 }
 
+console.log('\nAnche lo studio puo\' allegare un documento, non solo il paziente');
+{
+  // Un PNG vero da un pixel: il formato si riconosce dai byte, quindi un
+  // finto file di zeri verrebbe rifiutato e la prova non direbbe niente.
+  const PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64');
+  const caricaDalPannello = (codice, nome, tok) => fetch(
+    `${BASE}/api/admin/medicine/${codice}/allegato?nome=${encodeURIComponent(nome)}`,
+    { method: 'POST', headers: { 'Content-Type': 'image/png', Authorization: `Bearer ${tok}` }, body: PNG });
+
+  const nuova = await chiama('POST', '/api/medicine', {
+    nome: 'Allegato', cognome: 'DalloStudio', telefono: '3339990510',
+    email: 'allegato.dallostudio@example.it', farmaci: 'Tachipirina 1000'
+  });
+  const codice = nuova.dati.richiesta.codice;
+
+  const senzaCredenziali = await caricaDalPannello(codice, 'ricetta.png', '');
+  verifica('allegare dal pannello senza credenziali e\' negato', senzaCredenziali.status === 401,
+    `stato ${senzaCredenziali.status}`);
+
+  const caricato = await caricaDalPannello(codice, 'ricetta.png', token);
+  verifica('lo studio allega un documento a una richiesta ancora nuova', caricato.status === 201,
+    `stato ${caricato.status}`);
+
+  // A differenza del paziente, lo studio puo' farlo anche dopo che la
+  // richiesta e' stata gestita: completa il fascicolo, non decide una risposta.
+  await chiama('POST', `/api/admin/medicine/${codice}/conferma`, {}, token);
+  const dopoConferma = await caricaDalPannello(codice, 'referto-successivo.png', token);
+  verifica('e anche su una richiesta gia\' confermata, non solo su quelle nuove',
+    dopoConferma.status === 201, `stato ${dopoConferma.status}`);
+
+  const idRichiesta = db.prepare('SELECT id FROM richieste_medicine WHERE codice = ?').get(codice).id;
+  const quanti = db.prepare('SELECT COUNT(*) n FROM allegati WHERE richiesta_id = ?').get(idRichiesta).n;
+  verifica('entrambi i documenti risultano allegati alla stessa richiesta', quanti === 2, `trovati: ${quanti}`);
+
+  const formatoSbagliato = await fetch(
+    `${BASE}/api/admin/medicine/${codice}/allegato?nome=finto.png`,
+    { method: 'POST', headers: { 'Content-Type': 'image/png', Authorization: `Bearer ${token}` },
+      body: Buffer.from('questo non e\' una immagine vera') });
+  verifica('un file che non e\' davvero una foto o un PDF viene comunque rifiutato',
+    formatoSbagliato.status === 400, `stato ${formatoSbagliato.status}`);
+}
+
 console.log('\nRichieste di visita: lo studio conferma o rifiuta');
 {
   const { oggiISO, aggiungiGiorni } = await import('../src/orari.js');
