@@ -1276,17 +1276,25 @@ function riquadroAllegati(allegati) {
  */
 function riquadroCaricaAllegato(r) {
   const riga = nodo('div', 'piccolo');
-  riga.style.cssText = 'margin-top:.6rem;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap';
+  riga.style.cssText = 'margin-top:.6rem';
 
+  // Un solo controllo, non due: il file lo sceglie il bottone stesso (clicca,
+  // si apre la finestra del sistema), e appena scelto parte da solo il
+  // caricamento. Prima c'erano un campo file e un bottone separati, e chi non
+  // li riconosceva come due passaggi cliccava solo il bottone, trovandosi
+  // sempre "scegli prima un file" anche dopo aver scelto qualcosa.
   const file = nodo('input');
   file.type = 'file';
   file.accept = 'image/jpeg,image/png,image/gif,image/webp,image/heic,application/pdf';
+  file.hidden = true;
 
   const carica = nodo('button', 'bottone secondario piccolo', '📎 Allega documento');
   carica.type = 'button';
-  carica.addEventListener('click', () => {
+  carica.addEventListener('click', () => file.click());
+
+  file.addEventListener('change', () => {
     const f = file.files?.[0];
-    if (!f) return avvisa('Scegli prima un file.', 'errore');
+    if (!f) return;
     carica.disabled = true;
     protetto(async () => {
       try {
@@ -1305,11 +1313,12 @@ function riquadroCaricaAllegato(r) {
           Object.keys(SCHEDE_RICHIESTE).find((s) => SCHEDE_RICHIESTE[s].tipo === r.tipo) || 'medicine');
       } finally {
         carica.disabled = false;
+        file.value = '';
       }
     });
   });
 
-  riga.append(file, carica);
+  riga.append(carica, file);
   return riga;
 }
 
